@@ -7,5 +7,5 @@ class DcvValidationMethod(StrEnum):
     # WEBSITE_CHANGE_V2 = 'website-change-v2'  # HTTP (need to specify if HTTP or HTTPS)
     # ACME_V2_HTTP_01 = 'acme-v2-http-01'
     # ACME_V2_DNS_01 = 'acme-v2-dns-01'
-    # ACME_V2_TLS_ALP_N01 = 'acme-v2-tls-alpn-01'
+    # ACME_V2_TLS_ALPN_01 = 'acme-v2-tls-alpn-01'
     # DNS_CHANGE = 'dns-change'
