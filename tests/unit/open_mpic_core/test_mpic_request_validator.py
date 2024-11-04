@@ -59,12 +59,6 @@ class TestMpicRequestValidator:
         assert is_request_valid is True
         assert len(validation_issues) == 0
 
-    def is_request_valid__should_return_true_given_valid_dcv_with_caa_check_request(self):
-        request = ValidMpicRequestCreator.create_valid_dcv_with_caa_mpic_request()
-        is_request_valid, validation_issues = MpicRequestValidator.is_request_valid(request, self.known_perspectives)
-        assert is_request_valid is True
-        assert len(validation_issues) == 0
-
     @pytest.mark.parametrize('perspective_count', [1, 0, -1, 'abc', sys.maxsize+1])
     def is_request_valid__should_return_false_and_message_given_invalid_perspective_count(self, perspective_count):
         request = ValidMpicRequestCreator.create_valid_caa_mpic_request()

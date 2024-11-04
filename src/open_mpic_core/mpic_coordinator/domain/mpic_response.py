@@ -29,14 +29,4 @@ class MpicDcvResponse(BaseMpicResponse):
     dcv_check_parameters: DcvCheckParameters | None = None
 
 
-class MpicDcvWithCaaResponse(BaseMpicResponse):
-    check_type: Literal[CheckType.DCV_WITH_CAA] = CheckType.DCV_WITH_CAA
-    caa_check_parameters: CaaCheckParameters | None = None
-    dcv_check_parameters: DcvCheckParameters | None = None
-    perspectives_dcv: list[DcvCheckResponse] = None  # TODO define a DcvCheckResponse for the project
-    perspectives_caa: list[CaaCheckResponse] = None
-    is_valid_dcv: bool | None = False
-    is_valid_caa: bool | None = False
-
-
-MpicResponse = Annotated[Union[MpicCaaResponse, MpicDcvResponse, MpicDcvWithCaaResponse], Field(discriminator='check_type')]
+MpicResponse = Annotated[Union[MpicCaaResponse, MpicDcvResponse], Field(discriminator='check_type')]

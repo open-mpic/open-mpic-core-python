@@ -77,15 +77,6 @@ class TestMpicCoordinator:
         assert all(call.check_request.dcv_check_parameters.validation_details.validation_method == DcvValidationMethod.DNS_GENERIC for call in call_list)
         assert all(call.check_request.dcv_check_parameters.validation_details.dns_name_prefix == 'test' for call in call_list)
 
-    def collect_async_calls_to_issue__should_have_caa_and_dcv_calls_given_dcv_with_caa_check_type(self):
-        request = ValidMpicRequestCreator.create_valid_dcv_with_caa_mpic_request()
-        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
-        target_perspectives = mpic_coordinator_config.target_perspectives
-        call_list = MpicCoordinator.collect_async_calls_to_issue(request, target_perspectives)
-        assert len(call_list) == 12
-        # ensure the list contains both 'caa' and 'dcv' calls
-        assert set(map(lambda call_result: call_result.check_type, call_list)) == {CheckType.CAA, CheckType.DCV}
-
     def coordinate_mpic__should_call_remote_perspective_call_function_with_correct_parameters(self):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters(quorum_count=2, perspective_count=2,
@@ -223,7 +214,7 @@ class TestMpicCoordinator:
         assert mpic_response.is_valid is False
         assert mpic_response.actual_orchestration_parameters.attempt_count == 2
 
-    @pytest.mark.parametrize('check_type', [CheckType.CAA, CheckType.DCV, CheckType.DCV_WITH_CAA])
+    @pytest.mark.parametrize('check_type', [CheckType.CAA, CheckType.DCV])
     def coordinate_mpic__should_return_check_failure_message_given_remote_perspective_failure(self, check_type):
         mpic_request = None
         match check_type:
@@ -231,8 +222,6 @@ class TestMpicCoordinator:
                 mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
             case CheckType.DCV:
                 mpic_request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()
-            case CheckType.DCV_WITH_CAA:
-                mpic_request = ValidMpicRequestCreator.create_valid_dcv_with_caa_mpic_request()
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
         mpic_coordinator = MpicCoordinator(self.create_failing_remote_response_with_exception, mpic_coordinator_config)
         

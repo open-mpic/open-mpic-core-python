@@ -14,8 +14,7 @@ from open_mpic_core.common_domain.validation_error import MpicValidationError
 from open_mpic_core.common_domain.enum.check_type import CheckType
 from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
 from open_mpic_core.mpic_coordinator.cohort_creator import CohortCreator
-from open_mpic_core.mpic_coordinator.domain.mpic_request import MpicCaaRequest, MpicRequest
-from open_mpic_core.mpic_coordinator.domain.mpic_request import MpicDcvRequest, MpicDcvWithCaaRequest
+from open_mpic_core.mpic_coordinator.domain.mpic_request import MpicCaaRequest, MpicRequest, MpicDcvRequest
 from open_mpic_core.mpic_coordinator.domain.mpic_request_validation_error import MpicRequestValidationError
 from open_mpic_core.mpic_coordinator.domain.remote_check_call_configuration import RemoteCheckCallConfiguration
 from open_mpic_core.common_domain.remote_perspective import RemotePerspective
@@ -128,18 +127,16 @@ class MpicCoordinator:
         domain_or_ip_target = mpic_request.domain_or_ip_target
         async_calls_to_issue = []
 
-        # check if mpic_request is an instance of MpicDcvWithCaaRequest, MpicCaaRequest, or MpicDcvRequest
-        if isinstance(mpic_request, MpicDcvWithCaaRequest) or isinstance(mpic_request, MpicCaaRequest):
+        # check if mpic_request is an instance of MpicCaaRequest or MpicDcvRequest
+        if isinstance(mpic_request, MpicCaaRequest):
             check_parameters = CaaCheckRequest(domain_or_ip_target=domain_or_ip_target, caa_check_parameters=mpic_request.caa_check_parameters)
             for perspective in perspectives_to_use:
-                # key is of the form 'RIR.AWS-region'
                 call_config = RemoteCheckCallConfiguration(CheckType.CAA, perspective, check_parameters)
                 async_calls_to_issue.append(call_config)
 
-        if isinstance(mpic_request, MpicDcvWithCaaRequest) or isinstance(mpic_request, MpicDcvRequest):
+        elif isinstance(mpic_request, MpicDcvRequest):
             check_parameters = DcvCheckRequest(domain_or_ip_target=domain_or_ip_target, dcv_check_parameters=mpic_request.dcv_check_parameters)
             for perspective in perspectives_to_use:
-                # key is of the form 'RIR.AWS-region'
                 call_config = RemoteCheckCallConfiguration(CheckType.DCV, perspective, check_parameters)
                 async_calls_to_issue.append(call_config)
 
