@@ -1,4 +1,3 @@
-import json
 import time
 from typing import Final
 import dns.resolver
@@ -111,17 +110,17 @@ class MpicCaaChecker:
             caa_lookup_error = True
 
         if caa_lookup_error:
-            response = CaaCheckResponse(perspective=self.perspective.to_rir_code(), check_passed=False,
+            response = CaaCheckResponse(perspective_code=self.perspective.code, check_passed=False,
                                         errors=[MpicValidationError(error_type=ErrorMessages.CAA_LOOKUP_ERROR.key, error_message=ErrorMessages.CAA_LOOKUP_ERROR.message)],
                                         details=CaaCheckResponseDetails(caa_record_present=False),  # Possibly should change to present=None to indicate the lookup failed.
                                         timestamp_ns=time.time_ns())
         elif not caa_found:  # if domain has no CAA records: valid for issuance
-            response = CaaCheckResponse(perspective=self.perspective.to_rir_code(), check_passed=True,
+            response = CaaCheckResponse(perspective_code=self.perspective.code, check_passed=True,
                                         details=CaaCheckResponseDetails(caa_record_present=False),
                                         timestamp_ns=time.time_ns())
         else:
             valid_for_issuance = MpicCaaChecker.is_valid_for_issuance(caa_domains, is_wc_domain, rrset)
-            response = CaaCheckResponse(perspective=self.perspective.to_rir_code(), check_passed=valid_for_issuance,
+            response = CaaCheckResponse(perspective_code=self.perspective.code, check_passed=valid_for_issuance,
                                         details=CaaCheckResponseDetails(caa_record_present=True,
                                                                         found_at=domain.to_text(omit_final_dot=True),
                                                                         response=rrset.to_text()),

@@ -16,6 +16,7 @@ from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
 from open_mpic_core.mpic_coordinator.cohort_creator import CohortCreator
 from open_mpic_core.mpic_coordinator.domain.mpic_request import MpicCaaRequest, MpicRequest, MpicDcvRequest
 from open_mpic_core.mpic_coordinator.domain.mpic_request_validation_error import MpicRequestValidationError
+from open_mpic_core.mpic_coordinator.domain.mpic_response import MpicResponse
 from open_mpic_core.mpic_coordinator.domain.remote_check_call_configuration import RemoteCheckCallConfiguration
 from open_mpic_core.common_domain.remote_perspective import RemotePerspective
 from open_mpic_core.mpic_coordinator.messages.mpic_request_validation_messages import MpicRequestValidationMessages
@@ -43,7 +44,7 @@ class MpicCoordinator:
         self.hash_secret = mpic_coordinator_configuration.hash_secret
         self.call_remote_perspective_function = call_remote_perspective_function
 
-    def coordinate_mpic(self, mpic_request: MpicRequest):
+    def coordinate_mpic(self, mpic_request: MpicRequest) -> MpicResponse:
         is_request_valid, validation_issues = MpicRequestValidator.is_request_valid(mpic_request, self.target_perspectives)
 
         if not is_request_valid:
@@ -85,17 +86,15 @@ class MpicCoordinator:
             # Collect async calls to invoke for each perspective.
             async_calls_to_issue = MpicCoordinator.collect_async_calls_to_issue(mpic_request, perspectives_to_use)
 
-            perspective_responses_per_check_type, validity_per_perspective_per_check_type = (
+            perspective_responses, validity_per_perspective = (
                 self.issue_async_calls_and_collect_responses(perspectives_to_use, async_calls_to_issue))
 
-            valid_by_check_type = {}
-            for check_type in [CheckType.CAA, CheckType.DCV]:
-                valid_perspective_count = sum(validity_per_perspective_per_check_type[check_type].values())
-                valid_by_check_type[check_type] = valid_perspective_count >= quorum_count
+            valid_perspective_count = sum(validity_per_perspective.values())
+            is_valid_result = valid_perspective_count >= quorum_count
 
-            if MpicCoordinator.are_checks_valid(mpic_request.check_type, valid_by_check_type) or attempts == max_attempts:
+            if is_valid_result or attempts == max_attempts:
                 response = MpicResponseBuilder.build_response(mpic_request, perspective_count, quorum_count, attempts,
-                                                              perspective_responses_per_check_type, valid_by_check_type)
+                                                              perspective_responses, is_valid_result)
                 return response
             else:
                 attempts += 1
@@ -121,7 +120,7 @@ class MpicCoordinator:
             required_quorum_count = perspective_count - 1 if perspective_count <= 5 else perspective_count - 2
         return required_quorum_count
 
-    # Configures the async lambda function calls to issue for the check request.
+    # Configures the async remote perspective calls to issue for the check request.
     @staticmethod
     def collect_async_calls_to_issue(mpic_request, perspectives_to_use: list[RemotePerspective]) -> list[RemoteCheckCallConfiguration]:
         domain_or_ip_target = mpic_request.domain_or_ip_target
@@ -142,13 +141,10 @@ class MpicCoordinator:
 
         return async_calls_to_issue
 
-    # Issues the async calls to the lambda functions and collects the responses.
-    def issue_async_calls_and_collect_responses(self, perspectives_to_use, async_calls_to_issue) -> tuple[dict, dict]:
-        perspective_responses_per_check_type = {}
-        validity_per_perspective_per_check_type = {
-            CheckType.CAA: {perspective.to_rir_code(): False for perspective in perspectives_to_use},
-            CheckType.DCV: {perspective.to_rir_code(): False for perspective in perspectives_to_use}
-        }
+    # Issues the async calls to the remote perspectives and collects the responses.
+    def issue_async_calls_and_collect_responses(self, perspectives_to_use, async_calls_to_issue) -> tuple[list, dict]:
+        perspective_responses = []
+        validity_per_perspective = {perspective.code: False for perspective in perspectives_to_use}
 
         perspective_count = len(perspectives_to_use)
 
@@ -160,24 +156,21 @@ class MpicCoordinator:
             for future in concurrent.futures.as_completed(futures_to_call_configs):
                 call_configuration = futures_to_call_configs[future]
                 perspective: RemotePerspective = call_configuration.perspective
-                check_type = call_configuration.check_type
                 now = time.perf_counter()
                 print(
-                    f"Unpacking future result for {perspective.to_rir_code()} at time {str(datetime.now())}: {now - exec_begin:.2f} \
+                    f"Unpacking future result for {perspective.code} at time {str(datetime.now())}: {now - exec_begin:.2f} \
                     seconds from beginning")
-                if check_type not in perspective_responses_per_check_type:
-                    perspective_responses_per_check_type[check_type] = []
                 try:
                     check_response = future.result()  # expecting a CheckResponse object
-                    validity_per_perspective_per_check_type[check_type][perspective.to_rir_code()] |= check_response.check_passed
+                    validity_per_perspective[perspective.code] |= check_response.check_passed
                     # TODO make sure responses per perspective match API spec...
-                    perspective_responses_per_check_type[check_type].append(check_response)
+                    perspective_responses.append(check_response)
                 except Exception:  # TODO what exceptions are we expecting here?
                     print(traceback.format_exc())
-                    match check_type:
+                    match call_configuration.check_type:
                         case CheckType.CAA:
                             check_error_response = CaaCheckResponse(
-                                perspective=perspective.to_rir_code(),
+                                perspective_code=perspective.code,
                                 check_passed=False,
                                 errors=[MpicValidationError(error_type=ErrorMessages.COORDINATOR_COMMUNICATION_ERROR.key,
                                                             error_message=ErrorMessages.COORDINATOR_COMMUNICATION_ERROR.message)],
@@ -186,16 +179,16 @@ class MpicCoordinator:
                             )
                         case CheckType.DCV:
                             check_error_response = DcvCheckResponse(
-                                perspective=perspective.to_rir_code(),
+                                perspective_code=perspective.code,
                                 check_passed=False,
                                 errors=[MpicValidationError(error_type=ErrorMessages.COORDINATOR_COMMUNICATION_ERROR.key,
                                                             error_message=ErrorMessages.COORDINATOR_COMMUNICATION_ERROR.message)],
                                 details=DcvCheckResponseDetails(),  # TODO what should go here in this case?
                                 timestamp_ns=time.time_ns()
                             )
-                    validity_per_perspective_per_check_type[check_type][perspective.to_rir_code()] |= check_error_response.check_passed
-                    perspective_responses_per_check_type[check_type].append(check_error_response)
-        return perspective_responses_per_check_type, validity_per_perspective_per_check_type
+                    validity_per_perspective[perspective.code] |= check_error_response.check_passed
+                    perspective_responses.append(check_error_response)
+        return perspective_responses, validity_per_perspective
 
     @staticmethod
     def call_remote_perspective(call_remote_perspective_function, call_config: RemoteCheckCallConfiguration):
@@ -210,16 +203,6 @@ class MpicCoordinator:
         response = call_remote_perspective_function(call_config.perspective, call_config.check_type, call_config.check_request)
         toc = time.perf_counter()
 
-        print(f"Response in region {call_config.perspective.to_rir_code()} took {toc - tic:0.4f} seconds to get response; \
+        print(f"Response in region {call_config.perspective.code} took {toc - tic:0.4f} seconds to get response; \
               ended at {str(datetime.now())}\n")
         return response
-
-    @staticmethod
-    def are_checks_valid(check_type, validity_by_check_type) -> bool:
-        match check_type:
-            case CheckType.CAA:
-                return validity_by_check_type[CheckType.CAA]
-            case CheckType.DCV:
-                return validity_by_check_type[CheckType.DCV]
-            case CheckType.DCV_WITH_CAA:
-                return validity_by_check_type[CheckType.DCV] and validity_by_check_type[CheckType.CAA]

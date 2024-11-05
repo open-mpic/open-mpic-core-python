@@ -13,11 +13,11 @@ class TestMpicRequestValidator:
     @classmethod
     def setup_class(cls):
         cls.known_perspectives = [
-            RemotePerspective.from_rir_code('rir1.p1'), RemotePerspective.from_rir_code('rir1.p2'),
-            RemotePerspective.from_rir_code('rir1.p3'), RemotePerspective.from_rir_code('rir1.p4'),
-            RemotePerspective.from_rir_code('rir2.p5'), RemotePerspective.from_rir_code('rir2.p6'),
-            RemotePerspective.from_rir_code('rir2.p7'), RemotePerspective.from_rir_code('rir2.p8'),
-            RemotePerspective.from_rir_code('rir3.p9'), RemotePerspective.from_rir_code('rir3.p10')
+            RemotePerspective(rir='rir1', code='p1'), RemotePerspective(rir='rir1', code='p2'),
+            RemotePerspective(rir='rir1', code='p3'), RemotePerspective(rir='rir1', code='p4'),
+            RemotePerspective(rir='rir2', code='p5'), RemotePerspective(rir='rir2', code='p6'),
+            RemotePerspective(rir='rir2', code='p7'), RemotePerspective(rir='rir2', code='p8'),
+            RemotePerspective(rir='rir3', code='p9'), RemotePerspective(rir='rir3', code='p10')
         ]
 
     def is_request_valid__should_return_true_and_empty_list_given_valid_caa_check_request_with_perspective_count(self):
