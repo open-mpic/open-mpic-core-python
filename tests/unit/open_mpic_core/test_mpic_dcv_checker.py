@@ -29,7 +29,7 @@ class TestMpicDcvChecker:
 
     @staticmethod
     def create_configured_dcv_checker():
-        return MpicDcvChecker(RemotePerspective.from_rir_code("arin.us-east-4"))
+        return MpicDcvChecker(RemotePerspective(rir='arin', code='us-east-4'))
 
     # integration test of a sort -- only mocking dns methods rather than remaining class methods
     @pytest.mark.parametrize('validation_method, record_type', [(DcvValidationMethod.HTTP_GENERIC, None),
@@ -111,7 +111,7 @@ class TestMpicDcvChecker:
 
     def is_result_as_expected(self, result, check_passed, check_response_details, errors=None):
         result.timestamp_ns = None  # ignore timestamp for comparison
-        expected_result = DcvCheckResponse(perspective='arin.us-east-4', check_passed=check_passed, details=check_response_details, errors=errors)
+        expected_result = DcvCheckResponse(perspective_code='us-east-4', check_passed=check_passed, details=check_response_details, errors=errors)
         return result == expected_result  # Pydantic allows direct comparison with equality operator
 
 

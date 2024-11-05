@@ -32,14 +32,14 @@ class MpicDcvChecker:
         if response.status_code == requests.codes.OK:
             result = response.text.strip()
             dcv_check_response = DcvCheckResponse(
-                perspective=self.perspective.to_rir_code(),
+                perspective_code=self.perspective.code,
                 check_passed=(result == expected_response_content),
                 timestamp_ns=time.time_ns(),
                 details=DcvCheckResponseDetails()  # FIXME get details
             )
         else:
             dcv_check_response = DcvCheckResponse(
-                perspective=self.perspective.to_rir_code(),
+                perspective_code=self.perspective.code,
                 check_passed=False,
                 timestamp_ns=time.time_ns(),
                 errors=[MpicValidationError(error_type=str(response.status_code), error_message=response.reason)],
@@ -75,7 +75,7 @@ class MpicDcvChecker:
                             records_as_strings.append(record_data_as_string)
 
             dcv_check_response = DcvCheckResponse(
-                perspective=self.perspective.to_rir_code(),
+                perspective_code=self.perspective.code,
                 check_passed=expected_dns_record_content in records_as_strings,
                 timestamp_ns=time.time_ns(),
                 details=DcvCheckResponseDetails()  # FIXME get details (or don't bother with this)
@@ -83,7 +83,7 @@ class MpicDcvChecker:
             return dcv_check_response
         except dns.exception.DNSException as e:
             dcv_check_response = DcvCheckResponse(
-                perspective=self.perspective.to_rir_code(),
+                perspective_code=self.perspective.code,
                 check_passed=False,
                 timestamp_ns=time.time_ns(),
                 errors=[MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)],

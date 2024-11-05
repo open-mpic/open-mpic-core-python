@@ -10,6 +10,7 @@ from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
 from open_mpic_core.mpic_coordinator.domain.mpic_orchestration_parameters import MpicRequestOrchestrationParameters
 from open_mpic_core.common_domain.remote_perspective import RemotePerspective
 from open_mpic_core.mpic_coordinator.domain.mpic_request_validation_error import MpicRequestValidationError
+from open_mpic_core.mpic_coordinator.domain.mpic_response import MpicResponse
 from open_mpic_core.mpic_coordinator.mpic_coordinator import MpicCoordinator, MpicCoordinatorConfiguration
 
 from unit.test_util.valid_mpic_request_creator import ValidMpicRequestCreator
@@ -76,15 +77,6 @@ class TestMpicCoordinator:
         assert set(map(lambda call_result: call_result.check_type, call_list)) == {CheckType.DCV}  # ensure each call is of type 'dcv'
         assert all(call.check_request.dcv_check_parameters.validation_details.validation_method == DcvValidationMethod.DNS_GENERIC for call in call_list)
         assert all(call.check_request.dcv_check_parameters.validation_details.dns_name_prefix == 'test' for call in call_list)
-
-    def collect_async_calls_to_issue__should_have_caa_and_dcv_calls_given_dcv_with_caa_check_type(self):
-        request = ValidMpicRequestCreator.create_valid_dcv_with_caa_mpic_request()
-        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
-        target_perspectives = mpic_coordinator_config.target_perspectives
-        call_list = MpicCoordinator.collect_async_calls_to_issue(request, target_perspectives)
-        assert len(call_list) == 12
-        # ensure the list contains both 'caa' and 'dcv' calls
-        assert set(map(lambda call_result: call_result.check_type, call_list)) == {CheckType.CAA, CheckType.DCV}
 
     def coordinate_mpic__should_call_remote_perspective_call_function_with_correct_parameters(self):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
@@ -186,9 +178,9 @@ class TestMpicCoordinator:
             self.create_successful_remote_caa_check_response, self.create_successful_remote_caa_check_response
         )
         mpic_coordinator = MpicCoordinator(succeed_after_two_attempts, mpic_coordinator_config)
-        first_response = mpic_coordinator.coordinate_mpic(first_request)
+        first_response: MpicResponse = mpic_coordinator.coordinate_mpic(first_request)
         first_cohort = first_response.perspectives
-        first_cohort_sorted = sorted(first_cohort, key=lambda p: p.perspective)
+        first_cohort_sorted = sorted(first_cohort, key=lambda check_response: check_response.perspective_code)
 
         second_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         second_request.orchestration_parameters = MpicRequestOrchestrationParameters(quorum_count=1, perspective_count=2, max_attempts=5)
@@ -203,12 +195,12 @@ class TestMpicCoordinator:
             self.create_successful_remote_caa_check_response, self.create_successful_remote_caa_check_response
         )
         mpic_coordinator = MpicCoordinator(succeed_after_five_attempts, mpic_coordinator_config)
-        second_response = mpic_coordinator.coordinate_mpic(second_request)
+        second_response: MpicResponse = mpic_coordinator.coordinate_mpic(second_request)
         second_cohort = second_response.perspectives
-        second_cohort_sorted = sorted(second_cohort, key=lambda p: p.perspective)
+        second_cohort_sorted = sorted(second_cohort, key=lambda check_response: check_response.perspective_code)
 
         # assert that perspectives in first cohort and in second cohort are the same perspectives
-        assert all(first_cohort_sorted[i].perspective == second_cohort_sorted[i].perspective for i in range(len(first_cohort_sorted)))
+        assert all(first_cohort_sorted[i].perspective_code == second_cohort_sorted[i].perspective_code for i in range(len(first_cohort_sorted)))
 
     def coordinate_mpic__should_cap_attempts_at_max_attempts_env_parameter_if_found(self):
         mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
@@ -223,7 +215,7 @@ class TestMpicCoordinator:
         assert mpic_response.is_valid is False
         assert mpic_response.actual_orchestration_parameters.attempt_count == 2
 
-    @pytest.mark.parametrize('check_type', [CheckType.CAA, CheckType.DCV, CheckType.DCV_WITH_CAA])
+    @pytest.mark.parametrize('check_type', [CheckType.CAA, CheckType.DCV])
     def coordinate_mpic__should_return_check_failure_message_given_remote_perspective_failure(self, check_type):
         mpic_request = None
         match check_type:
@@ -231,18 +223,12 @@ class TestMpicCoordinator:
                 mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
             case CheckType.DCV:
                 mpic_request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()
-            case CheckType.DCV_WITH_CAA:
-                mpic_request = ValidMpicRequestCreator.create_valid_dcv_with_caa_mpic_request()
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
         mpic_coordinator = MpicCoordinator(self.create_failing_remote_response_with_exception, mpic_coordinator_config)
         
         mpic_response = mpic_coordinator.coordinate_mpic(mpic_request)
         assert mpic_response.is_valid is False
-        if check_type in [CheckType.CAA, CheckType.DCV]:
-            perspectives_to_inspect = mpic_response.perspectives
-        else:
-            perspectives_to_inspect = mpic_response.perspectives_caa + mpic_response.perspectives_dcv
-        for perspective in perspectives_to_inspect:
+        for perspective in mpic_response.perspectives:
             assert perspective.check_passed is False
             assert perspective.errors[0].error_type == ErrorMessages.COORDINATOR_COMMUNICATION_ERROR.key
 
@@ -297,12 +283,12 @@ class TestMpicCoordinator:
     @staticmethod
     def create_all_perspectives_by_code() -> dict[str, RemotePerspective]:
         perspectives = [
-            RemotePerspective.from_rir_code('arin.us-east-1'),
-            RemotePerspective.from_rir_code('arin.us-west-1'),
-            RemotePerspective.from_rir_code('ripe.eu-west-2'),
-            RemotePerspective.from_rir_code('ripe.eu-central-2'),
-            RemotePerspective.from_rir_code('apnic.ap-northeast-1'),
-            RemotePerspective.from_rir_code('apnic.ap-south-2')
+            RemotePerspective(rir='arin', code='us-east-1'),
+            RemotePerspective(rir='arin', code='us-west-1'),
+            RemotePerspective(rir='ripe', code='eu-west-2'),
+            RemotePerspective(rir='ripe', code='eu-central-2'),
+            RemotePerspective(rir='apnic', code='ap-northeast-1'),
+            RemotePerspective(rir='apnic', code='ap-south-2')
         ]
         return {perspective.code: perspective for perspective in perspectives}
 
@@ -310,16 +296,14 @@ class TestMpicCoordinator:
     # noinspection PyUnusedLocal
     def create_successful_remote_caa_check_response(self, perspective: RemotePerspective, check_type: CheckType,
                                                     check_request_serialized: str):
-        expected_response = CaaCheckResponse(perspective=perspective.to_rir_code(), check_passed=True,
-                                             details=CaaCheckResponseDetails(caa_record_present=False))
-        return expected_response
+        return CaaCheckResponse(perspective_code=perspective.code, check_passed=True,
+                                details=CaaCheckResponseDetails(caa_record_present=False))
 
     # noinspection PyUnusedLocal
     def create_failing_remote_caa_check_response(self, perspective: RemotePerspective, check_type: CheckType,
                                                  check_request_serialized: str):
-        expected_response = CaaCheckResponse(perspective=perspective.to_rir_code(), check_passed=False,
-                                             details=CaaCheckResponseDetails(caa_record_present=True))
-        return expected_response
+        return CaaCheckResponse(perspective_code=perspective.code, check_passed=False,
+                                details=CaaCheckResponseDetails(caa_record_present=True))
 
     # noinspection PyUnusedLocal
     def create_failing_remote_response_with_exception(self, perspective: RemotePerspective, check_type: CheckType,

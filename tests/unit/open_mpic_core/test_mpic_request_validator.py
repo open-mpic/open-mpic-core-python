@@ -13,11 +13,11 @@ class TestMpicRequestValidator:
     @classmethod
     def setup_class(cls):
         cls.known_perspectives = [
-            RemotePerspective.from_rir_code('rir1.p1'), RemotePerspective.from_rir_code('rir1.p2'),
-            RemotePerspective.from_rir_code('rir1.p3'), RemotePerspective.from_rir_code('rir1.p4'),
-            RemotePerspective.from_rir_code('rir2.p5'), RemotePerspective.from_rir_code('rir2.p6'),
-            RemotePerspective.from_rir_code('rir2.p7'), RemotePerspective.from_rir_code('rir2.p8'),
-            RemotePerspective.from_rir_code('rir3.p9'), RemotePerspective.from_rir_code('rir3.p10')
+            RemotePerspective(rir='rir1', code='p1'), RemotePerspective(rir='rir1', code='p2'),
+            RemotePerspective(rir='rir1', code='p3'), RemotePerspective(rir='rir1', code='p4'),
+            RemotePerspective(rir='rir2', code='p5'), RemotePerspective(rir='rir2', code='p6'),
+            RemotePerspective(rir='rir2', code='p7'), RemotePerspective(rir='rir2', code='p8'),
+            RemotePerspective(rir='rir3', code='p9'), RemotePerspective(rir='rir3', code='p10')
         ]
 
     def is_request_valid__should_return_true_and_empty_list_given_valid_caa_check_request_with_perspective_count(self):
@@ -55,12 +55,6 @@ class TestMpicRequestValidator:
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.DNS_GENERIC, DcvValidationMethod.HTTP_GENERIC])
     def is_request_valid__should_return_true_given_valid_dcv_check_request(self, validation_method):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(validation_method)
-        is_request_valid, validation_issues = MpicRequestValidator.is_request_valid(request, self.known_perspectives)
-        assert is_request_valid is True
-        assert len(validation_issues) == 0
-
-    def is_request_valid__should_return_true_given_valid_dcv_with_caa_check_request(self):
-        request = ValidMpicRequestCreator.create_valid_dcv_with_caa_mpic_request()
         is_request_valid, validation_issues = MpicRequestValidator.is_request_valid(request, self.known_perspectives)
         assert is_request_valid is True
         assert len(validation_issues) == 0

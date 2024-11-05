@@ -32,9 +32,4 @@ class MpicDcvRequest(BaseMpicRequest):
     dcv_check_parameters: DcvCheckParameters
 
 
-class MpicDcvWithCaaRequest(MpicDcvRequest):  # inherits from MpicDcvRequest rather than BaseMpicRequest
-    check_type: Literal[CheckType.DCV_WITH_CAA] = CheckType.DCV_WITH_CAA
-    caa_check_parameters: CaaCheckParameters | None = None
-
-
-MpicRequest = Annotated[Union[MpicCaaRequest, MpicDcvRequest, MpicDcvWithCaaRequest], Field(discriminator='check_type')]
+MpicRequest = Annotated[Union[MpicCaaRequest, MpicDcvRequest], Field(discriminator='check_type')]
