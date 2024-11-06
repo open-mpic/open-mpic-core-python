@@ -46,5 +46,5 @@ class ValidMpicRequestCreator:
                 validation_details = DcvDnsChangeValidationDetails(dns_name_prefix='test', dns_record_type=DnsRecordType.A, challenge_value='test')
             case DcvValidationMethod.WEBSITE_CHANGE_V2:
                 validation_details = DcvWebsiteChangeValidationDetails(
-                    http_token_path='examplepath', challenge_value='test', protocol=UrlScheme.HTTP)  # noqa E501 (http)
+                    http_token_path='examplepath', challenge_value='test', url_scheme=UrlScheme.HTTP)  # noqa E501 (http)
         return validation_details

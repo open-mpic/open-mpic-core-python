@@ -4,6 +4,8 @@ import requests
 
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
 from open_mpic_core.common_domain.check_response import DcvCheckResponse, DcvCheckResponseDetails
+from open_mpic_core.common_domain.check_response_details import DcvDnsChangeResponseDetails, \
+    DcvWebsiteChangeResponseDetails
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
 from open_mpic_core.common_domain.remote_perspective import RemotePerspective
 from open_mpic_core.common_domain.validation_error import MpicValidationError
@@ -36,7 +38,7 @@ class MpicDcvChecker:
                 perspective_code=self.perspective.code,
                 check_passed=(result == expected_response_content),
                 timestamp_ns=time.time_ns(),
-                details=DcvCheckResponseDetails()  # FIXME get details
+                details=DcvWebsiteChangeResponseDetails()  # FIXME get details
             )
         else:
             dcv_check_response = DcvCheckResponse(
@@ -44,7 +46,7 @@ class MpicDcvChecker:
                 check_passed=False,
                 timestamp_ns=time.time_ns(),
                 errors=[MpicValidationError(error_type=str(response.status_code), error_message=response.reason)],
-                details=DcvCheckResponseDetails()
+                details=DcvWebsiteChangeResponseDetails()
             )
 
         return dcv_check_response
@@ -79,7 +81,7 @@ class MpicDcvChecker:
                 perspective_code=self.perspective.code,
                 check_passed=expected_dns_record_content in records_as_strings,
                 timestamp_ns=time.time_ns(),
-                details=DcvCheckResponseDetails()  # FIXME get details (or don't bother with this)
+                details=DcvDnsChangeResponseDetails()  # FIXME get details (or don't bother with this)
             )
             return dcv_check_response
         except dns.exception.DNSException as e:
@@ -88,6 +90,6 @@ class MpicDcvChecker:
                 check_passed=False,
                 timestamp_ns=time.time_ns(),
                 errors=[MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)],
-                details=DcvCheckResponseDetails()
+                details=DcvDnsChangeResponseDetails()
             )
             return dcv_check_response
