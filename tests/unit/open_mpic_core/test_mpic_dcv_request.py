@@ -67,21 +67,21 @@ class TestMpicDcvRequest:
         assert 'challenge_value' in str(validation_error.value)
 
     def model_validate_json__should_throw_validation_error_given_missing_prefix_for_dns_validation(self):
-        request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(DcvValidationMethod.DNS_GENERIC)
+        request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(DcvValidationMethod.DNS_CHANGE)
         request.dcv_check_parameters.validation_details.dns_name_prefix = None
         with pytest.raises(pydantic.ValidationError) as validation_error:
             MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
         assert 'dns_name_prefix' in str(validation_error.value)
 
     def model_validate_json__should_throw_validation_error_given_missing_record_type_for_dns_validation(self):
-        request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(DcvValidationMethod.DNS_GENERIC)
+        request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(DcvValidationMethod.DNS_CHANGE)
         request.dcv_check_parameters.validation_details.dns_record_type = None
         with pytest.raises(pydantic.ValidationError) as validation_error:
             MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
         assert 'dns_record_type' in str(validation_error.value)
 
     def model_validate_json__should_throw_validation_error_given_invalid_record_type_for_dns_validation(self):
-        request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(DcvValidationMethod.DNS_GENERIC)
+        request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(DcvValidationMethod.DNS_CHANGE)
         request.dcv_check_parameters.validation_details.dns_record_type = 'invalid'
         with pytest.raises(pydantic.ValidationError) as validation_error:
             MpicDcvRequest.model_validate_json(json.dumps(request.model_dump(warnings=False)))
@@ -89,7 +89,7 @@ class TestMpicDcvRequest:
         assert 'invalid' in str(validation_error.value)
 
     def model_validate_json__should_throw_validation_error_given_missing_token_path_for_http_validation(self):
-        request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(DcvValidationMethod.HTTP_GENERIC)
+        request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(DcvValidationMethod.WEBSITE_CHANGE_V2)
         request.dcv_check_parameters.validation_details.http_token_path = None
         with pytest.raises(pydantic.ValidationError) as validation_error:
             MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))

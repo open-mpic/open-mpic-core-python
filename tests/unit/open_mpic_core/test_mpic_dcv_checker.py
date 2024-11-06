@@ -32,54 +32,64 @@ class TestMpicDcvChecker:
         return MpicDcvChecker(RemotePerspective(rir='arin', code='us-east-4'))
 
     # integration test of a sort -- only mocking dns methods rather than remaining class methods
-    @pytest.mark.parametrize('validation_method, record_type', [(DcvValidationMethod.HTTP_GENERIC, None),
-                                                                (DcvValidationMethod.DNS_GENERIC, DnsRecordType.TXT),
-                                                                (DcvValidationMethod.DNS_GENERIC, DnsRecordType.CNAME)])
+    @pytest.mark.parametrize('validation_method, record_type', [(DcvValidationMethod.WEBSITE_CHANGE_V2, None),
+                                                                (DcvValidationMethod.DNS_CHANGE, DnsRecordType.TXT),
+                                                                (DcvValidationMethod.DNS_CHANGE, DnsRecordType.CNAME)])
     def check_dcv__should_perform_appropriate_check_and_return_200_and_allow_issuance_given_target_record_found(self, set_env_variables, validation_method, record_type, mocker):
         dcv_request = None
         match validation_method:
-            case DcvValidationMethod.HTTP_GENERIC:
+            case DcvValidationMethod.WEBSITE_CHANGE_V2:
                 dcv_request = ValidCheckCreator.create_valid_http_check_request()
-                self.mock_http_related_calls(dcv_request, mocker)
-            case DcvValidationMethod.DNS_GENERIC:
+                self.mock_website_change_related_calls(dcv_request, mocker)
+            case DcvValidationMethod.DNS_CHANGE:
                 dcv_request = ValidCheckCreator.create_valid_dns_check_request(record_type)
                 self.mock_dns_related_calls(dcv_request, mocker)
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         dcv_response = dcv_checker.check_dcv(dcv_request)
         assert self.is_result_as_expected(dcv_response, True, DcvCheckResponseDetails())
 
-    def perform_http_validation__should_return_check_passed_true_with_details_given_request_token_file_found(self, set_env_variables, mocker):
+    def perform_website_change_validation__should_return_check_passed_true_with_details_given_request_token_file_found(self, set_env_variables, mocker):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
-        self.mock_http_related_calls(dcv_request, mocker)
+        self.mock_website_change_related_calls(dcv_request, mocker)
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
-        dcv_response = dcv_checker.perform_http_validation(dcv_request)
+        dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
         assert dcv_response.timestamp_ns is not None
         assert self.is_result_as_expected(dcv_response, True, DcvCheckResponseDetails())
 
-    def perform_http_validation__should_return_check_passed_false_with_details_given_request_token_file_not_found(self, set_env_variables, mocker):
+    def perform_website_change_validation__should_return_check_passed_false_with_details_given_request_token_file_not_found(self, set_env_variables, mocker):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
         mocker.patch('requests.get', return_value=type('Response', (object,), {'status_code': 404, 'reason': 'Not Found'})())
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
-        dcv_response = dcv_checker.perform_http_validation(dcv_request)
+        dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
         assert dcv_response.timestamp_ns is not None
         errors = [MpicValidationError(error_type='404', error_message='Not Found')]
         assert self.is_result_as_expected(dcv_response, False, DcvCheckResponseDetails(), errors)
 
+    @pytest.mark.parametrize('url_scheme', ['http', 'https'])
+    def perform_website_change_validation__should_use_specified_url_scheme(self, set_env_variables, url_scheme, mocker):
+        dcv_request = ValidCheckCreator.create_valid_http_check_request()
+        dcv_request.dcv_check_parameters.validation_details.url_scheme = url_scheme
+        self.mock_website_change_related_calls(dcv_request, mocker)
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
+        # response should have been successful if expected URL was correctly put together
+        assert self.is_result_as_expected(dcv_response, True, DcvCheckResponseDetails())
+
     @pytest.mark.parametrize('record_type', [DnsRecordType.TXT, DnsRecordType.CNAME])
-    def perform_dns_validation__should_return_check_passed_true_with_details_given_expected_dns_record_found(self, set_env_variables, record_type, mocker):
+    def perform_dns_change_validation__should_return_check_passed_true_with_details_given_expected_dns_record_found(self, set_env_variables, record_type, mocker):
         dcv_request = ValidCheckCreator.create_valid_dns_check_request(record_type)
         self.mock_dns_related_calls(dcv_request, mocker)
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
-        dcv_response = dcv_checker.perform_dns_validation(dcv_request)
+        dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
         assert dcv_response.timestamp_ns is not None
         assert self.is_result_as_expected(dcv_response, True, DcvCheckResponseDetails())
 
-    def perform_dns_validation__should_return_check_passed_false_with_details_given_expected_dns_record_not_found(self, set_env_variables, mocker):
+    def perform_dns_change_validation__should_return_check_passed_false_with_details_given_expected_dns_record_not_found(self, set_env_variables, mocker):
         dcv_request = ValidCheckCreator.create_valid_dns_check_request()
         no_answer_error = dns.resolver.NoAnswer()
         mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: self.raise_(no_answer_error))
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
-        dcv_response = dcv_checker.perform_dns_validation(dcv_request)
+        dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
         errors = [MpicValidationError(error_type=no_answer_error.__class__.__name__, error_message=no_answer_error.msg)]
         assert self.is_result_as_expected(dcv_response, False, DcvCheckResponseDetails(), errors)
 
@@ -89,8 +99,9 @@ class TestMpicDcvChecker:
             raise ex
         return _raise()
 
-    def mock_http_related_calls(self, dcv_request: DcvCheckRequest, mocker):
-        expected_url = f"http://{dcv_request.domain_or_ip_target}/{dcv_request.dcv_check_parameters.validation_details.http_token_path}"  # noqa E501 (http)
+    def mock_website_change_related_calls(self, dcv_request: DcvCheckRequest, mocker):
+        protocol = dcv_request.dcv_check_parameters.validation_details.url_scheme
+        expected_url = f"{protocol}://{dcv_request.domain_or_ip_target}/{dcv_request.dcv_check_parameters.validation_details.http_token_path}"  # noqa E501 (http)
         expected_challenge = dcv_request.dcv_check_parameters.validation_details.challenge_value
         mocker.patch('requests.get', side_effect=lambda url: (
             type('Response', (object,), {'status_code': 200, 'text': expected_challenge})() if url == expected_url else

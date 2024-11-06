@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from open_mpic_core.common_domain.enum.certificate_type import CertificateType
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
 from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
+from open_mpic_core.common_domain.enum.url_scheme import UrlScheme
 
 
 class CaaCheckParameters(BaseModel):
@@ -22,13 +23,15 @@ class DcvValidationDetails(BaseModel, ABC):
     # TXT: name=domain_name type=TXT <rdata:text> (freeform text)
 
 
-class DcvHttpGenericValidationDetails(DcvValidationDetails):
-    validation_method: Literal[DcvValidationMethod.HTTP_GENERIC] = DcvValidationMethod.HTTP_GENERIC
+class DcvWebsiteChangeValidationDetails(DcvValidationDetails):
+    validation_method: Literal[DcvValidationMethod.WEBSITE_CHANGE_V2] = DcvValidationMethod.WEBSITE_CHANGE_V2
     http_token_path: str
+    url_scheme: UrlScheme
+    # TODO add optional flag to iterate up through the domain hierarchy
 
 
-class DcvDnsGenericValidationDetails(DcvValidationDetails):
-    validation_method: Literal[DcvValidationMethod.DNS_GENERIC] = DcvValidationMethod.DNS_GENERIC
+class DcvDnsChangeValidationDetails(DcvValidationDetails):
+    validation_method: Literal[DcvValidationMethod.DNS_CHANGE] = DcvValidationMethod.DNS_CHANGE
     dns_name_prefix: str
     dns_record_type: DnsRecordType
 
@@ -37,4 +40,4 @@ class DcvDnsGenericValidationDetails(DcvValidationDetails):
 
 
 class DcvCheckParameters(BaseModel):
-    validation_details: Union[DcvHttpGenericValidationDetails, DcvDnsGenericValidationDetails]
+    validation_details: Union[DcvWebsiteChangeValidationDetails, DcvDnsChangeValidationDetails]
