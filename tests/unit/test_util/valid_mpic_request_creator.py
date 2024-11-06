@@ -31,15 +31,15 @@ class ValidMpicRequestCreator:
         )
 
     @staticmethod
-    def create_valid_mpic_request(check_type: CheckType) -> BaseMpicRequest:
+    def create_valid_mpic_request(check_type, validation_method=DcvValidationMethod.DNS_CHANGE) -> BaseMpicRequest:
         match check_type:
             case CheckType.CAA:
                 return ValidMpicRequestCreator.create_valid_caa_mpic_request()
             case CheckType.DCV:
-                return ValidMpicRequestCreator.create_valid_dcv_mpic_request()
+                return ValidMpicRequestCreator.create_valid_dcv_mpic_request(validation_method)
 
     @classmethod
-    def create_validation_details(cls, validation_method):
+    def create_validation_details(cls, validation_method=DcvValidationMethod.DNS_CHANGE):
         validation_details = {}
         match validation_method:
             case DcvValidationMethod.DNS_CHANGE:
