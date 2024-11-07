@@ -36,7 +36,11 @@ class DcvDnsChangeValidationDetails(DcvValidationDetails):
     dns_record_type: DnsRecordType
 
 
-# TODO DcvAcmeValidationDetails
+# TODO DcvAcmeHttp01ValidationDetails
+#      fields: token, key_authorization
+
+# TODO DcvAcmeDns01ValidationDetails
+#      fields: key_authorization
 
 
 class DcvCheckParameters(BaseModel):

@@ -9,13 +9,14 @@ from typing_extensions import Annotated
 
 class BaseCheckResponse(BaseModel):
     perspective_code: str
-    check_passed: bool = False
+    check_passed: bool = False  # TODO rename to is_valid ?
     errors: list[MpicValidationError] | None = None
     timestamp_ns: int | None = None  # TODO what do we name this field?
 
 
 class CaaCheckResponse(BaseCheckResponse):
     check_type: Literal[CheckType.CAA] = CheckType.CAA
+    # attestation -- object... digital signatures from remote perspective to allow result to be verified
     details: CaaCheckResponseDetails
 
 
