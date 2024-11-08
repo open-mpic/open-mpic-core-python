@@ -59,7 +59,7 @@ class TestMpicDcvChecker:
         url_scheme = dcv_request.dcv_check_parameters.validation_details.url_scheme
         http_token_path = dcv_request.dcv_check_parameters.validation_details.http_token_path
         expected_response_details = DcvWebsiteChangeResponseDetails(
-            response_url=f"{url_scheme}://{dcv_request.domain_or_ip_target}/{http_token_path}",
+            response_url=f"{url_scheme}://{dcv_request.domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{http_token_path}",
             response_status_code=200
         )
         assert dcv_response.timestamp_ns is not None
@@ -75,7 +75,6 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is False
         assert dcv_response.errors == errors
 
-    @pytest.mark.skip(reason='Not yet implemented')
     def perform_website_change_validation__should_auto_insert_well_known_path_segment(self, set_env_variables, mocker):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
         dcv_request.dcv_check_parameters.validation_details.http_token_path = 'test-path'
@@ -83,7 +82,7 @@ class TestMpicDcvChecker:
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
         url_scheme = dcv_request.dcv_check_parameters.validation_details.url_scheme
-        expected_url = f"{url_scheme}://{dcv_request.domain_or_ip_target}/.well-known/pki_validation/test-path"
+        expected_url = f"{url_scheme}://{dcv_request.domain_or_ip_target}/.well-known/pki-validation/test-path"
         assert dcv_response.details.response_url == expected_url
 
     @pytest.mark.parametrize('url_scheme', ['http', 'https'])
@@ -128,7 +127,7 @@ class TestMpicDcvChecker:
     def mock_website_change_related_calls(self, dcv_request: DcvCheckRequest, mocker):
         url_scheme = dcv_request.dcv_check_parameters.validation_details.url_scheme
         http_token_path = dcv_request.dcv_check_parameters.validation_details.http_token_path
-        expected_url = f"{url_scheme}://{dcv_request.domain_or_ip_target}/{http_token_path}"
+        expected_url = f"{url_scheme}://{dcv_request.domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{http_token_path}"
         expected_challenge = dcv_request.dcv_check_parameters.validation_details.challenge_value
         mocker.patch('requests.get', side_effect=lambda url: (
             type('Response', (object,), {'status_code': 200, 'text': expected_challenge})() if url == expected_url else

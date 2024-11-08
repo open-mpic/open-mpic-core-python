@@ -13,6 +13,9 @@ from open_mpic_core.common_domain.validation_error import MpicValidationError
 
 # noinspection PyUnusedLocal
 class MpicDcvChecker:
+    WELL_KNOWN_PKI_PATH = '.well-known/pki-validation'
+    WELL_KNOWN_ACME_PATH = '.well-known/acme-challenge'
+
     def __init__(self, perspective: RemotePerspective):
         self.perspective = perspective
         # TODO self.dns_resolver = dns.resolver.Resolver() -- set up a way to use Unbound here... maybe take a config?
@@ -28,7 +31,7 @@ class MpicDcvChecker:
         domain_or_ip_target = request.domain_or_ip_target  # TODO optionally iterate up through the domain hierarchy
         url_scheme = request.dcv_check_parameters.validation_details.url_scheme
         token_path = request.dcv_check_parameters.validation_details.http_token_path
-        token_url = f"{url_scheme}://{domain_or_ip_target}/{token_path}"  # noqa E501 (http)
+        token_url = f"{url_scheme}://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{token_path}"  # noqa E501 (http)
         expected_response_content = request.dcv_check_parameters.validation_details.challenge_value
 
         response = requests.get(token_url)
