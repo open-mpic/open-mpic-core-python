@@ -15,8 +15,8 @@ class DcvWebsiteChangeResponseDetails(BaseModel):
     validation_method: Literal[DcvValidationMethod.WEBSITE_CHANGE_V2] = DcvValidationMethod.WEBSITE_CHANGE_V2
     # response_history -- list of redirects given before final response found
     #    each redirect: status_code, url
-    # response_url -- string with final response
-    # response_status_code -- int with response from response_url
+    response_url: str | None = None
+    response_status_code: int | None = None
     # response_page -- base64 encoding of first 100 bytes of page returned at final url
     # resolved_ip -- ip address used to communicate with domain_or_ip_target
 

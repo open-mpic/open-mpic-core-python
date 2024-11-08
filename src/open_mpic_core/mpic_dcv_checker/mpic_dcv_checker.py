@@ -15,6 +15,7 @@ from open_mpic_core.common_domain.validation_error import MpicValidationError
 class MpicDcvChecker:
     def __init__(self, perspective: RemotePerspective):
         self.perspective = perspective
+        # TODO self.dns_resolver = dns.resolver.Resolver() -- set up a way to use Unbound here... maybe take a config?
 
     def check_dcv(self, dcv_request: DcvCheckRequest) -> DcvCheckResponse:
         match dcv_request.dcv_check_parameters.validation_details.validation_method:
@@ -38,7 +39,10 @@ class MpicDcvChecker:
                 perspective_code=self.perspective.code,
                 check_passed=(result == expected_response_content),
                 timestamp_ns=time.time_ns(),
-                details=DcvWebsiteChangeResponseDetails()  # FIXME get details
+                details=DcvWebsiteChangeResponseDetails(
+                    response_status_code=response.status_code,
+                    response_url=token_url
+                ),
             )
         else:
             dcv_check_response = DcvCheckResponse(
