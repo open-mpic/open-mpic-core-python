@@ -37,29 +37,3 @@ class ValidCheckCreator:
                                        dns_record_type=record_type,
                                        challenge_value=f"{record_type}_challenge_111.ca1.com.")
                                ))
-
-    @staticmethod
-    def create_valid_http_check_request_and_response(perspective_code: str) -> tuple[DcvCheckRequest, DcvCheckResponse]:
-        request = ValidCheckCreator.create_valid_http_check_request()
-        url_scheme = request.dcv_check_parameters.validation_details.url_scheme
-        http_token_path = request.dcv_check_parameters.validation_details.http_token_path
-        domain_or_ip = request.domain_or_ip_target
-        response = DcvCheckResponse(
-            perspective_code=perspective_code,
-            check_passed=True,
-            details=DcvWebsiteChangeResponseDetails(
-                response_url=f"{url_scheme}://{domain_or_ip}/{http_token_path}",
-                response_status_code=200
-            )
-        )
-        return request, response
-
-    @staticmethod
-    def create_valid_dns_check_request_and_response(perspective_code: str, record_type=DnsRecordType.TXT) -> tuple[DcvCheckRequest, DcvCheckResponse]:
-        request = ValidCheckCreator.create_valid_dns_check_request(record_type)
-        response = DcvCheckResponse(
-            perspective_code=perspective_code,
-            check_passed=True,
-            details=DcvDnsChangeResponseDetails()
-        )
-        return request, response
