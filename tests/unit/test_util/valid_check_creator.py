@@ -22,7 +22,7 @@ class ValidCheckCreator:
         return DcvCheckRequest(domain_or_ip_target='example.com',
                                dcv_check_parameters=DcvCheckParameters(
                                    validation_details=DcvWebsiteChangeValidationDetails(
-                                       http_token_path='/.well-known/pki_validation/token111_ca1.txt',
+                                       http_token_path='token111_ca1.txt',
                                        challenge_value='challenge_111',
                                        url_scheme=UrlScheme.HTTP
                                    )

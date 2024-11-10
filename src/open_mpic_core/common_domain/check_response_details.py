@@ -11,10 +11,14 @@ class CaaCheckResponseDetails(BaseModel):
     response: str | None = None  # base64 format of DNS RRset of response to CAA query
 
 
+class RedirectResponse(BaseModel):
+    status_code: int
+    url: str  # rename to location?
+
+
 class DcvWebsiteChangeResponseDetails(BaseModel):
     validation_method: Literal[DcvValidationMethod.WEBSITE_CHANGE_V2] = DcvValidationMethod.WEBSITE_CHANGE_V2
-    # response_history -- list of redirects given before final response found
-    #    each redirect: status_code, url
+    response_history: list[RedirectResponse] | None = None
     response_url: str | None = None
     response_status_code: int | None = None
     # response_page -- base64 encoding of first 100 bytes of page returned at final url

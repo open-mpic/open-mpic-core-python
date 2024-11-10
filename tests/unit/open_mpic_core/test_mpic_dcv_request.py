@@ -1,8 +1,12 @@
 import json
 import pydantic
 import pytest
+from setuptools.package_index import URL_SCHEME
+
+from open_mpic_core.common_domain.check_parameters import DcvWebsiteChangeValidationDetails
 from open_mpic_core.common_domain.enum.check_type import CheckType
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
+from open_mpic_core.common_domain.enum.url_scheme import UrlScheme
 from open_mpic_core.mpic_coordinator.domain.mpic_request import MpicDcvRequest
 
 from unit.test_util.valid_mpic_request_creator import ValidMpicRequestCreator
@@ -99,6 +103,16 @@ class TestMpicDcvRequest:
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()
         mpic_request = MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
         assert mpic_request.check_type == CheckType.DCV
+
+    def mpic_dcv_request__should_default_to_http_scheme_for_website_change_validation_given_no_scheme_specified(self):
+        request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(DcvValidationMethod.WEBSITE_CHANGE_V2)
+        request.dcv_check_parameters.validation_details = DcvWebsiteChangeValidationDetails(
+            validation_method=DcvValidationMethod.WEBSITE_CHANGE_V2,
+            challenge_value='test',
+            http_token_path='example-path'
+        )
+        mpic_request = MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
+        assert mpic_request.dcv_check_parameters.validation_details.url_scheme == UrlScheme.HTTP
 
 
 if __name__ == '__main__':

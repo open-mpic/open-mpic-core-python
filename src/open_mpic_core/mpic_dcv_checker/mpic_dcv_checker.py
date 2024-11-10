@@ -5,7 +5,7 @@ import requests
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
 from open_mpic_core.common_domain.check_response import DcvCheckResponse, DcvCheckResponseDetails
 from open_mpic_core.common_domain.check_response_details import DcvDnsChangeResponseDetails, \
-    DcvWebsiteChangeResponseDetails
+    DcvWebsiteChangeResponseDetails, RedirectResponse
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
 from open_mpic_core.common_domain.remote_perspective import RemotePerspective
 from open_mpic_core.common_domain.validation_error import MpicValidationError
@@ -34,7 +34,18 @@ class MpicDcvChecker:
         token_url = f"{url_scheme}://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{token_path}"  # noqa E501 (http)
         expected_response_content = request.dcv_check_parameters.validation_details.challenge_value
 
-        response = requests.get(token_url)
+        # try to get 100 bytes of the response content (or more only if expected)
+        # expected_response_content_length = len(expected_response_content.encode('utf-8'))
+        # max_bytes_requested = max(100, expected_response_content_length)
+        # headers = {"Range": f"bytes=0-{max_bytes_requested}"}  # not all servers support Range header
+
+        response = requests.get(token_url)  # FIXME should probably add a timeout here.. but how long?
+        response_history = None
+        if hasattr(response, 'history') and response.history is not None and len(response.history) > 0:
+            response_history = [
+                RedirectResponse(status_code=resp.status_code, url=resp.headers['Location'])
+                for resp in response.history
+            ]
 
         if response.status_code == requests.codes.OK:
             result = response.text.strip()
@@ -44,7 +55,8 @@ class MpicDcvChecker:
                 timestamp_ns=time.time_ns(),
                 details=DcvWebsiteChangeResponseDetails(
                     response_status_code=response.status_code,
-                    response_url=token_url
+                    response_url=token_url,
+                    response_history=response_history
                 ),
             )
         else:
@@ -53,7 +65,10 @@ class MpicDcvChecker:
                 check_passed=False,
                 timestamp_ns=time.time_ns(),
                 errors=[MpicValidationError(error_type=str(response.status_code), error_message=response.reason)],
-                details=DcvWebsiteChangeResponseDetails()
+                details=DcvWebsiteChangeResponseDetails(
+                    response_status_code=response.status_code,
+                    response_history=response_history
+                )
             )
 
         return dcv_check_response

@@ -1,5 +1,7 @@
 import dns
 import pytest
+from requests import Response
+
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
 from open_mpic_core.common_domain.check_response import DcvCheckResponse, DcvCheckResponseDetails
 from open_mpic_core.common_domain.check_response_details import DcvDnsChangeResponseDetails, \
@@ -51,6 +53,15 @@ class TestMpicDcvChecker:
         dcv_response.timestamp_ns = None  # ignore timestamp for comparison
         assert dcv_response.check_passed is True
 
+    @pytest.mark.skip('this is just for local debugging...')
+    def foo__should_be_good(self, set_env_variables):
+        dcv_request = ValidCheckCreator.create_valid_http_check_request()
+        dcv_request.domain_or_ip_target = 'sectigo.com'
+        dcv_request.dcv_check_parameters.validation_details.url_scheme = 'https'
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.check_dcv(dcv_request)
+        assert dcv_response.check_passed is True
+
     def perform_website_change_validation__should_return_check_passed_true_with_details_given_request_token_file_found(self, set_env_variables, mocker):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
         self.mock_website_change_related_calls(dcv_request, mocker)
@@ -85,6 +96,18 @@ class TestMpicDcvChecker:
         expected_url = f"{url_scheme}://{dcv_request.domain_or_ip_target}/.well-known/pki-validation/test-path"
         assert dcv_response.details.response_url == expected_url
 
+    def perform_website_change_validation__should_follow_redirects_and_track_redirect_history_in_details(self, set_env_variables, mocker):
+        dcv_request = ValidCheckCreator.create_valid_http_check_request()
+        self.mock_website_change_related_calls_with_redirects(dcv_request, mocker)
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
+        redirects = dcv_response.details.response_history
+        assert len(redirects) == 2
+        assert redirects[0].url == 'https://example.com/redirected-1'
+        assert redirects[0].status_code == 301
+        assert redirects[1].url == 'https://example.com/redirected-2'
+        assert redirects[1].status_code == 302
+
     @pytest.mark.parametrize('url_scheme', ['http', 'https'])
     def perform_website_change_validation__should_use_specified_url_scheme(self, set_env_variables, url_scheme, mocker):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
@@ -118,6 +141,10 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is False
         assert dcv_response.errors == errors
 
+    @pytest.mark.skip(reason='Not yet implemented')
+    def perform_acme_http_validation__should_return_check_passed_true_with_details_given_expected_response(self, set_env_variables, mocker):
+        pass
+
     def raise_(self, ex):
         # noinspection PyUnusedLocal
         def _raise(*args, **kwargs):
@@ -134,6 +161,12 @@ class TestMpicDcvChecker:
             type('Response', (object,), {'status_code': 404, 'reason': 'Not Found'})()
         ))
 
+    # TODO use this to test 100 bytes in details...
+    def mock_website_change_validation_large_payload(self, mocker):
+        mocker.patch('requests.get', side_effect=lambda url: (
+            type('Response', (object,), {'status_code': 200, 'text': 'a' * 1000})()
+        ))
+
     def mock_dns_related_calls(self, dcv_request: DcvCheckRequest, mocker):
         dcv_details = dcv_request.dcv_check_parameters.validation_details
         expected_domain = f"{dcv_details.dns_name_prefix}.{dcv_request.domain_or_ip_target}"
@@ -144,6 +177,25 @@ class TestMpicDcvChecker:
                                                                              record_data, mocker)
         mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: (
             test_dns_query_answer if domain_name == expected_domain else self.raise_(dns.resolver.NoAnswer)
+        ))
+
+    def mock_website_change_related_calls_with_redirects(self, dcv_request: DcvCheckRequest, mocker):
+        url_scheme = dcv_request.dcv_check_parameters.validation_details.url_scheme
+        http_token_path = dcv_request.dcv_check_parameters.validation_details.http_token_path
+        expected_url = f"{url_scheme}://{dcv_request.domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{http_token_path}"
+        expected_challenge = dcv_request.dcv_check_parameters.validation_details.challenge_value
+        redirect_url_1 = f"https://example.com/redirected-1"
+        redirect_response_1 = Response()
+        redirect_response_1.status_code = 301
+        redirect_response_1.headers['Location'] = redirect_url_1
+        redirect_url_2 = f"https://example.com/redirected-2"
+        redirect_response_2 = Response()
+        redirect_response_2.status_code = 302
+        redirect_response_2.headers['Location'] = redirect_url_2
+        history = [redirect_response_1, redirect_response_2]
+        mocker.patch('requests.get', side_effect=lambda url: (
+            type('Response', (object,), {'status_code': 200, 'text': expected_challenge, 'history': history})() if url == expected_url else
+            type('Response', (object,), {'status_code': 404, 'reason': 'Not Found'})()
         ))
 
 
