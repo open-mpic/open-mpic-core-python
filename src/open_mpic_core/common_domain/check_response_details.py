@@ -7,8 +7,8 @@ from typing_extensions import Annotated
 
 class CaaCheckResponseDetails(BaseModel):
     caa_record_present: bool = False  # TODO allow None to reflect potential error state; rename to just 'present'?
-    found_at: str | None = None  # domain where CAA record was found
-    response: str | None = None  # base64 format of DNS RRset of response to CAA query
+    found_at: str | None = None  # domain where CAA record was found  # FIXME set this properly
+    response: str | None = None  # base64 format of DNS RRset of response to CAA query  # FIXME set this properly
 
 
 class RedirectResponse(BaseModel):
@@ -18,10 +18,10 @@ class RedirectResponse(BaseModel):
 
 class DcvWebsiteChangeResponseDetails(BaseModel):
     validation_method: Literal[DcvValidationMethod.WEBSITE_CHANGE_V2] = DcvValidationMethod.WEBSITE_CHANGE_V2
-    response_history: list[RedirectResponse] | None = None
+    response_history: list[RedirectResponse] | None = None  # list of redirects followed to final page
     response_url: str | None = None
     response_status_code: int | None = None
-    # response_page -- base64 encoding of first 100 bytes of page returned at final url
+    response_page: str | None = None  # base64 encoding of first 100 bytes of page returned at final url
     # resolved_ip -- ip address used to communicate with domain_or_ip_target
 
 

@@ -1,9 +1,10 @@
+import base64
 import time
 import dns.resolver
 import requests
 
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
-from open_mpic_core.common_domain.check_response import DcvCheckResponse, DcvCheckResponseDetails
+from open_mpic_core.common_domain.check_response import DcvCheckResponse
 from open_mpic_core.common_domain.check_response_details import DcvDnsChangeResponseDetails, \
     DcvWebsiteChangeResponseDetails, RedirectResponse
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
@@ -34,42 +35,46 @@ class MpicDcvChecker:
         token_url = f"{url_scheme}://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{token_path}"  # noqa E501 (http)
         expected_response_content = request.dcv_check_parameters.validation_details.challenge_value
 
-        # try to get 100 bytes of the response content (or more only if expected)
-        # expected_response_content_length = len(expected_response_content.encode('utf-8'))
-        # max_bytes_requested = max(100, expected_response_content_length)
-        # headers = {"Range": f"bytes=0-{max_bytes_requested}"}  # not all servers support Range header
-
-        response = requests.get(token_url)  # FIXME should probably add a timeout here.. but how long?
-        response_history = None
-        if hasattr(response, 'history') and response.history is not None and len(response.history) > 0:
-            response_history = [
-                RedirectResponse(status_code=resp.status_code, url=resp.headers['Location'])
-                for resp in response.history
-            ]
-
-        if response.status_code == requests.codes.OK:
-            result = response.text.strip()
-            dcv_check_response = DcvCheckResponse(
-                perspective_code=self.perspective.code,
-                check_passed=(result == expected_response_content),
-                timestamp_ns=time.time_ns(),
-                details=DcvWebsiteChangeResponseDetails(
-                    response_status_code=response.status_code,
-                    response_url=token_url,
-                    response_history=response_history
-                ),
+        dcv_check_response = DcvCheckResponse(
+            perspective_code=self.perspective.code,
+            check_passed=False,
+            timestamp_ns=None,
+            errors=None,
+            details=DcvWebsiteChangeResponseDetails(
+                response_status_code=None,
+                response_history=None,
+                response_page=None,
             )
-        else:
-            dcv_check_response = DcvCheckResponse(
-                perspective_code=self.perspective.code,
-                check_passed=False,
-                timestamp_ns=time.time_ns(),
-                errors=[MpicValidationError(error_type=str(response.status_code), error_message=response.reason)],
-                details=DcvWebsiteChangeResponseDetails(
-                    response_status_code=response.status_code,
-                    response_history=response_history
-                )
-            )
+        )
+
+        try:
+            response = requests.get(token_url, stream=True)  # FIXME should probably add a timeout here.. but how long?
+
+            content = response.raw.read(100)  # TODO best to wrap this stuff in a try/except block
+            decoded_content = content.decode('utf-8')
+            base64_encoded_content = base64.b64encode(content) if content is not None else None
+
+            response_history = None
+            if hasattr(response, 'history') and response.history is not None and len(response.history) > 0:
+                response_history = [
+                    RedirectResponse(status_code=resp.status_code, url=resp.headers['Location'])
+                    for resp in response.history
+                ]
+
+            dcv_check_response.timestamp_ns = time.time_ns()
+
+            if response.status_code == requests.codes.OK:
+                result = response.text.strip()
+                dcv_check_response.check_passed = (result == expected_response_content)
+                dcv_check_response.details.response_status_code = response.status_code
+                dcv_check_response.details.response_url = token_url
+                dcv_check_response.details.response_history = response_history
+                dcv_check_response.details.response_page = base64_encoded_content
+            else:
+                dcv_check_response.errors = [MpicValidationError(error_type=str(response.status_code), error_message=response.reason)]
+        except requests.exceptions.RequestException as e:
+            dcv_check_response.timestamp_ns = time.time_ns()
+            dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
 
         return dcv_check_response
 

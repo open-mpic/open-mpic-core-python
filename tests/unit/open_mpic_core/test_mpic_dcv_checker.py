@@ -1,11 +1,13 @@
+import base64
+from io import BytesIO
+from unittest.mock import MagicMock
+
 import dns
 import pytest
-from requests import Response
+from requests import Response, RequestException
 
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
-from open_mpic_core.common_domain.check_response import DcvCheckResponse, DcvCheckResponseDetails
-from open_mpic_core.common_domain.check_response_details import DcvDnsChangeResponseDetails, \
-    DcvWebsiteChangeResponseDetails
+from open_mpic_core.common_domain.check_response_details import DcvDnsChangeResponseDetails
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
 from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
 from open_mpic_core.common_domain.remote_perspective import RemotePerspective
@@ -35,6 +37,17 @@ class TestMpicDcvChecker:
     def create_configured_dcv_checker(rir: str = 'arin', perspective_code: str = 'us-east-4'):
         return MpicDcvChecker(RemotePerspective(rir=rir, code=perspective_code))
 
+    @staticmethod
+    def create_mock_response(status_code: int, content: str, kwargs: dict = None):
+        response = MagicMock()
+        response.status_code = status_code
+        response.raw = BytesIO(content.encode('utf-8'))
+        response.text = content
+        if kwargs is not None:
+            for k, v in kwargs.items():
+                setattr(response, k, v)
+        return response
+
     # integration test of a sort -- only mocking dns methods rather than remaining class methods
     @pytest.mark.parametrize('validation_method, record_type', [(DcvValidationMethod.WEBSITE_CHANGE_V2, None),
                                                                 (DcvValidationMethod.DNS_CHANGE, DnsRecordType.TXT),
@@ -53,37 +66,59 @@ class TestMpicDcvChecker:
         dcv_response.timestamp_ns = None  # ignore timestamp for comparison
         assert dcv_response.check_passed is True
 
-    @pytest.mark.skip('this is just for local debugging...')
+    @pytest.mark.skip('this is just for local debugging...')  # FIXME delete this before long
     def foo__should_be_good(self, set_env_variables):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
-        dcv_request.domain_or_ip_target = 'sectigo.com'
+        dcv_request.domain_or_ip_target = 'sectigo.com'  # 404: 'https://blog.fluidui.com/moomoomoo'
         dcv_request.dcv_check_parameters.validation_details.url_scheme = 'https'
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         dcv_response = dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is True
 
-    def perform_website_change_validation__should_return_check_passed_true_with_details_given_request_token_file_found(self, set_env_variables, mocker):
+    def perform_website_change_validation__should_return_check_passed_true_given_request_token_file_found(self, set_env_variables, mocker):
+        dcv_request = ValidCheckCreator.create_valid_http_check_request()
+        self.mock_website_change_related_calls(dcv_request, mocker)
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
+        assert dcv_response.check_passed is True
+
+    def perform_website_change_validation__should_return_timestamp_and_response_url_and_status_code(self, set_env_variables, mocker):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
         self.mock_website_change_related_calls(dcv_request, mocker)
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
         url_scheme = dcv_request.dcv_check_parameters.validation_details.url_scheme
         http_token_path = dcv_request.dcv_check_parameters.validation_details.http_token_path
-        expected_response_details = DcvWebsiteChangeResponseDetails(
-            response_url=f"{url_scheme}://{dcv_request.domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{http_token_path}",
-            response_status_code=200
-        )
         assert dcv_response.timestamp_ns is not None
-        assert dcv_response.details == expected_response_details
+        assert dcv_response.details.response_url == f"{url_scheme}://{dcv_request.domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{http_token_path}"
+        assert dcv_response.details.response_status_code == 200
 
-    def perform_website_change_validation__should_return_check_passed_false_with_details_given_request_token_file_not_found(self, set_env_variables, mocker):
+    def perform_website_change_validation__should_return_check_passed_false_given_request_token_file_not_found(self, set_env_variables, mocker):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
-        mocker.patch('requests.get', return_value=type('Response', (object,), {'status_code': 404, 'reason': 'Not Found'})())
+        fail_response = TestMpicDcvChecker.create_mock_response(404, 'Not Found', {'reason': 'Not Found'})
+        mocker.patch('requests.get', return_value=fail_response)
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
+        assert dcv_response.check_passed is False
+
+    def perform_website_change_validation__should_return_error_details_given_request_token_file_not_found(self, set_env_variables, mocker):
+        dcv_request = ValidCheckCreator.create_valid_http_check_request()
+        fail_response = TestMpicDcvChecker.create_mock_response(404, 'Not Found', {'reason': 'Not Found'})
+        mocker.patch('requests.get', return_value=fail_response)
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
+        assert dcv_response.check_passed is False
         assert dcv_response.timestamp_ns is not None
         errors = [MpicValidationError(error_type='404', error_message='Not Found')]
+        assert dcv_response.errors == errors
+
+    def perform_website_change_validation__should_return_check_failed_and_error_details_given_exception_raised(self, set_env_variables, mocker):
+        dcv_request = ValidCheckCreator.create_valid_http_check_request()
+        mocker.patch('requests.get', side_effect=lambda url, stream: self.raise_(RequestException('Test Exception')))
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
         assert dcv_response.check_passed is False
+        errors = [MpicValidationError(error_type='RequestException', error_message='Test Exception')]
         assert dcv_response.errors == errors
 
     def perform_website_change_validation__should_auto_insert_well_known_path_segment(self, set_env_variables, mocker):
@@ -117,6 +152,15 @@ class TestMpicDcvChecker:
         dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
         assert dcv_response.check_passed is True
         assert dcv_response.details.response_url.startswith(f"{url_scheme}://")
+
+    def perform_website_change_validation__should_include_up_to_first_100_bytes_of_returned_content_in_details(self, set_env_variables, mocker):
+        dcv_request = ValidCheckCreator.create_valid_http_check_request()
+        self.mock_website_change_validation_large_payload(mocker)
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
+        hundred_a_chars = b'a' * 100  # store 100 'a' characters in a byte array
+        expected_content = base64.b64encode(hundred_a_chars)  # is this correct?
+        assert dcv_response.details.response_page == expected_content
 
     @pytest.mark.parametrize('record_type', [DnsRecordType.TXT, DnsRecordType.CNAME])
     def perform_dns_change_validation__should_return_check_passed_true_with_details_given_expected_dns_record_found(self, set_env_variables, record_type, mocker):
@@ -156,15 +200,19 @@ class TestMpicDcvChecker:
         http_token_path = dcv_request.dcv_check_parameters.validation_details.http_token_path
         expected_url = f"{url_scheme}://{dcv_request.domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{http_token_path}"
         expected_challenge = dcv_request.dcv_check_parameters.validation_details.challenge_value
-        mocker.patch('requests.get', side_effect=lambda url: (
-            type('Response', (object,), {'status_code': 200, 'text': expected_challenge})() if url == expected_url else
-            type('Response', (object,), {'status_code': 404, 'reason': 'Not Found'})()
+        success_response = TestMpicDcvChecker.create_mock_response(200, expected_challenge)
+        mocker.patch('requests.get', side_effect=lambda url, stream: (
+            success_response if url == expected_url else
+            TestMpicDcvChecker.create_mock_response(404, 'Not Found', {'reason': 'Not Found'})
         ))
 
     # TODO use this to test 100 bytes in details...
     def mock_website_change_validation_large_payload(self, mocker):
-        mocker.patch('requests.get', side_effect=lambda url: (
-            type('Response', (object,), {'status_code': 200, 'text': 'a' * 1000})()
+        response = Response()
+        response.status_code = 200
+        response.raw = BytesIO(b'a' * 1000)
+        mocker.patch('requests.get', side_effect=lambda url, stream: (
+            response
         ))
 
     def mock_dns_related_calls(self, dcv_request: DcvCheckRequest, mocker):
@@ -193,9 +241,9 @@ class TestMpicDcvChecker:
         redirect_response_2.status_code = 302
         redirect_response_2.headers['Location'] = redirect_url_2
         history = [redirect_response_1, redirect_response_2]
-        mocker.patch('requests.get', side_effect=lambda url: (
-            type('Response', (object,), {'status_code': 200, 'text': expected_challenge, 'history': history})() if url == expected_url else
-            type('Response', (object,), {'status_code': 404, 'reason': 'Not Found'})()
+        mocker.patch('requests.get', side_effect=lambda url, stream: (
+            TestMpicDcvChecker.create_mock_response(200, expected_challenge, {'history': history}) if url == expected_url else
+            TestMpicDcvChecker.create_mock_response(404, 'Not Found', {'reason': 'Not Found'})
         ))
 
 
