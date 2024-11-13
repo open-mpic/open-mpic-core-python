@@ -56,16 +56,9 @@ class MpicCoordinator:
 
         orchestration_parameters = mpic_request.orchestration_parameters
 
-        # Determine the perspectives and perspective count to use for this request.
-        # TODO revisit this when diagnostic mode (allowing 'perspectives') is implemented
         perspective_count = self.default_perspective_count
-        if orchestration_parameters is not None:
-            if orchestration_parameters.perspectives is not None:
-                perspectives_to_use = orchestration_parameters.perspectives
-                perspective_count = len(perspectives_to_use)
-            else:
-                if orchestration_parameters.perspective_count is not None:
-                    perspective_count = orchestration_parameters.perspective_count
+        if orchestration_parameters is not None and orchestration_parameters.perspective_count is not None:
+            perspective_count = orchestration_parameters.perspective_count
 
         perspective_cohorts = self.create_cohorts_of_randomly_selected_perspectives(self.target_perspectives,
                                                                                     perspective_count,

@@ -1,7 +1,6 @@
 import json
 import pydantic
 import pytest
-from setuptools.package_index import URL_SCHEME
 
 from open_mpic_core.common_domain.check_parameters import DcvWebsiteChangeValidationDetails
 from open_mpic_core.common_domain.enum.check_type import CheckType
@@ -22,17 +21,6 @@ class TestMpicDcvRequest:
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()
         mpic_request = MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
         assert mpic_request.domain_or_ip_target == request.domain_or_ip_target
-
-    # TODO this is probably not a valid test given that perspectives are for diagnostics mode only
-    # it likely needs different logic overall
-    def model_validate_json__should_throw_validation_error_given_both_perspectives_and_perspective_count_present(self):
-        request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()
-        request.orchestration_parameters.perspective_count = 1
-        request.orchestration_parameters.perspectives = ['test']
-        with pytest.raises(pydantic.ValidationError) as validation_error:
-            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
-        assert 'perspective_count' in str(validation_error.value)
-        assert 'perspectives' in str(validation_error.value)
 
     def model_validate_json__should_throw_validation_error_given_missing_dcv_check_parameters(self):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()

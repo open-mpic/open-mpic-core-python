@@ -9,7 +9,6 @@ class BaseMpicOrchestrationParameters(BaseModel, ABC):
 
 class MpicRequestOrchestrationParameters(BaseMpicOrchestrationParameters):
     max_attempts: int | None = None
-    perspectives: list[str] | None = None  # FIXME remove this or implement diagnostics mode for it
 
 
 class MpicEffectiveOrchestrationParameters(BaseMpicOrchestrationParameters):

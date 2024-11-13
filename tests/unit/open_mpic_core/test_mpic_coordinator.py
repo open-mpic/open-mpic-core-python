@@ -275,8 +275,8 @@ class TestMpicCoordinator:
         mpic_coordinator_configuration = MpicCoordinatorConfiguration(
             target_perspectives,
             default_perspective_count,
-            enforce_distinct_rir_regions, 
-            global_max_attempts, 
+            enforce_distinct_rir_regions,
+            global_max_attempts,
             hash_secret)
         return mpic_coordinator_configuration
 
