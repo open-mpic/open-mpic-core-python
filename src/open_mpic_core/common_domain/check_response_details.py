@@ -21,13 +21,13 @@ class DcvWebsiteChangeResponseDetails(BaseModel):
     response_history: list[RedirectResponse] | None = None  # list of redirects followed to final page
     response_url: str | None = None
     response_status_code: int | None = None
-    response_page: str | None = None  # base64 encoding of first 100 bytes of page returned at final url
+    response_page: str | None = None  # first 100 bytes of page returned at final url (not base64 encoded)
     # resolved_ip -- ip address used to communicate with domain_or_ip_target
 
 
 class DcvDnsChangeResponseDetails(BaseModel):
     validation_method: Literal[DcvValidationMethod.DNS_CHANGE] = DcvValidationMethod.DNS_CHANGE
-    records_seen: list[str] | None = None  # list of records found in DNS query; base64 encoding of RRset
+    records_seen: list[str] | None = None  # list of records found in DNS query; not base64 encoded
     # status_code -- dns response code
     # ad_flag -- boolean indicating if AD flag was set in DNS response
 

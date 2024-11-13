@@ -112,11 +112,10 @@ class MpicDcvChecker:
                         if record_data_as_string[0] == '"' and record_data_as_string[-1] == '"':
                             record_data_as_string = record_data_as_string[1:-1]
                         records_as_strings.append(record_data_as_string)
-                        records_as_base64.append(base64.b64encode(record_data_as_string.encode('utf-8')))
 
             dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
             dcv_check_response.timestamp_ns = time.time_ns()
-            dcv_check_response.details.records_seen = records_as_base64
+            dcv_check_response.details.records_seen = records_as_strings
         except dns.exception.DNSException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)]

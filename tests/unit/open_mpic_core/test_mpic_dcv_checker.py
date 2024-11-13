@@ -177,8 +177,7 @@ class TestMpicDcvChecker:
         assert dcv_response.timestamp_ns is not None
         expected_value_1 = dcv_request.dcv_check_parameters.validation_details.challenge_value
         expected_records = [expected_value_1, 'whatever2', 'whatever3']
-        expected_records_as_base64 = [base64.b64encode(record.encode('utf-8')) for record in expected_records]
-        assert dcv_response.details.records_seen == expected_records_as_base64
+        assert dcv_response.details.records_seen == expected_records
 
     def perform_dns_change_validation__should_return_check_failure_with_errors_given_expected_dns_record_not_found(self, set_env_variables, mocker):
         dcv_request = ValidCheckCreator.create_valid_dns_check_request()
