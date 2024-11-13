@@ -19,8 +19,8 @@ class MockDnsObjectCreator:
     @staticmethod
     def create_txt_rrset(*txt_records: CNAME):
         test_rrset = RRset(name=dns.name.from_text('example.com'), rdclass=dns.rdataclass.IN, rdtype=dns.rdatatype.TXT)
-        for txt_record in txt_records:
-            test_rrset.add(txt_record)
+        for cname_record in txt_records:
+            test_rrset.add(cname_record)
         return test_rrset
 
     @staticmethod

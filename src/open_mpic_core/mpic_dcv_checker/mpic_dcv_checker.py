@@ -102,8 +102,8 @@ class MpicDcvChecker:
 
         try:
             lookup = dns.resolver.resolve(name_to_resolve, dns_record_type)
+            response_code = lookup.response.rcode
             records_as_strings = []
-            records_as_base64 = []
             for response_answer in lookup.response.answer:
                 if response_answer.rdtype == dns_record_type:
                     for record_data in response_answer:
@@ -116,6 +116,7 @@ class MpicDcvChecker:
             dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.details.records_seen = records_as_strings
+            dcv_check_response.details.response_code = response_code
         except dns.exception.DNSException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)]
