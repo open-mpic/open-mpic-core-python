@@ -183,10 +183,19 @@ class TestMpicDcvChecker:
     @pytest.mark.parametrize('response_code', [Rcode.NOERROR, Rcode.NXDOMAIN, Rcode.REFUSED])
     def perform_dns_change_validation__should_return_response_code(self, set_env_variables, response_code, mocker):
         dcv_request = ValidCheckCreator.create_valid_dns_check_request()
-        self.mock_dns_resolve_call_to_return_specific_response_code(dcv_request, response_code, mocker)
+        self.mock_dns_resolve_call_with_specific_response_code(dcv_request, response_code, mocker)
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
         assert dcv_response.details.response_code == response_code
+
+    @pytest.mark.parametrize('flag, flag_set',
+                             [(dns.flags.AD, True), (dns.flags.CD, False)])
+    def perform_dns_change_validation__should_return_whether_response_has_ad_flag(self, flag, flag_set, set_env_variables, mocker):
+        dcv_request = ValidCheckCreator.create_valid_dns_check_request()
+        self.mock_dns_resolve_call_with_specific_flag(dcv_request, flag, mocker)
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
+        assert dcv_response.details.ad_flag is flag_set
 
     def perform_dns_change_validation__should_return_check_failure_with_errors_given_expected_dns_record_not_found(self, set_env_variables, mocker):
         dcv_request = ValidCheckCreator.create_valid_dns_check_request()
@@ -228,25 +237,44 @@ class TestMpicDcvChecker:
             response
         ))
 
+    def mock_website_change_http_call_with_redirects(self, dcv_request: DcvCheckRequest, mocker):
+        url_scheme = dcv_request.dcv_check_parameters.validation_details.url_scheme
+        http_token_path = dcv_request.dcv_check_parameters.validation_details.http_token_path
+        expected_url = f"{url_scheme}://{dcv_request.domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{http_token_path}"
+        expected_challenge = dcv_request.dcv_check_parameters.validation_details.challenge_value
+        redirect_url_1 = f"https://example.com/redirected-1"
+        redirect_response_1 = Response()
+        redirect_response_1.status_code = 301
+        redirect_response_1.headers['Location'] = redirect_url_1
+        redirect_url_2 = f"https://example.com/redirected-2"
+        redirect_response_2 = Response()
+        redirect_response_2.status_code = 302
+        redirect_response_2.headers['Location'] = redirect_url_2
+        history = [redirect_response_1, redirect_response_2]
+        mocker.patch('requests.get', side_effect=lambda url, stream: (
+            TestMpicDcvChecker.create_mock_response(200, expected_challenge, {'history': history}) if url == expected_url else
+            TestMpicDcvChecker.create_mock_response(404, 'Not Found', {'reason': 'Not Found'})
+        ))
+
     def mock_dns_resolve_call(self, dcv_request: DcvCheckRequest, mocker):
-        dcv_details = dcv_request.dcv_check_parameters.validation_details
-        expected_domain = f"{dcv_details.dns_name_prefix}.{dcv_request.domain_or_ip_target}"
-        record_data = {'value': dcv_details.challenge_value}
-        test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer(
-            dcv_request.domain_or_ip_target, dcv_details.dns_name_prefix, dcv_details.dns_record_type, record_data, mocker
-        )
+        expected_domain = f"{dcv_request.dcv_check_parameters.validation_details.dns_name_prefix}.{dcv_request.domain_or_ip_target}"
+        test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
         mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: (
             test_dns_query_answer if domain_name == expected_domain else self.raise_(dns.resolver.NoAnswer)
         ))
 
-    def mock_dns_resolve_call_to_return_specific_response_code(self, dcv_request: DcvCheckRequest, response_code, mocker):
-        dcv_details = dcv_request.dcv_check_parameters.validation_details
-        expected_domain = f"{dcv_details.dns_name_prefix}.{dcv_request.domain_or_ip_target}"
-        record_data = {'value': dcv_details.challenge_value}
-        test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer(
-            dcv_request.domain_or_ip_target, dcv_details.dns_name_prefix, dcv_details.dns_record_type, record_data, mocker
-        )
+    def mock_dns_resolve_call_with_specific_response_code(self, dcv_request: DcvCheckRequest, response_code, mocker):
+        test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
         test_dns_query_answer.response.rcode = response_code
+        expected_domain = f"{dcv_request.dcv_check_parameters.validation_details.dns_name_prefix}.{dcv_request.domain_or_ip_target}"
+        mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: (
+            test_dns_query_answer if domain_name == expected_domain else self.raise_(dns.resolver.NoAnswer)
+        ))
+
+    def mock_dns_resolve_call_with_specific_flag(self, dcv_request: DcvCheckRequest, flag, mocker):
+        test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
+        test_dns_query_answer.response.flags |= flag
+        expected_domain = f"{dcv_request.dcv_check_parameters.validation_details.dns_name_prefix}.{dcv_request.domain_or_ip_target}"
         mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: (
             test_dns_query_answer if domain_name == expected_domain else self.raise_(dns.resolver.NoAnswer)
         ))
@@ -266,24 +294,14 @@ class TestMpicDcvChecker:
             test_dns_query_answer if domain_name == expected_domain else self.raise_(dns.resolver.NoAnswer)
         ))
 
-    def mock_website_change_http_call_with_redirects(self, dcv_request: DcvCheckRequest, mocker):
-        url_scheme = dcv_request.dcv_check_parameters.validation_details.url_scheme
-        http_token_path = dcv_request.dcv_check_parameters.validation_details.http_token_path
-        expected_url = f"{url_scheme}://{dcv_request.domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{http_token_path}"
-        expected_challenge = dcv_request.dcv_check_parameters.validation_details.challenge_value
-        redirect_url_1 = f"https://example.com/redirected-1"
-        redirect_response_1 = Response()
-        redirect_response_1.status_code = 301
-        redirect_response_1.headers['Location'] = redirect_url_1
-        redirect_url_2 = f"https://example.com/redirected-2"
-        redirect_response_2 = Response()
-        redirect_response_2.status_code = 302
-        redirect_response_2.headers['Location'] = redirect_url_2
-        history = [redirect_response_1, redirect_response_2]
-        mocker.patch('requests.get', side_effect=lambda url, stream: (
-            TestMpicDcvChecker.create_mock_response(200, expected_challenge, {'history': history}) if url == expected_url else
-            TestMpicDcvChecker.create_mock_response(404, 'Not Found', {'reason': 'Not Found'})
-        ))
+    def create_basic_dns_response_for_mock(self, dcv_request: DcvCheckRequest, mocker) -> dns.resolver.Answer:
+        dcv_details = dcv_request.dcv_check_parameters.validation_details
+        record_data = {'value': dcv_details.challenge_value}
+        test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer(
+            dcv_request.domain_or_ip_target, dcv_details.dns_name_prefix, dcv_details.dns_record_type, record_data,
+            mocker
+        )
+        return test_dns_query_answer
 
 
 if __name__ == '__main__':

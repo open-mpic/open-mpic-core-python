@@ -117,6 +117,7 @@ class MpicDcvChecker:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.details.records_seen = records_as_strings
             dcv_check_response.details.response_code = response_code
+            dcv_check_response.details.ad_flag = lookup.response.flags & dns.flags.AD == dns.flags.AD  # single ampersand
         except dns.exception.DNSException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)]

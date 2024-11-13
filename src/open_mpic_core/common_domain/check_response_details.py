@@ -29,7 +29,7 @@ class DcvDnsChangeResponseDetails(BaseModel):
     validation_method: Literal[DcvValidationMethod.DNS_CHANGE] = DcvValidationMethod.DNS_CHANGE
     records_seen: list[str] | None = None  # list of records found in DNS query; not base64 encoded
     response_code: int | None = None  # DNS response code
-    # ad_flag -- boolean indicating if AD flag was set in DNS response
+    ad_flag: bool | None = None  # was AD flag set in DNS response
 
 
 # class DcvAcmeHttp01ResponseDetails(BaseModel): same as DcvWebsiteChangeResponseDetails
