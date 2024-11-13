@@ -27,7 +27,7 @@ class DcvWebsiteChangeResponseDetails(BaseModel):
 
 class DcvDnsChangeResponseDetails(BaseModel):
     validation_method: Literal[DcvValidationMethod.DNS_CHANGE] = DcvValidationMethod.DNS_CHANGE
-    # records_seen -- list of records found in DNS query; base 64 encoding of RRset
+    records_seen: list[str] | None = None  # list of records found in DNS query; base64 encoding of RRset
     # status_code -- dns response code
     # ad_flag -- boolean indicating if AD flag was set in DNS response
 

@@ -50,7 +50,7 @@ class MpicDcvChecker:
         try:
             response = requests.get(token_url, stream=True)  # FIXME should probably add a timeout here.. but how long?
 
-            content = response.raw.read(100)  # TODO best to wrap this stuff in a try/except block
+            content = response.raw.read(100)
             decoded_content = content.decode('utf-8')
             base64_encoded_content = base64.b64encode(content) if content is not None else None
 
@@ -90,33 +90,35 @@ class MpicDcvChecker:
 
         # TODO add leading underscore to name_to_resolve if it's not found?
 
-        print(f"Resolving {dns_record_type.name} record for {name_to_resolve}...")
+        dcv_check_response = DcvCheckResponse(
+            perspective_code=self.perspective.code,
+            check_passed=False,
+            timestamp_ns=None,
+            errors=None,
+            details=DcvDnsChangeResponseDetails(
+                records_seen=None,
+            )
+        )
+
         try:
             lookup = dns.resolver.resolve(name_to_resolve, dns_record_type)
             records_as_strings = []
+            records_as_base64 = []
             for response_answer in lookup.response.answer:
                 if response_answer.rdtype == dns_record_type:
                     for record_data in response_answer:
-                        # only need to remove enclosing quotes if they're there, e.g., for a TXT record
                         record_data_as_string = record_data.to_text()
+                        # only need to remove enclosing quotes if they're there, e.g., for a TXT record
                         if record_data_as_string[0] == '"' and record_data_as_string[-1] == '"':
-                            records_as_strings.append(record_data_as_string[1:-1])
-                        else:
-                            records_as_strings.append(record_data_as_string)
+                            record_data_as_string = record_data_as_string[1:-1]
+                        records_as_strings.append(record_data_as_string)
+                        records_as_base64.append(base64.b64encode(record_data_as_string.encode('utf-8')))
 
-            dcv_check_response = DcvCheckResponse(
-                perspective_code=self.perspective.code,
-                check_passed=expected_dns_record_content in records_as_strings,
-                timestamp_ns=time.time_ns(),
-                details=DcvDnsChangeResponseDetails()  # FIXME get details (or don't bother with this)
-            )
-            return dcv_check_response
+            dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
+            dcv_check_response.timestamp_ns = time.time_ns()
+            dcv_check_response.details.records_seen = records_as_base64
         except dns.exception.DNSException as e:
-            dcv_check_response = DcvCheckResponse(
-                perspective_code=self.perspective.code,
-                check_passed=False,
-                timestamp_ns=time.time_ns(),
-                errors=[MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)],
-                details=DcvDnsChangeResponseDetails()
-            )
-            return dcv_check_response
+            dcv_check_response.timestamp_ns = time.time_ns()
+            dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)]
+
+        return dcv_check_response

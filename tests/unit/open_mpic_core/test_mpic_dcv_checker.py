@@ -7,7 +7,6 @@ import pytest
 from requests import Response, RequestException
 
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
-from open_mpic_core.common_domain.check_response_details import DcvDnsChangeResponseDetails
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
 from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
 from open_mpic_core.common_domain.remote_perspective import RemotePerspective
@@ -163,19 +162,25 @@ class TestMpicDcvChecker:
         assert dcv_response.details.response_page == expected_content
 
     @pytest.mark.parametrize('record_type', [DnsRecordType.TXT, DnsRecordType.CNAME])
-    def perform_dns_change_validation__should_return_check_passed_true_with_details_given_expected_dns_record_found(self, set_env_variables, record_type, mocker):
+    def perform_dns_change_validation__should_return_check_success_given_expected_dns_record_found(self, set_env_variables, record_type, mocker):
         dcv_request = ValidCheckCreator.create_valid_dns_check_request(record_type)
         self.mock_dns_related_calls(dcv_request, mocker)
-        expected_response_details = DcvDnsChangeResponseDetails(
-            # nothing here yet
-        )
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
+        assert dcv_response.check_passed is True
+
+    def perform_dns_change_validation__should_return_timestamp_and_list_of_records_seen(self, set_env_variables, mocker):
+        dcv_request = ValidCheckCreator.create_valid_dns_check_request(DnsRecordType.TXT)  # must specify TXT here
+        self.mock_dns_related_calls_getting_multiple_txt_records(dcv_request, mocker)
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
         assert dcv_response.timestamp_ns is not None
-        assert dcv_response.check_passed is True
-        assert dcv_response.details == expected_response_details
+        expected_value_1 = dcv_request.dcv_check_parameters.validation_details.challenge_value
+        expected_records = [expected_value_1, 'whatever2', 'whatever3']
+        expected_records_as_base64 = [base64.b64encode(record.encode('utf-8')) for record in expected_records]
+        assert dcv_response.details.records_seen == expected_records_as_base64
 
-    def perform_dns_change_validation__should_return_check_passed_false_with_details_given_expected_dns_record_not_found(self, set_env_variables, mocker):
+    def perform_dns_change_validation__should_return_check_failure_with_errors_given_expected_dns_record_not_found(self, set_env_variables, mocker):
         dcv_request = ValidCheckCreator.create_valid_dns_check_request()
         no_answer_error = dns.resolver.NoAnswer()
         mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: self.raise_(no_answer_error))
@@ -219,10 +224,24 @@ class TestMpicDcvChecker:
         dcv_details = dcv_request.dcv_check_parameters.validation_details
         expected_domain = f"{dcv_details.dns_name_prefix}.{dcv_request.domain_or_ip_target}"
         record_data = {'value': dcv_details.challenge_value}
-        test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer(dcv_request.domain_or_ip_target,
-                                                                             dcv_details.dns_name_prefix,
-                                                                             dcv_details.dns_record_type,
-                                                                             record_data, mocker)
+        test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer(
+            dcv_request.domain_or_ip_target, dcv_details.dns_name_prefix, dcv_details.dns_record_type, record_data, mocker
+        )
+        mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: (
+            test_dns_query_answer if domain_name == expected_domain else self.raise_(dns.resolver.NoAnswer)
+        ))
+
+    def mock_dns_related_calls_getting_multiple_txt_records(self, dcv_request: DcvCheckRequest, mocker):
+        dcv_details = dcv_request.dcv_check_parameters.validation_details
+        expected_domain = f"{dcv_details.dns_name_prefix}.{dcv_request.domain_or_ip_target}"
+        record_data = {'value': dcv_details.challenge_value}
+        txt_record_1 = MockDnsObjectCreator.create_record_by_type(DnsRecordType.TXT, record_data)
+        txt_record_2 = MockDnsObjectCreator.create_record_by_type(DnsRecordType.TXT, {'value': 'whatever2'})
+        txt_record_3 = MockDnsObjectCreator.create_record_by_type(DnsRecordType.TXT, {'value': 'whatever3'})
+        test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer_with_multiple_txt_records(
+            dcv_request.domain_or_ip_target, dcv_details.dns_name_prefix,
+            *[txt_record_1, txt_record_2, txt_record_3], mocker=mocker
+        )
         mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: (
             test_dns_query_answer if domain_name == expected_domain else self.raise_(dns.resolver.NoAnswer)
         ))
