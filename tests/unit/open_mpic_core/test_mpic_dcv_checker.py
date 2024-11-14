@@ -228,6 +228,14 @@ class TestMpicDcvChecker:
         dcv_response = dcv_checker.perform_acme_http_01_validation(dcv_request)
         assert dcv_response.check_passed is True
 
+    def perform_acme_http_validation__should_return_check_failure_given_non_matching_response(self, set_env_variables, mocker):
+        dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
+        self.mock_acme_http_call_response(dcv_request, mocker)
+        dcv_request.dcv_check_parameters.validation_details.key_authorization = 'expecting-this-value-now-instead'
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.perform_acme_http_01_validation(dcv_request)
+        assert dcv_response.check_passed is False
+
     def raise_(self, ex):
         # noinspection PyUnusedLocal
         def _raise(*args, **kwargs):

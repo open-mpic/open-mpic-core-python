@@ -139,4 +139,3 @@ class MpicDcvChecker:
         else:
             dcv_check_response.errors = [
                 MpicValidationError(error_type=str(lookup_response.status_code), error_message=lookup_response.reason)]
-            
