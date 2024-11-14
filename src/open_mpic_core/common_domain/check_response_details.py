@@ -32,7 +32,9 @@ class DcvDnsChangeResponseDetails(BaseModel):
     ad_flag: bool | None = None  # was AD flag set in DNS response
 
 
-# class DcvAcmeHttp01ResponseDetails(BaseModel): same as DcvWebsiteChangeResponseDetails
+class DcvAcmeHttp01ResponseDetails(DcvWebsiteChangeResponseDetails):
+    pass
+
 # class DcvAcmeDns01ResponseDetails(BaseModel): same as DcvDnsChangeResponseDetails
 
 
@@ -46,5 +48,6 @@ class DcvCheckResponseDetailsBuilder:
     @staticmethod
     def build_response_details(validation_method: DcvValidationMethod) -> DcvCheckResponseDetails:
         types = {DcvValidationMethod.WEBSITE_CHANGE_V2: DcvWebsiteChangeResponseDetails,
-                 DcvValidationMethod.DNS_CHANGE: DcvDnsChangeResponseDetails}
+                 DcvValidationMethod.DNS_CHANGE: DcvDnsChangeResponseDetails,
+                 DcvValidationMethod.ACME_HTTP_01: DcvAcmeHttp01ResponseDetails}
         return types[validation_method]()

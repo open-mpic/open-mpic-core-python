@@ -37,12 +37,20 @@ class DcvDnsChangeValidationDetails(DcvValidationDetails):
     dns_record_type: DnsRecordType
 
 
-# TODO DcvAcmeHttp01ValidationDetails
-#      fields: token, key_authorization
+class DcvAcmeHttp01ValidationDetails(DcvValidationDetails):
+    validation_method: Literal[DcvValidationMethod.ACME_HTTP_01] = DcvValidationMethod.ACME_HTTP_01
+    token: str
+    key_authorization: str
 
 # TODO DcvAcmeDns01ValidationDetails
 #      fields: key_authorization
+# Please deploy a DNS TXT record under the name
+# _acme-challenge.<domain.com> with the following value:  667drNmQL3vX6bu8YZlgy0wKNBlCny8yrjF1lSaUndc
 
 
 class DcvCheckParameters(BaseModel):
-    validation_details: Union[DcvWebsiteChangeValidationDetails, DcvDnsChangeValidationDetails]
+    validation_details: Union[
+        DcvWebsiteChangeValidationDetails,
+        DcvDnsChangeValidationDetails,
+        DcvAcmeHttp01ValidationDetails
+    ]

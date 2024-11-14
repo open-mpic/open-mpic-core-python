@@ -1,9 +1,6 @@
 from open_mpic_core.common_domain.check_parameters import DcvCheckParameters, DcvWebsiteChangeValidationDetails, \
-    DcvDnsChangeValidationDetails, CaaCheckParameters
+    DcvDnsChangeValidationDetails, CaaCheckParameters, DcvAcmeHttp01ValidationDetails
 from open_mpic_core.common_domain.check_request import DcvCheckRequest, CaaCheckRequest
-from open_mpic_core.common_domain.check_response import DcvCheckResponse
-from open_mpic_core.common_domain.check_response_details import DcvWebsiteChangeResponseDetails, \
-    DcvDnsChangeResponseDetails
 from open_mpic_core.common_domain.enum.certificate_type import CertificateType
 from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
 from open_mpic_core.common_domain.enum.url_scheme import UrlScheme
@@ -36,4 +33,14 @@ class ValidCheckCreator:
                                        dns_name_prefix='_dnsauth',
                                        dns_record_type=record_type,
                                        challenge_value=f"{record_type}_challenge_111.ca1.com.")
+                               ))
+
+    @staticmethod
+    def create_valid_acme_http_01_check_request():
+        return DcvCheckRequest(domain_or_ip_target='example.com',
+                               dcv_check_parameters=DcvCheckParameters(
+                                   validation_details=DcvAcmeHttp01ValidationDetails(
+                                       token='token111_ca1',
+                                       key_authorization='challenge_111',
+                                   )
                                ))
