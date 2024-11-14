@@ -236,6 +236,15 @@ class TestMpicDcvChecker:
         dcv_response = dcv_checker.perform_acme_http_01_validation(dcv_request)
         assert dcv_response.check_passed is False
 
+    def perform_acme_http_validation__should_return_check_failure_and_error_details_given_exception_raised(self, set_env_variables, mocker):
+        dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
+        mocker.patch('requests.get', side_effect=lambda url, verify: self.raise_(RequestException('Test Exception')))
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.perform_acme_http_01_validation(dcv_request)
+        assert dcv_response.check_passed is False
+        errors = [MpicValidationError(error_type='RequestException', error_message='Test Exception')]
+        assert dcv_response.errors == errors
+
     def raise_(self, ex):
         # noinspection PyUnusedLocal
         def _raise(*args, **kwargs):
