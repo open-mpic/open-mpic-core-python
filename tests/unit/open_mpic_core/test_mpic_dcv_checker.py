@@ -170,6 +170,13 @@ class TestMpicDcvChecker:
         dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
         assert dcv_response.check_passed is True
 
+    def perform_dns_change_validation__should_return_check_failure_given_non_matching_dns_record(self, set_env_variables, mocker):
+        dcv_request = ValidCheckCreator.create_valid_dns_check_request()
+        self.mock_dns_resolve_call_with_non_matching_record(dcv_request, mocker)
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
+        assert dcv_response.check_passed is False
+
     def perform_dns_change_validation__should_return_timestamp_and_list_of_records_seen(self, set_env_variables, mocker):
         dcv_request = ValidCheckCreator.create_valid_dns_check_request(DnsRecordType.TXT)  # must specify TXT here
         self.mock_dns_resolve_call_getting_multiple_txt_records(dcv_request, mocker)
@@ -188,8 +195,7 @@ class TestMpicDcvChecker:
         dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
         assert dcv_response.details.response_code == response_code
 
-    @pytest.mark.parametrize('flag, flag_set',
-                             [(dns.flags.AD, True), (dns.flags.CD, False)])
+    @pytest.mark.parametrize('flag, flag_set', [(dns.flags.AD, True), (dns.flags.CD, False)])
     def perform_dns_change_validation__should_return_whether_response_has_ad_flag(self, flag, flag_set, set_env_variables, mocker):
         dcv_request = ValidCheckCreator.create_valid_dns_check_request()
         self.mock_dns_resolve_call_with_specific_flag(dcv_request, flag, mocker)
@@ -197,7 +203,7 @@ class TestMpicDcvChecker:
         dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
         assert dcv_response.details.ad_flag is flag_set
 
-    def perform_dns_change_validation__should_return_check_failure_with_errors_given_expected_dns_record_not_found(self, set_env_variables, mocker):
+    def perform_dns_change_validation__should_return_check_failure_with_errors_given_exception_raised(self, set_env_variables, mocker):
         dcv_request = ValidCheckCreator.create_valid_dns_check_request()
         no_answer_error = dns.resolver.NoAnswer()
         mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: self.raise_(no_answer_error))
@@ -228,7 +234,6 @@ class TestMpicDcvChecker:
             TestMpicDcvChecker.create_mock_response(404, 'Not Found', {'reason': 'Not Found'})
         ))
 
-    # TODO use this to test 100 bytes in details...
     def mock_website_change_validation_large_payload(self, mocker):
         response = Response()
         response.status_code = 200
@@ -263,21 +268,23 @@ class TestMpicDcvChecker:
             test_dns_query_answer if domain_name == expected_domain else self.raise_(dns.resolver.NoAnswer)
         ))
 
+    def mock_dns_resolve_call_with_non_matching_record(self, dcv_request: DcvCheckRequest, mocker):
+        test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
+        test_dns_query_answer.response.answer[0].items.clear()
+        test_dns_query_answer.response.answer[0].add(
+            MockDnsObjectCreator.create_record_by_type(DnsRecordType.TXT, {'value': 'not-the-expected-value'})
+        )
+        mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: test_dns_query_answer)
+
     def mock_dns_resolve_call_with_specific_response_code(self, dcv_request: DcvCheckRequest, response_code, mocker):
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
         test_dns_query_answer.response.rcode = response_code
-        expected_domain = f"{dcv_request.dcv_check_parameters.validation_details.dns_name_prefix}.{dcv_request.domain_or_ip_target}"
-        mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: (
-            test_dns_query_answer if domain_name == expected_domain else self.raise_(dns.resolver.NoAnswer)
-        ))
+        mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: test_dns_query_answer)
 
     def mock_dns_resolve_call_with_specific_flag(self, dcv_request: DcvCheckRequest, flag, mocker):
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
         test_dns_query_answer.response.flags |= flag
-        expected_domain = f"{dcv_request.dcv_check_parameters.validation_details.dns_name_prefix}.{dcv_request.domain_or_ip_target}"
-        mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: (
-            test_dns_query_answer if domain_name == expected_domain else self.raise_(dns.resolver.NoAnswer)
-        ))
+        mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: test_dns_query_answer)
 
     def mock_dns_resolve_call_getting_multiple_txt_records(self, dcv_request: DcvCheckRequest, mocker):
         dcv_details = dcv_request.dcv_check_parameters.validation_details
@@ -290,9 +297,7 @@ class TestMpicDcvChecker:
             dcv_request.domain_or_ip_target, dcv_details.dns_name_prefix,
             *[txt_record_1, txt_record_2, txt_record_3], mocker=mocker
         )
-        mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: (
-            test_dns_query_answer if domain_name == expected_domain else self.raise_(dns.resolver.NoAnswer)
-        ))
+        mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: test_dns_query_answer)
 
     def create_basic_dns_response_for_mock(self, dcv_request: DcvCheckRequest, mocker) -> dns.resolver.Answer:
         dcv_details = dcv_request.dcv_check_parameters.validation_details
