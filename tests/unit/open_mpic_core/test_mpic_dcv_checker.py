@@ -240,8 +240,7 @@ class TestMpicDcvChecker:
                 self.mock_website_change_validation_large_payload(mocker)
                 dcv_response = dcv_checker.perform_acme_http_01_validation(dcv_request)
         hundred_a_chars = b'a' * 100  # store 100 'a' characters in a byte array
-        expected_content = base64.b64encode(hundred_a_chars)  # is this correct?
-        assert dcv_response.details.response_page == expected_content
+        assert dcv_response.details.response_page == hundred_a_chars
 
     @pytest.mark.parametrize('url_scheme', ['http', 'https'])
     def website_change_v2_validation__should_use_specified_url_scheme(self, set_env_variables, url_scheme, mocker):

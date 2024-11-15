@@ -116,8 +116,6 @@ class MpicDcvChecker:
     @staticmethod
     def evaluate_http_lookup_response(dcv_check_response: DcvCheckResponse, lookup_response: requests.Response, target_url: str, challenge_value: str):
         content = lookup_response.raw.read(100)
-        decoded_content = content.decode('utf-8')
-        base64_encoded_content = base64.b64encode(content) if content is not None else None
 
         response_history = None
         if hasattr(lookup_response, 'history') and lookup_response.history is not None and len(lookup_response.history) > 0:
@@ -135,7 +133,7 @@ class MpicDcvChecker:
             dcv_check_response.details.response_status_code = lookup_response.status_code
             dcv_check_response.details.response_url = target_url
             dcv_check_response.details.response_history = response_history
-            dcv_check_response.details.response_page = base64_encoded_content
+            dcv_check_response.details.response_page = content
         else:
             dcv_check_response.errors = [
                 MpicValidationError(error_type=str(lookup_response.status_code), error_message=lookup_response.reason)]
