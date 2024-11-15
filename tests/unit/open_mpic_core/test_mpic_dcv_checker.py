@@ -343,7 +343,11 @@ class TestMpicDcvChecker:
         ))
 
     def mock_dns_resolve_call(self, dcv_request: DcvCheckRequest, mocker):
-        expected_domain = f"{dcv_request.dcv_check_parameters.validation_details.dns_name_prefix}.{dcv_request.domain_or_ip_target}"
+        match dcv_request.dcv_check_parameters.validation_details.validation_method:
+            case DcvValidationMethod.DNS_CHANGE:
+                expected_domain = f"{dcv_request.dcv_check_parameters.validation_details.dns_name_prefix}.{dcv_request.domain_or_ip_target}"
+            case _:
+                expected_domain = f"_acme-challenge.{dcv_request.domain_or_ip_target}"
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
         mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: (
             test_dns_query_answer if domain_name == expected_domain else self.raise_(dns.resolver.NoAnswer)
@@ -381,10 +385,17 @@ class TestMpicDcvChecker:
 
     def create_basic_dns_response_for_mock(self, dcv_request: DcvCheckRequest, mocker) -> dns.resolver.Answer:
         dcv_details = dcv_request.dcv_check_parameters.validation_details
-        record_data = {'value': dcv_details.challenge_value}
+        match dcv_request.dcv_check_parameters.validation_details.validation_method:
+            case DcvValidationMethod.DNS_CHANGE:
+                record_data = {'value': dcv_details.challenge_value}
+                record_prefix = dcv_details.dns_name_prefix
+                record_type = dcv_details.dns_record_type
+            case _:  # ACME_DNS_01
+                record_data = {'value': dcv_details.key_authorization}
+                record_prefix = '_acme-challenge'
+                record_type = DnsRecordType.TXT
         test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer(
-            dcv_request.domain_or_ip_target, dcv_details.dns_name_prefix, dcv_details.dns_record_type, record_data,
-            mocker
+            dcv_request.domain_or_ip_target, record_prefix, record_type, record_data, mocker
         )
         return test_dns_query_answer
 

@@ -18,14 +18,14 @@ class TestMpicCaaRequest:
         mpic_request = MpicCaaRequest.model_validate_json(json.dumps(request.model_dump()))
         assert mpic_request.domain_or_ip_target == request.domain_or_ip_target
 
-    def model_validate_json__should_throw_validation_error_given_missing_domain_or_ip_target(self):
+    def mpic_caa_request__should_require_domain_or_ip_target(self):
         request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         request.domain_or_ip_target = None
         with pytest.raises(pydantic.ValidationError) as validation_error:
             MpicCaaRequest.model_validate_json(json.dumps(request.model_dump()))
         assert 'domain_or_ip_target' in str(validation_error.value)
 
-    def model_validate_json_should_throw_validation_error_given_invalid_certificate_type(self):
+    def mpic_caa_request__should_require_valid_certificate_type(self):
         request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         request.caa_check_parameters.certificate_type = 'invalid'
         with pytest.raises(pydantic.ValidationError) as validation_error:
