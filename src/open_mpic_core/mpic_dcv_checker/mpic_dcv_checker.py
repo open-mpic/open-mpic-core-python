@@ -40,7 +40,7 @@ class MpicDcvChecker:
         dcv_check_response = self.create_empty_check_response(DcvValidationMethod.WEBSITE_CHANGE_V2)
 
         try:
-            response = requests.get(token_url, stream=True)  # FIXME should probably add a timeout here.. but how long?
+            response = requests.get(url=token_url, stream=True)  # FIXME should probably add a timeout here.. but how long?
             MpicDcvChecker.evaluate_http_lookup_response(dcv_check_response, response, token_url, expected_response_content)
         except requests.exceptions.RequestException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
