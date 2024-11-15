@@ -29,6 +29,8 @@ class MpicDcvChecker:
                 return self.perform_dns_change_validation(dcv_request)
             case DcvValidationMethod.ACME_HTTP_01:
                 return self.perform_acme_http_01_validation(dcv_request)
+            case DcvValidationMethod.ACME_DNS_01:
+                return self.perform_acme_dns_01_validation(dcv_request)
 
     def perform_website_change_validation(self, request) -> DcvCheckResponse:
         domain_or_ip_target = request.domain_or_ip_target  # TODO optionally iterate up through the domain hierarchy

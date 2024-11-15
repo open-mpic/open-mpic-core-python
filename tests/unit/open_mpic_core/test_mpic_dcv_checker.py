@@ -51,7 +51,8 @@ class TestMpicDcvChecker:
     @pytest.mark.parametrize('validation_method, record_type', [(DcvValidationMethod.WEBSITE_CHANGE_V2, None),
                                                                 (DcvValidationMethod.DNS_CHANGE, DnsRecordType.TXT),
                                                                 (DcvValidationMethod.DNS_CHANGE, DnsRecordType.CNAME),
-                                                                (DcvValidationMethod.ACME_HTTP_01, None)])
+                                                                (DcvValidationMethod.ACME_HTTP_01, None),
+                                                                (DcvValidationMethod.ACME_DNS_01, None)])
     def check_dcv__should_perform_appropriate_check_and_allow_issuance_given_target_record_found(self, set_env_variables, validation_method, record_type, mocker):
         dcv_request, response_details, expected_response = None, None, None
         match validation_method:
@@ -64,6 +65,9 @@ class TestMpicDcvChecker:
             case DcvValidationMethod.ACME_HTTP_01:
                 dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
                 self.mock_http_call_response(dcv_request, mocker)
+            case DcvValidationMethod.ACME_DNS_01:
+                dcv_request = ValidCheckCreator.create_valid_acme_dns_01_check_request()
+                self.mock_dns_resolve_call(dcv_request, mocker)
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         dcv_response = dcv_checker.check_dcv(dcv_request)
         dcv_response.timestamp_ns = None  # ignore timestamp for comparison
