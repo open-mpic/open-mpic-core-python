@@ -292,12 +292,22 @@ class TestMpicDcvChecker:
         expected_records = [expected_value_1, 'whatever2', 'whatever3']
         assert dcv_response.details.records_seen == expected_records
 
-    @pytest.mark.parametrize('response_code', [Rcode.NOERROR, Rcode.NXDOMAIN, Rcode.REFUSED])
-    def perform_dns_change_validation__should_return_response_code(self, set_env_variables, response_code, mocker):
-        dcv_request = ValidCheckCreator.create_valid_dns_check_request()
-        self.mock_dns_resolve_call_with_specific_response_code(dcv_request, response_code, mocker)
+    @pytest.mark.parametrize('validation_method, response_code', [
+        (DcvValidationMethod.DNS_CHANGE, Rcode.NOERROR),
+        (DcvValidationMethod.ACME_DNS_01, Rcode.NXDOMAIN),
+        (DcvValidationMethod.DNS_CHANGE, Rcode.REFUSED)
+    ])
+    def dns_based_dcv_checks__should_return_response_code(self, set_env_variables, validation_method, response_code, mocker):
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
-        dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
+        match validation_method:
+            case DcvValidationMethod.DNS_CHANGE:
+                dcv_request = ValidCheckCreator.create_valid_dns_check_request()
+                self.mock_dns_resolve_call_with_specific_response_code(dcv_request, response_code, mocker)
+                dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
+            case _:
+                dcv_request = ValidCheckCreator.create_valid_acme_dns_01_check_request()
+                self.mock_dns_resolve_call_with_specific_response_code(dcv_request, response_code, mocker)
+                dcv_response = dcv_checker.perform_acme_dns_01_validation(dcv_request)
         assert dcv_response.details.response_code == response_code
 
     @pytest.mark.parametrize('flag, flag_set', [(dns.flags.AD, True), (dns.flags.CD, False)])
