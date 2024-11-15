@@ -42,8 +42,10 @@ class DcvAcmeHttp01ValidationDetails(DcvValidationDetails):
     token: str
     key_authorization: str
 
-# TODO DcvAcmeDns01ValidationDetails
-#      fields: key_authorization
+
+class DcvAcmeDns01ValidationDetails(DcvValidationDetails):
+    validation_method: Literal[DcvValidationMethod.ACME_DNS_01] = DcvValidationMethod.ACME_DNS_01
+    key_authorization: str
 # Please deploy a DNS TXT record under the name
 # _acme-challenge.<domain.com> with the following value:  667drNmQL3vX6bu8YZlgy0wKNBlCny8yrjF1lSaUndc
 
@@ -52,5 +54,6 @@ class DcvCheckParameters(BaseModel):
     validation_details: Union[
         DcvWebsiteChangeValidationDetails,
         DcvDnsChangeValidationDetails,
-        DcvAcmeHttp01ValidationDetails
+        DcvAcmeHttp01ValidationDetails,
+        DcvAcmeDns01ValidationDetails
     ]

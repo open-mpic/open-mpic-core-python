@@ -1,5 +1,6 @@
 from open_mpic_core.common_domain.check_parameters import CaaCheckParameters, DcvCheckParameters, \
-    DcvDnsChangeValidationDetails, DcvWebsiteChangeValidationDetails
+    DcvDnsChangeValidationDetails, DcvWebsiteChangeValidationDetails, DcvAcmeDns01ValidationDetails, \
+    DcvAcmeHttp01ValidationDetails
 from open_mpic_core.common_domain.enum.certificate_type import CertificateType
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
 from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
@@ -47,4 +48,8 @@ class ValidMpicRequestCreator:
             case DcvValidationMethod.WEBSITE_CHANGE_V2:
                 validation_details = DcvWebsiteChangeValidationDetails(
                     http_token_path='examplepath', challenge_value='test', url_scheme=UrlScheme.HTTP)  # noqa E501 (http)
+            case DcvValidationMethod.ACME_HTTP_01:
+                validation_details = DcvAcmeHttp01ValidationDetails(token='test', key_authorization='test')
+            case DcvValidationMethod.ACME_DNS_01:
+                validation_details = DcvAcmeDns01ValidationDetails(key_authorization='test')
         return validation_details
