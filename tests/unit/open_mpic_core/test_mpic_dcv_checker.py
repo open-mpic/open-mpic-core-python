@@ -54,7 +54,6 @@ class TestMpicDcvChecker:
                                                                 (DcvValidationMethod.ACME_HTTP_01, None),
                                                                 (DcvValidationMethod.ACME_DNS_01, None)])
     def check_dcv__should_perform_appropriate_check_and_allow_issuance_given_target_record_found(self, set_env_variables, validation_method, record_type, mocker):
-        dcv_request, response_details, expected_response = None, None, None
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE_V2:
                 dcv_request = ValidCheckCreator.create_valid_http_check_request()
@@ -65,7 +64,7 @@ class TestMpicDcvChecker:
             case DcvValidationMethod.ACME_HTTP_01:
                 dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
                 self.mock_http_call_response(dcv_request, mocker)
-            case DcvValidationMethod.ACME_DNS_01:
+            case _:
                 dcv_request = ValidCheckCreator.create_valid_acme_dns_01_check_request()
                 self.mock_dns_resolve_call(dcv_request, mocker)
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
@@ -84,14 +83,13 @@ class TestMpicDcvChecker:
 
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
     def http_based_dcv_checks__should_return_check_success_given_token_file_found_with_expected_content(self, set_env_variables, validation_method, mocker):
-        dcv_response = None
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE_V2:
                 dcv_request = ValidCheckCreator.create_valid_http_check_request()
                 self.mock_http_call_response(dcv_request, mocker)
                 dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
-            case DcvValidationMethod.ACME_HTTP_01:
+            case _:
                 dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
                 self.mock_http_call_response(dcv_request, mocker)
                 dcv_response = dcv_checker.perform_acme_http_01_validation(dcv_request)
@@ -99,7 +97,6 @@ class TestMpicDcvChecker:
 
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
     def http_based_dcv_checks__should_return_timestamp_and_response_url_and_status_code(self, set_env_variables, validation_method, mocker):
-        dcv_response, expected_url = None, None
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE_V2:
@@ -109,7 +106,7 @@ class TestMpicDcvChecker:
                 url_scheme = dcv_request.dcv_check_parameters.validation_details.url_scheme
                 http_token_path = dcv_request.dcv_check_parameters.validation_details.http_token_path
                 expected_url = f"{url_scheme}://{dcv_request.domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{http_token_path}"
-            case DcvValidationMethod.ACME_HTTP_01:
+            case _:
                 dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
                 self.mock_http_call_response(dcv_request, mocker)
                 dcv_response = dcv_checker.perform_acme_http_01_validation(dcv_request)
@@ -121,7 +118,6 @@ class TestMpicDcvChecker:
 
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
     def http_based_dcv_checks__should_return_check_failure_given_token_file_not_found(self, set_env_variables, validation_method, mocker):
-        dcv_response = None
         fail_response = TestMpicDcvChecker.create_mock_response(404, 'Not Found', {'reason': 'Not Found'})
         mocker.patch('requests.get', return_value=fail_response)
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
@@ -129,14 +125,13 @@ class TestMpicDcvChecker:
             case DcvValidationMethod.WEBSITE_CHANGE_V2:
                 dcv_request = ValidCheckCreator.create_valid_http_check_request()
                 dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
-            case DcvValidationMethod.ACME_HTTP_01:
+            case _:
                 dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
                 dcv_response = dcv_checker.perform_acme_http_01_validation(dcv_request)
         assert dcv_response.check_passed is False
 
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
     def http_based_dcv_checks__should_return_error_details_given_token_file_not_found(self, set_env_variables, validation_method, mocker):
-        dcv_response = None
         fail_response = TestMpicDcvChecker.create_mock_response(404, 'Not Found', {'reason': 'Not Found'})
         mocker.patch('requests.get', return_value=fail_response)
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
@@ -144,7 +139,7 @@ class TestMpicDcvChecker:
             case DcvValidationMethod.WEBSITE_CHANGE_V2:
                 dcv_request = ValidCheckCreator.create_valid_http_check_request()
                 dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
-            case DcvValidationMethod.ACME_HTTP_01:
+            case _:
                 dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
                 dcv_response = dcv_checker.perform_acme_http_01_validation(dcv_request)
         assert dcv_response.check_passed is False
@@ -154,14 +149,13 @@ class TestMpicDcvChecker:
 
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
     def http_based_dcv_checks__should_return_check_failure_and_error_details_given_exception_raised(self, set_env_variables, validation_method, mocker):
-        dcv_response = None
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE_V2:
                 mocker.patch('requests.get', side_effect=lambda url, stream: self.raise_(RequestException('Test Exception')))
                 dcv_request = ValidCheckCreator.create_valid_http_check_request()
                 dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
-            case DcvValidationMethod.ACME_HTTP_01:
+            case _:
                 mocker.patch('requests.get', side_effect=lambda url, verify: self.raise_(RequestException('Test Exception')))
                 dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
                 dcv_response = dcv_checker.perform_acme_http_01_validation(dcv_request)
@@ -171,7 +165,6 @@ class TestMpicDcvChecker:
 
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
     def http_based_dcv_checks__should_return_check_failure_given_non_matching_response_content(self, set_env_variables, validation_method, mocker):
-        dcv_response = None
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE_V2:
@@ -179,7 +172,7 @@ class TestMpicDcvChecker:
                 self.mock_http_call_response(dcv_request, mocker)
                 dcv_request.dcv_check_parameters.validation_details.challenge_value = 'expecting-this-value-now-instead'
                 dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
-            case DcvValidationMethod.ACME_HTTP_01:
+            case _:
                 dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
                 self.mock_http_call_response(dcv_request, mocker)
                 dcv_request.dcv_check_parameters.validation_details.key_authorization = 'expecting-this-value-now-instead'
@@ -191,7 +184,6 @@ class TestMpicDcvChecker:
         (DcvValidationMethod.ACME_HTTP_01, '.well-known/acme-challenge')
     ])
     def http_based_dcv_checks__should_auto_insert_well_known_path_segment(self, set_env_variables, validation_method, expected_segment, mocker):
-        dcv_request, dcv_response, url_scheme = None, None, None
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE_V2:
@@ -200,7 +192,7 @@ class TestMpicDcvChecker:
                 self.mock_http_call_response(dcv_request, mocker)
                 dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
                 url_scheme = dcv_request.dcv_check_parameters.validation_details.url_scheme
-            case DcvValidationMethod.ACME_HTTP_01:
+            case _:
                 dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
                 dcv_request.dcv_check_parameters.validation_details.token = 'test-path'
                 self.mock_http_call_response(dcv_request, mocker)
@@ -211,14 +203,13 @@ class TestMpicDcvChecker:
 
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
     def http_based_dcv_checks__should_follow_redirects_and_track_redirect_history_in_details(self, set_env_variables, validation_method, mocker):
-        dcv_response = None
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE_V2:
                 dcv_request = ValidCheckCreator.create_valid_http_check_request()
                 self.mock_http_call_response_with_redirects(dcv_request, mocker)
                 dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
-            case DcvValidationMethod.ACME_HTTP_01:
+            case _:
                 dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
                 self.mock_http_call_response_with_redirects(dcv_request, mocker)
                 dcv_response = dcv_checker.perform_acme_http_01_validation(dcv_request)
@@ -231,14 +222,13 @@ class TestMpicDcvChecker:
 
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
     def http_based_dcv_checks__should_include_up_to_first_100_bytes_of_returned_content_in_details(self, set_env_variables, validation_method, mocker):
-        dcv_response = None
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE_V2:
                 dcv_request = ValidCheckCreator.create_valid_http_check_request()
                 self.mock_website_change_validation_large_payload(mocker)
                 dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
-            case DcvValidationMethod.ACME_HTTP_01:
+            case _:
                 dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
                 self.mock_website_change_validation_large_payload(mocker)
                 dcv_response = dcv_checker.perform_acme_http_01_validation(dcv_request)
@@ -270,11 +260,18 @@ class TestMpicDcvChecker:
         dcv_response = dcv_checker.perform_acme_dns_01_validation(dcv_request)
         assert dcv_response.check_passed is True
 
-    def perform_dns_change_validation__should_return_check_failure_given_non_matching_dns_record(self, set_env_variables, mocker):
-        dcv_request = ValidCheckCreator.create_valid_dns_check_request()
-        self.mock_dns_resolve_call_with_non_matching_record(dcv_request, mocker)
+    @pytest.mark.parametrize('validation_method', [DcvValidationMethod.DNS_CHANGE, DcvValidationMethod.ACME_DNS_01])
+    def perform_dns_change_validation__should_return_check_failure_given_non_matching_dns_record(self, set_env_variables, validation_method, mocker):
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
-        dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
+        match validation_method:
+            case DcvValidationMethod.DNS_CHANGE:
+                dcv_request = ValidCheckCreator.create_valid_dns_check_request()
+                self.mock_dns_resolve_call_with_non_matching_record(dcv_request, mocker)
+                dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
+            case _:
+                dcv_request = ValidCheckCreator.create_valid_acme_dns_01_check_request()
+                self.mock_dns_resolve_call_with_non_matching_record(dcv_request, mocker)
+                dcv_response = dcv_checker.perform_acme_dns_01_validation(dcv_request)
         assert dcv_response.check_passed is False
 
     def perform_dns_change_validation__should_return_timestamp_and_list_of_records_seen(self, set_env_variables, mocker):
