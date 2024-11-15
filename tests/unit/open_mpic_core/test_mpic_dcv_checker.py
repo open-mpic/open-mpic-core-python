@@ -261,7 +261,7 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is True
 
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.DNS_CHANGE, DcvValidationMethod.ACME_DNS_01])
-    def perform_dns_change_validation__should_return_check_failure_given_non_matching_dns_record(self, set_env_variables, validation_method, mocker):
+    def dns_based_dcv_checks__should_return_check_failure_given_non_matching_dns_record(self, set_env_variables, validation_method, mocker):
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         match validation_method:
             case DcvValidationMethod.DNS_CHANGE:
@@ -274,13 +274,21 @@ class TestMpicDcvChecker:
                 dcv_response = dcv_checker.perform_acme_dns_01_validation(dcv_request)
         assert dcv_response.check_passed is False
 
-    def perform_dns_change_validation__should_return_timestamp_and_list_of_records_seen(self, set_env_variables, mocker):
-        dcv_request = ValidCheckCreator.create_valid_dns_check_request(DnsRecordType.TXT)  # must specify TXT here
-        self.mock_dns_resolve_call_getting_multiple_txt_records(dcv_request, mocker)
+    @pytest.mark.parametrize('validation_method', [DcvValidationMethod.DNS_CHANGE, DcvValidationMethod.ACME_DNS_01])
+    def dns_based_dcv_checks__should_return_timestamp_and_list_of_records_seen(self, set_env_variables, validation_method, mocker):
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
-        dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
+        match validation_method:
+            case DcvValidationMethod.DNS_CHANGE:
+                dcv_request = ValidCheckCreator.create_valid_dns_check_request(DnsRecordType.TXT)  # must specify TXT here
+                self.mock_dns_resolve_call_getting_multiple_txt_records(dcv_request, mocker)
+                dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
+                expected_value_1 = dcv_request.dcv_check_parameters.validation_details.challenge_value
+            case _:
+                dcv_request = ValidCheckCreator.create_valid_acme_dns_01_check_request()
+                self.mock_dns_resolve_call_getting_multiple_txt_records(dcv_request, mocker)
+                dcv_response = dcv_checker.perform_acme_dns_01_validation(dcv_request)
+                expected_value_1 = dcv_request.dcv_check_parameters.validation_details.key_authorization
         assert dcv_response.timestamp_ns is not None
-        expected_value_1 = dcv_request.dcv_check_parameters.validation_details.challenge_value
         expected_records = [expected_value_1, 'whatever2', 'whatever3']
         assert dcv_response.details.records_seen == expected_records
 
@@ -383,12 +391,18 @@ class TestMpicDcvChecker:
 
     def mock_dns_resolve_call_getting_multiple_txt_records(self, dcv_request: DcvCheckRequest, mocker):
         dcv_details = dcv_request.dcv_check_parameters.validation_details
-        record_data = {'value': dcv_details.challenge_value}
+        match dcv_request.dcv_check_parameters.validation_details.validation_method:
+            case DcvValidationMethod.DNS_CHANGE:
+                record_data = {'value': dcv_details.challenge_value}
+                record_name_prefix = dcv_details.dns_name_prefix
+            case _:
+                record_data = {'value': dcv_details.key_authorization}
+                record_name_prefix = '_acme-challenge'
         txt_record_1 = MockDnsObjectCreator.create_record_by_type(DnsRecordType.TXT, record_data)
         txt_record_2 = MockDnsObjectCreator.create_record_by_type(DnsRecordType.TXT, {'value': 'whatever2'})
         txt_record_3 = MockDnsObjectCreator.create_record_by_type(DnsRecordType.TXT, {'value': 'whatever3'})
         test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer_with_multiple_txt_records(
-            dcv_request.domain_or_ip_target, dcv_details.dns_name_prefix,
+            dcv_request.domain_or_ip_target, record_name_prefix,
             *[txt_record_1, txt_record_2, txt_record_3], mocker=mocker
         )
         mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: test_dns_query_answer)
