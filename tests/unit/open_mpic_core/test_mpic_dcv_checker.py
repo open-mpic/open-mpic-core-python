@@ -1,4 +1,3 @@
-import base64
 from io import BytesIO
 from unittest.mock import MagicMock
 
@@ -258,6 +257,13 @@ class TestMpicDcvChecker:
         self.mock_dns_resolve_call(dcv_request, mocker)
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
+        assert dcv_response.check_passed is True
+
+    def perform_acme_dns_validation__should_return_check_success_given_expected_dns_record_found(self, set_env_variables, mocker):
+        dcv_request = ValidCheckCreator.create_valid_acme_dns_01_check_request()
+        self.mock_dns_resolve_call(dcv_request, mocker)
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.perform_acme_dns_01_validation(dcv_request)
         assert dcv_response.check_passed is True
 
     def perform_dns_change_validation__should_return_check_failure_given_non_matching_dns_record(self, set_env_variables, mocker):

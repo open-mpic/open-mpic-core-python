@@ -1,8 +1,8 @@
-import base64
 import time
 import dns.resolver
 import requests
 import urllib3
+from dns.rdatatype import RdataType
 
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
 from open_mpic_core.common_domain.check_response import DcvCheckResponse
@@ -36,7 +36,6 @@ class MpicDcvChecker:
         token_path = request.dcv_check_parameters.validation_details.http_token_path
         token_url = f"{url_scheme}://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{token_path}"  # noqa E501 (http)
         expected_response_content = request.dcv_check_parameters.validation_details.challenge_value
-
         dcv_check_response = self.create_empty_check_response(DcvValidationMethod.WEBSITE_CHANGE_V2)
 
         try:
@@ -57,29 +56,12 @@ class MpicDcvChecker:
         else:
             name_to_resolve = domain_or_ip_target
         expected_dns_record_content = request.dcv_check_parameters.validation_details.challenge_value
-
-        # TODO add leading underscore to name_to_resolve if it's not found?
-
         dcv_check_response = self.create_empty_check_response(DcvValidationMethod.DNS_CHANGE)
 
         try:
+            # TODO add leading underscore to name_to_resolve if it's not found?
             lookup = dns.resolver.resolve(name_to_resolve, dns_record_type)
-            response_code = lookup.response.rcode
-            records_as_strings = []
-            for response_answer in lookup.response.answer:
-                if response_answer.rdtype == dns_record_type:
-                    for record_data in response_answer:
-                        record_data_as_string = record_data.to_text()
-                        # only need to remove enclosing quotes if they're there, e.g., for a TXT record
-                        if record_data_as_string[0] == '"' and record_data_as_string[-1] == '"':
-                            record_data_as_string = record_data_as_string[1:-1]
-                        records_as_strings.append(record_data_as_string)
-
-            dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
-            dcv_check_response.timestamp_ns = time.time_ns()
-            dcv_check_response.details.records_seen = records_as_strings
-            dcv_check_response.details.response_code = response_code
-            dcv_check_response.details.ad_flag = lookup.response.flags & dns.flags.AD == dns.flags.AD  # single ampersand
+            MpicDcvChecker.evaluate_dns_lookup_response(dcv_check_response, lookup, dns_record_type, expected_dns_record_content)
         except dns.exception.DNSException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)]
@@ -91,7 +73,6 @@ class MpicDcvChecker:
         token = request.dcv_check_parameters.validation_details.token
         expected_response_content = request.dcv_check_parameters.validation_details.key_authorization
         token_url = f"http://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
-
         dcv_check_response = self.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
 
         try:
@@ -101,6 +82,22 @@ class MpicDcvChecker:
         except requests.exceptions.RequestException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
+
+        return dcv_check_response
+
+    def perform_acme_dns_01_validation(self, request) -> DcvCheckResponse:
+        domain_or_ip_target = request.domain_or_ip_target
+        dns_record_type = dns.rdatatype.TXT
+        name_to_resolve = f"_acme-challenge.{domain_or_ip_target}"
+        expected_dns_record_content = request.dcv_check_parameters.validation_details.key_authorization
+        dcv_check_response = self.create_empty_check_response(DcvValidationMethod.DNS_CHANGE)
+
+        try:
+            lookup = dns.resolver.resolve(name_to_resolve, dns_record_type)
+            MpicDcvChecker.evaluate_dns_lookup_response(dcv_check_response, lookup, dns.rdatatype.TXT, expected_dns_record_content)
+        except dns.exception.DNSException as e:
+            dcv_check_response.timestamp_ns = time.time_ns()
+            dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)]
 
         return dcv_check_response
 
@@ -137,3 +134,22 @@ class MpicDcvChecker:
         else:
             dcv_check_response.errors = [
                 MpicValidationError(error_type=str(lookup_response.status_code), error_message=lookup_response.reason)]
+
+    @staticmethod
+    def evaluate_dns_lookup_response(dcv_check_response: DcvCheckResponse, lookup_response: dns.resolver.Answer, dns_record_type: RdataType, expected_dns_record_content: str):
+        response_code = lookup_response.response.rcode
+        records_as_strings = []
+        for response_answer in lookup_response.response.answer:
+            if response_answer.rdtype == dns_record_type:
+                for record_data in response_answer:
+                    record_data_as_string = record_data.to_text()
+                    # only need to remove enclosing quotes if they're there, e.g., for a TXT record
+                    if record_data_as_string[0] == '"' and record_data_as_string[-1] == '"':
+                        record_data_as_string = record_data_as_string[1:-1]
+                    records_as_strings.append(record_data_as_string)
+
+        dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
+        dcv_check_response.timestamp_ns = time.time_ns()
+        dcv_check_response.details.records_seen = records_as_strings
+        dcv_check_response.details.response_code = response_code
+        dcv_check_response.details.ad_flag = lookup_response.response.flags & dns.flags.AD == dns.flags.AD  # single ampersand
