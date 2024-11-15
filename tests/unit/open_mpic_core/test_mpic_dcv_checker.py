@@ -162,29 +162,59 @@ class TestMpicDcvChecker:
         errors = [MpicValidationError(error_type='RequestException', error_message='Test Exception')]
         assert dcv_response.errors == errors
 
-    def perform_website_change_validation__should_return_check_failure_given_non_matching_response_content(self, set_env_variables, mocker):
-        dcv_request = ValidCheckCreator.create_valid_http_check_request()
-        self.mock_website_change_http_call_response(dcv_request, mocker)
-        dcv_request.dcv_check_parameters.validation_details.challenge_value = 'expecting-this-value-now-instead'
+    @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
+    def http_based_dcv_checks__should_return_check_failure_given_non_matching_response_content(self, set_env_variables, validation_method, mocker):
+        dcv_response = None
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
-        dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
+        match validation_method:
+            case DcvValidationMethod.WEBSITE_CHANGE_V2:
+                dcv_request = ValidCheckCreator.create_valid_http_check_request()
+                self.mock_website_change_http_call_response(dcv_request, mocker)
+                dcv_request.dcv_check_parameters.validation_details.challenge_value = 'expecting-this-value-now-instead'
+                dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
+            case DcvValidationMethod.ACME_HTTP_01:
+                dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
+                self.mock_acme_http_call_response(dcv_request, mocker)
+                dcv_request.dcv_check_parameters.validation_details.key_authorization = 'expecting-this-value-now-instead'
+                dcv_response = dcv_checker.perform_acme_http_01_validation(dcv_request)
         assert dcv_response.check_passed is False
 
-    def perform_website_change_validation__should_auto_insert_well_known_path_segment(self, set_env_variables, mocker):
-        dcv_request = ValidCheckCreator.create_valid_http_check_request()
-        dcv_request.dcv_check_parameters.validation_details.http_token_path = 'test-path'
-        self.mock_website_change_http_call_response(dcv_request, mocker)
+    @pytest.mark.parametrize('validation_method, expected_segment', [
+        (DcvValidationMethod.WEBSITE_CHANGE_V2, '.well-known/pki-validation'),
+        (DcvValidationMethod.ACME_HTTP_01, '.well-known/acme-challenge')
+    ])
+    def http_based_dcv_checks__should_auto_insert_well_known_path_segment(self, set_env_variables, validation_method, expected_segment, mocker):
+        dcv_request, dcv_response, url_scheme = None, None, None
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
-        dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
-        url_scheme = dcv_request.dcv_check_parameters.validation_details.url_scheme
-        expected_url = f"{url_scheme}://{dcv_request.domain_or_ip_target}/.well-known/pki-validation/test-path"
+        match validation_method:
+            case DcvValidationMethod.WEBSITE_CHANGE_V2:
+                dcv_request = ValidCheckCreator.create_valid_http_check_request()
+                dcv_request.dcv_check_parameters.validation_details.http_token_path = 'test-path'
+                self.mock_website_change_http_call_response(dcv_request, mocker)
+                dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
+                url_scheme = dcv_request.dcv_check_parameters.validation_details.url_scheme
+            case DcvValidationMethod.ACME_HTTP_01:
+                dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
+                dcv_request.dcv_check_parameters.validation_details.token = 'test-path'
+                self.mock_acme_http_call_response(dcv_request, mocker)
+                dcv_response = dcv_checker.perform_acme_http_01_validation(dcv_request)
+                url_scheme = 'http'
+        expected_url = f"{url_scheme}://{dcv_request.domain_or_ip_target}/{expected_segment}/test-path"
         assert dcv_response.details.response_url == expected_url
 
-    def perform_website_change_validation__should_follow_redirects_and_track_redirect_history_in_details(self, set_env_variables, mocker):
-        dcv_request = ValidCheckCreator.create_valid_http_check_request()
-        self.mock_website_change_http_call_with_redirects(dcv_request, mocker)
+    @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
+    def http_based_dcv_checks__should_follow_redirects_and_track_redirect_history_in_details(self, set_env_variables, validation_method, mocker):
+        dcv_response = None
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
-        dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
+        match validation_method:
+            case DcvValidationMethod.WEBSITE_CHANGE_V2:
+                dcv_request = ValidCheckCreator.create_valid_http_check_request()
+                self.mock_website_change_http_call_with_redirects(dcv_request, mocker)
+                dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
+            case DcvValidationMethod.ACME_HTTP_01:
+                dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
+                self.mock_acme_http_call_with_redirects(dcv_request, mocker)
+                dcv_response = dcv_checker.perform_acme_http_01_validation(dcv_request)
         redirects = dcv_response.details.response_history
         assert len(redirects) == 2
         assert redirects[0].url == 'https://example.com/redirected-1'
@@ -262,14 +292,6 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is False
         assert dcv_response.errors == errors
 
-    def perform_acme_http_validation__should_return_check_failure_given_non_matching_response(self, set_env_variables, mocker):
-        dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
-        self.mock_acme_http_call_response(dcv_request, mocker)
-        dcv_request.dcv_check_parameters.validation_details.key_authorization = 'expecting-this-value-now-instead'
-        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
-        dcv_response = dcv_checker.perform_acme_http_01_validation(dcv_request)
-        assert dcv_response.check_passed is False
-
     def raise_(self, ex):
         # noinspection PyUnusedLocal
         def _raise(*args, **kwargs):
@@ -287,6 +309,16 @@ class TestMpicDcvChecker:
             TestMpicDcvChecker.create_mock_response(404, 'Not Found', {'reason': 'Not Found'})
         ))
 
+    def mock_acme_http_call_response(self, dcv_request: DcvCheckRequest, mocker):
+        token = dcv_request.dcv_check_parameters.validation_details.token
+        expected_url = f"http://{dcv_request.domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
+        expected_challenge = dcv_request.dcv_check_parameters.validation_details.key_authorization
+        success_response = TestMpicDcvChecker.create_mock_response(200, expected_challenge)
+        mocker.patch('requests.get', side_effect=lambda url, verify: (
+            success_response if url == expected_url else
+            TestMpicDcvChecker.create_mock_response(404, 'Not Found', {'reason': 'Not Found'})
+        ))
+
     def mock_website_change_validation_large_payload(self, mocker):
         response = Response()
         response.status_code = 200
@@ -300,27 +332,19 @@ class TestMpicDcvChecker:
         http_token_path = dcv_request.dcv_check_parameters.validation_details.http_token_path
         expected_url = f"{url_scheme}://{dcv_request.domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{http_token_path}"
         expected_challenge = dcv_request.dcv_check_parameters.validation_details.challenge_value
-        redirect_url_1 = f"https://example.com/redirected-1"
-        redirect_response_1 = Response()
-        redirect_response_1.status_code = 301
-        redirect_response_1.headers['Location'] = redirect_url_1
-        redirect_url_2 = f"https://example.com/redirected-2"
-        redirect_response_2 = Response()
-        redirect_response_2.status_code = 302
-        redirect_response_2.headers['Location'] = redirect_url_2
-        history = [redirect_response_1, redirect_response_2]
+        history = self.create_http_redirect_history()
         mocker.patch('requests.get', side_effect=lambda url, stream: (
             TestMpicDcvChecker.create_mock_response(200, expected_challenge, {'history': history}) if url == expected_url else
             TestMpicDcvChecker.create_mock_response(404, 'Not Found', {'reason': 'Not Found'})
         ))
 
-    def mock_acme_http_call_response(self, dcv_request: DcvCheckRequest, mocker):
+    def mock_acme_http_call_with_redirects(self, dcv_request: DcvCheckRequest, mocker):
         token = dcv_request.dcv_check_parameters.validation_details.token
         expected_url = f"http://{dcv_request.domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
         expected_challenge = dcv_request.dcv_check_parameters.validation_details.key_authorization
-        success_response = TestMpicDcvChecker.create_mock_response(200, expected_challenge)
+        history = self.create_http_redirect_history()
         mocker.patch('requests.get', side_effect=lambda url, verify: (
-            success_response if url == expected_url else
+            TestMpicDcvChecker.create_mock_response(200, expected_challenge, {'history': history}) if url == expected_url else
             TestMpicDcvChecker.create_mock_response(404, 'Not Found', {'reason': 'Not Found'})
         ))
 
@@ -369,6 +393,17 @@ class TestMpicDcvChecker:
             mocker
         )
         return test_dns_query_answer
+
+    def create_http_redirect_history(self):
+        redirect_url_1 = f"https://example.com/redirected-1"
+        redirect_response_1 = Response()
+        redirect_response_1.status_code = 301
+        redirect_response_1.headers['Location'] = redirect_url_1
+        redirect_url_2 = f"https://example.com/redirected-2"
+        redirect_response_2 = Response()
+        redirect_response_2.status_code = 302
+        redirect_response_2.headers['Location'] = redirect_url_2
+        return [redirect_response_1, redirect_response_2]
 
 
 if __name__ == '__main__':
