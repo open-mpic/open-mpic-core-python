@@ -27,12 +27,6 @@ class MpicRequestValidator:
         return len(request_validation_issues) == 0, request_validation_issues
 
     @staticmethod
-    def are_requested_perspectives_valid(requested_perspective_codes, target_perspectives) -> bool:
-        # check if requested_perspectives is a subset of known_perspectives
-        target_perspective_codes = [perspective.code for perspective in target_perspectives]
-        return all(code in target_perspective_codes for code in requested_perspective_codes)
-
-    @staticmethod
     def is_requested_perspective_count_valid(requested_perspective_count, target_perspectives) -> bool:
         # check if requested_perspective_count is an integer, at least 2, and at most the number of known_perspectives
         return isinstance(requested_perspective_count, int) and 2 <= requested_perspective_count <= len(target_perspectives)
