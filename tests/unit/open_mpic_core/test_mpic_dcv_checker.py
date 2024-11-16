@@ -209,6 +209,23 @@ class TestMpicDcvChecker:
         dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
         assert dcv_response.check_passed is True
 
+    @pytest.mark.parametrize('dns_name_prefix', ['_dnsauth', '', None])
+    def dns_change_validation__should_use_dns_name_prefix_if_provided(self, set_env_variables, dns_name_prefix, mocker):
+        dcv_request = ValidCheckCreator.create_valid_dns_check_request()
+        dcv_request.dcv_check_parameters.validation_details.dns_name_prefix = dns_name_prefix
+        self.mock_dns_resolve_call(dcv_request, mocker)
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
+        assert dcv_response.check_passed is True
+
+    def acme_dns_validation__should_auto_insert_acme_challenge_prefix(self, set_env_variables, mocker):
+        dcv_request = ValidCheckCreator.create_valid_acme_dns_01_check_request()
+        self.mock_dns_resolve_call(dcv_request, mocker)
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.perform_acme_dns_01_validation(dcv_request)
+        assert dcv_response.check_passed is True
+        dcv_response.details.records_seen = ['_acme-challenge.example.com']
+
     def acme_dns_validation__should_return_check_success_given_expected_dns_record_found(self, set_env_variables, mocker):
         dcv_request = ValidCheckCreator.create_valid_acme_dns_01_check_request()
         self.mock_dns_resolve_call(dcv_request, mocker)
@@ -319,7 +336,11 @@ class TestMpicDcvChecker:
     def mock_dns_resolve_call(self, dcv_request: DcvCheckRequest, mocker):
         match dcv_request.dcv_check_parameters.validation_details.validation_method:
             case DcvValidationMethod.DNS_CHANGE:
-                expected_domain = f"{dcv_request.dcv_check_parameters.validation_details.dns_name_prefix}.{dcv_request.domain_or_ip_target}"
+                dns_name_prefix = dcv_request.dcv_check_parameters.validation_details.dns_name_prefix
+                if dns_name_prefix is not None and len(dns_name_prefix) > 0:
+                    expected_domain = f"{dns_name_prefix}.{dcv_request.domain_or_ip_target}"
+                else:
+                    expected_domain = dcv_request.domain_or_ip_target
             case _:
                 expected_domain = f"_acme-challenge.{dcv_request.domain_or_ip_target}"
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
