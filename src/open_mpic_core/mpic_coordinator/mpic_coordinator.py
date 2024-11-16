@@ -10,6 +10,7 @@ import hashlib
 from open_mpic_core.common_domain.check_response import CaaCheckResponse, \
     CaaCheckResponseDetails, DcvCheckResponse, DcvCheckResponseDetails
 from open_mpic_core.common_domain.check_request import CaaCheckRequest, DcvCheckRequest
+from open_mpic_core.common_domain.check_response_details import DcvCheckResponseDetailsBuilder
 from open_mpic_core.common_domain.validation_error import MpicValidationError
 from open_mpic_core.common_domain.enum.check_type import CheckType
 from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
@@ -55,16 +56,9 @@ class MpicCoordinator:
 
         orchestration_parameters = mpic_request.orchestration_parameters
 
-        # Determine the perspectives and perspective count to use for this request.
-        # TODO revisit this when diagnostic mode (allowing 'perspectives') is implemented
         perspective_count = self.default_perspective_count
-        if orchestration_parameters is not None:
-            if orchestration_parameters.perspectives is not None:
-                perspectives_to_use = orchestration_parameters.perspectives
-                perspective_count = len(perspectives_to_use)
-            else:
-                if orchestration_parameters.perspective_count is not None:
-                    perspective_count = orchestration_parameters.perspective_count
+        if orchestration_parameters is not None and orchestration_parameters.perspective_count is not None:
+            perspective_count = orchestration_parameters.perspective_count
 
         perspective_cohorts = self.create_cohorts_of_randomly_selected_perspectives(self.target_perspectives,
                                                                                     perspective_count,
@@ -178,12 +172,14 @@ class MpicCoordinator:
                                 timestamp_ns=time.time_ns()
                             )
                         case CheckType.DCV:
+                            dcv_check_request: DcvCheckRequest = call_configuration.check_request
+                            validation_method = dcv_check_request.dcv_check_parameters.validation_details.validation_method
                             check_error_response = DcvCheckResponse(
                                 perspective_code=perspective.code,
                                 check_passed=False,
                                 errors=[MpicValidationError(error_type=ErrorMessages.COORDINATOR_COMMUNICATION_ERROR.key,
                                                             error_message=ErrorMessages.COORDINATOR_COMMUNICATION_ERROR.message)],
-                                details=DcvCheckResponseDetails(),  # TODO what should go here in this case?
+                                details=DcvCheckResponseDetailsBuilder.build_response_details(validation_method),  # TODO what should go here in this case?
                                 timestamp_ns=time.time_ns()
                             )
                     validity_per_perspective[perspective.code] |= check_error_response.check_passed

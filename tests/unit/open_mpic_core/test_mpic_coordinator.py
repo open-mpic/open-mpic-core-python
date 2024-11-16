@@ -60,7 +60,7 @@ class TestMpicCoordinator:
         assert len(call_list) == 6
         assert set(map(lambda call_result: call_result.check_type, call_list)) == {CheckType.CAA}  # ensure each call is of type 'caa'
 
-    def collect_async_calls_to_issue__should_include_caa_check_parameters_as_caa_params_in_input_args_if_present(self):
+    def collect_async_calls_to_issue__should_include_caa_check_parameters_if_present(self):
         request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         request.caa_check_parameters.caa_domains = ['example.com']
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
@@ -68,14 +68,14 @@ class TestMpicCoordinator:
         call_list = MpicCoordinator.collect_async_calls_to_issue(request, target_perspectives)
         assert all(call.check_request.caa_check_parameters.caa_domains == ['example.com'] for call in call_list)
 
-    def collect_async_calls_to_issue__should_have_only_dcv_calls_and_include_validation_input_args_given_dcv_check_type(self):
-        request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(DcvValidationMethod.DNS_GENERIC)
+    def collect_async_calls_to_issue__should_have_only_dcv_calls_and_include_validation_details_given_dcv_check_type(self):
+        request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(DcvValidationMethod.DNS_CHANGE)
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
         target_perspectives = mpic_coordinator_config.target_perspectives
         call_list = MpicCoordinator.collect_async_calls_to_issue(request, target_perspectives)
         assert len(call_list) == 6
         assert set(map(lambda call_result: call_result.check_type, call_list)) == {CheckType.DCV}  # ensure each call is of type 'dcv'
-        assert all(call.check_request.dcv_check_parameters.validation_details.validation_method == DcvValidationMethod.DNS_GENERIC for call in call_list)
+        assert all(call.check_request.dcv_check_parameters.validation_details.validation_method == DcvValidationMethod.DNS_CHANGE for call in call_list)
         assert all(call.check_request.dcv_check_parameters.validation_details.dns_name_prefix == 'test' for call in call_list)
 
     def coordinate_mpic__should_call_remote_perspective_call_function_with_correct_parameters(self):
@@ -99,14 +99,14 @@ class TestMpicCoordinator:
             check_request = call_args[2]  # was previously a serialized string; now the actual CheckRequest object
             assert check_request.domain_or_ip_target == mpic_request.domain_or_ip_target
 
-    def coordinate_mpic__should_return_200_and_results_given_successful_caa_corroboration(self):
+    def coordinate_mpic__should_return_check_success_given_successful_caa_corroboration(self):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
         mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_config)
         mpic_response = mpic_coordinator.coordinate_mpic(mpic_request)
         assert mpic_response.is_valid is True
 
-    def coordinate_mpic__should_successfully_carry_out_caa_mpic_given_no_parameters_besides_target(self):
+    def coordinate_mpic__should_fully_carry_out_caa_mpic_given_no_parameters_besides_target(self):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         mpic_request.orchestration_parameters = None
         mpic_request.caa_check_parameters = None
@@ -115,7 +115,7 @@ class TestMpicCoordinator:
         mpic_response = mpic_coordinator.coordinate_mpic(mpic_request)
         assert mpic_response.is_valid is True
 
-    def coordinate_mpic__should_successfully_carry_out_caa_mpic_given_empty_orchestration_parameters(self):
+    def coordinate_mpic__should_fully_carry_out_caa_mpic_given_empty_orchestration_parameters(self):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters()
         mpic_request.caa_check_parameters = None
@@ -124,7 +124,7 @@ class TestMpicCoordinator:
         mpic_response = mpic_coordinator.coordinate_mpic(mpic_request)
         assert mpic_response.is_valid is True
 
-    def coordinate_mpic__should_successfully_carry_out_caa_mpic_given_only_max_attempts_orchestration_parameters(self):
+    def coordinate_mpic__should_fully_carry_out_caa_mpic_given_only_max_attempts_orchestration_parameter(self):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         # Reset all fields in orchestration parameters to None
         mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters()
@@ -202,7 +202,7 @@ class TestMpicCoordinator:
         # assert that perspectives in first cohort and in second cohort are the same perspectives
         assert all(first_cohort_sorted[i].perspective_code == second_cohort_sorted[i].perspective_code for i in range(len(first_cohort_sorted)))
 
-    def coordinate_mpic__should_cap_attempts_at_max_attempts_env_parameter_if_found(self):
+    def coordinate_mpic__should_cap_attempts_at_max_attempts_if_configured(self):
         mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
         mpic_coordinator_configuration.global_max_attempts = 2
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
@@ -275,8 +275,8 @@ class TestMpicCoordinator:
         mpic_coordinator_configuration = MpicCoordinatorConfiguration(
             target_perspectives,
             default_perspective_count,
-            enforce_distinct_rir_regions, 
-            global_max_attempts, 
+            enforce_distinct_rir_regions,
+            global_max_attempts,
             hash_secret)
         return mpic_coordinator_configuration
 

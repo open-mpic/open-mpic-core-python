@@ -7,27 +7,13 @@ class MpicRequestValidator:
     @staticmethod
     # returns a list of validation issues found in the request; if empty, request is (probably) valid
     # TODO should we create a flag to validate values separately from structure?
-    def is_request_valid(mpic_request, known_perspectives, diagnostic_mode=False) -> (bool, list):
+    def is_request_valid(mpic_request, known_perspectives) -> (bool, list):
         request_validation_issues = []
 
-        # TODO extract into a validate_orchestration_parameters method...
-        # TODO align on this: if present, should 'perspectives' override 'perspective-count'? or conflict?
-        # 'perspectives' is allowed if 'diagnostic_mode' is True
-        # if 'diagnostic-mode' is false, 'perspectives' is not allowed
-        # enforce that only one of 'perspectives' or 'perspective-count' is present
         should_validate_quorum_count = False
         requested_perspective_count = 0
         if mpic_request.orchestration_parameters is not None:
-            if mpic_request.orchestration_parameters.perspectives is not None and diagnostic_mode:
-                requested_perspectives = mpic_request.orchestration_parameters.perspectives
-                requested_perspective_count = len(requested_perspectives)
-                if MpicRequestValidator.are_requested_perspectives_valid(requested_perspectives, known_perspectives):
-                    should_validate_quorum_count = True
-                else:
-                    request_validation_issues.append(MpicRequestValidationIssue(MpicRequestValidationMessages.INVALID_PERSPECTIVE_LIST))
-            elif mpic_request.orchestration_parameters.perspectives:
-                request_validation_issues.append(MpicRequestValidationIssue(MpicRequestValidationMessages.PERSPECTIVES_NOT_IN_DIAGNOSTIC_MODE))
-            elif mpic_request.orchestration_parameters.perspective_count is not None:
+            if mpic_request.orchestration_parameters.perspective_count is not None:
                 requested_perspective_count = mpic_request.orchestration_parameters.perspective_count
                 if MpicRequestValidator.is_requested_perspective_count_valid(requested_perspective_count, known_perspectives):
                     should_validate_quorum_count = True
@@ -39,12 +25,6 @@ class MpicRequestValidator:
 
         # returns true if no validation issues found, false otherwise; includes list of validation issues found
         return len(request_validation_issues) == 0, request_validation_issues
-
-    @staticmethod
-    def are_requested_perspectives_valid(requested_perspective_codes, target_perspectives) -> bool:
-        # check if requested_perspectives is a subset of known_perspectives
-        target_perspective_codes = [perspective.code for perspective in target_perspectives]
-        return all(code in target_perspective_codes for code in requested_perspective_codes)
 
     @staticmethod
     def is_requested_perspective_count_valid(requested_perspective_count, target_perspectives) -> bool:
