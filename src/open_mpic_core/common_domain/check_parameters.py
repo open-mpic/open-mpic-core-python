@@ -12,7 +12,8 @@ from open_mpic_core.common_domain.enum.url_scheme import UrlScheme
 class CaaCheckParameters(BaseModel):
     certificate_type: CertificateType | None = None
     caa_domains: list[str] | None = None
-    # contact_info_query: bool | False = False  # to accommodate email and phone based DCV that gets contact info from CAA records
+    # contact_info_query: bool | False = False  # to better accommodate email/phone based DCV using contact info in CAA
+
 
 class DcvValidationDetails(BaseModel, ABC):
     validation_method: DcvValidationMethod
@@ -46,8 +47,6 @@ class DcvAcmeHttp01ValidationDetails(DcvValidationDetails):
 class DcvAcmeDns01ValidationDetails(DcvValidationDetails):
     validation_method: Literal[DcvValidationMethod.ACME_DNS_01] = DcvValidationMethod.ACME_DNS_01
     key_authorization: str
-# Please deploy a DNS TXT record under the name
-# _acme-challenge.<domain.com> with the following value:  667drNmQL3vX6bu8YZlgy0wKNBlCny8yrjF1lSaUndc
 
 
 class DcvCheckParameters(BaseModel):
