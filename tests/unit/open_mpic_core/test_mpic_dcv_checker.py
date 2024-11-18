@@ -378,8 +378,8 @@ class TestMpicDcvChecker:
         txt_record_1 = MockDnsObjectCreator.create_record_by_type(DnsRecordType.TXT, record_data)
         txt_record_2 = MockDnsObjectCreator.create_record_by_type(DnsRecordType.TXT, {'value': 'whatever2'})
         txt_record_3 = MockDnsObjectCreator.create_record_by_type(DnsRecordType.TXT, {'value': 'whatever3'})
-        test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer_with_multiple_txt_records(
-            dcv_request.domain_or_ip_target, record_name_prefix,
+        test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer_with_multiple_records(
+            dcv_request.domain_or_ip_target, record_name_prefix, DnsRecordType.TXT,
             *[txt_record_1, txt_record_2, txt_record_3], mocker=mocker
         )
         mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: test_dns_query_answer)

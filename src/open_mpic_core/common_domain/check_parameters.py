@@ -12,7 +12,7 @@ from open_mpic_core.common_domain.enum.url_scheme import UrlScheme
 class CaaCheckParameters(BaseModel):
     certificate_type: CertificateType | None = None
     caa_domains: list[str] | None = None
-
+    # contact_info_query: bool | False = False  # to accommodate email and phone based DCV that gets contact info from CAA records
 
 class DcvValidationDetails(BaseModel, ABC):
     validation_method: DcvValidationMethod

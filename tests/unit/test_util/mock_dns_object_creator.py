@@ -10,17 +10,10 @@ from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
 
 class MockDnsObjectCreator:
     @staticmethod
-    def create_caa_rrset(*caa_records: CAA):
-        test_rrset = RRset(name=dns.name.from_text('example.com'), rdclass=dns.rdataclass.IN, rdtype=dns.rdatatype.CAA)
-        for caa_record in caa_records:
-            test_rrset.add(caa_record)
-        return test_rrset
-
-    @staticmethod
-    def create_txt_rrset(*txt_records: CNAME):
-        test_rrset = RRset(name=dns.name.from_text('example.com'), rdclass=dns.rdataclass.IN, rdtype=dns.rdatatype.TXT)
-        for cname_record in txt_records:
-            test_rrset.add(cname_record)
+    def create_rrset(rdatatype, *records):
+        test_rrset = RRset(name=dns.name.from_text('example.com'), rdclass=dns.rdataclass.IN, rdtype=rdatatype)
+        for record in records:
+            test_rrset.add(record)
         return test_rrset
 
     @staticmethod
@@ -67,13 +60,14 @@ class MockDnsObjectCreator:
         return dns.resolver.Answer(qname=dns_record_name, rdtype=dns_record_type, rdclass=dns.rdataclass.IN, response=good_response)
 
     @staticmethod
-    def create_dns_query_answer_with_multiple_txt_records(record_name, record_name_prefix, *txt_records, mocker):
-        good_response = MockDnsObjectCreator.create_dns_query_message_with_question(record_name, record_name_prefix, DnsRecordType.TXT)
+    def create_dns_query_answer_with_multiple_records(record_name, record_name_prefix, dns_record_type, *records, mocker):
+        good_response = MockDnsObjectCreator.create_dns_query_message_with_question(record_name, record_name_prefix, dns_record_type)
         dns_record_name = good_response.question[0].name
-        response_answer_rrset = MockDnsObjectCreator.create_txt_rrset(*txt_records)
+        rdatatype = dns.rdatatype.from_text(dns_record_type)
+        response_answer_rrset = MockDnsObjectCreator.create_rrset(rdatatype, *records)
         good_response.answer = [response_answer_rrset]
         mocker.patch('dns.message.Message.find_rrset', return_value=response_answer_rrset)
-        return dns.resolver.Answer(qname=dns_record_name, rdtype=dns.rdatatype.TXT, rdclass=dns.rdataclass.IN, response=good_response)
+        return dns.resolver.Answer(qname=dns_record_name, rdtype=rdatatype, rdclass=dns.rdataclass.IN, response=good_response)
 
     @staticmethod
     def create_dns_query_message_with_question(record_name, record_name_prefix, record_type: DnsRecordType) -> dns.message.QueryMessage:
