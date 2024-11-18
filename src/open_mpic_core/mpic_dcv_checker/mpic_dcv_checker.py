@@ -46,7 +46,6 @@ class MpicDcvChecker:
         except requests.exceptions.RequestException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
-
         return dcv_check_response
 
     def perform_dns_change_validation(self, request) -> DcvCheckResponse:
@@ -67,7 +66,6 @@ class MpicDcvChecker:
         except dns.exception.DNSException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)]
-
         return dcv_check_response
 
     def perform_acme_http_01_validation(self, request) -> DcvCheckResponse:
@@ -84,7 +82,6 @@ class MpicDcvChecker:
         except requests.exceptions.RequestException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
-
         return dcv_check_response
 
     def perform_acme_dns_01_validation(self, request) -> DcvCheckResponse:
@@ -100,7 +97,6 @@ class MpicDcvChecker:
         except dns.exception.DNSException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)]
-
         return dcv_check_response
 
     def create_empty_check_response(self, validation_method: DcvValidationMethod) -> DcvCheckResponse:

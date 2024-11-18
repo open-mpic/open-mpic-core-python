@@ -103,6 +103,17 @@ class MpicCaaChecker:
         caa_found = False
         domain = None
         rrset = None
+
+        caa_check_response = CaaCheckResponse(
+            perspective_code=self.perspective.code,
+            check_passed=False,
+            errors=None,
+            details=CaaCheckResponseDetails(
+                caa_record_present=None
+            ),
+            timestamp_ns=None
+        )
+
         try:
             rrset, domain = MpicCaaChecker.find_caa_record_and_domain(caa_request)
             caa_found = rrset is not None
@@ -110,19 +121,19 @@ class MpicCaaChecker:
             caa_lookup_error = True
 
         if caa_lookup_error:
-            response = CaaCheckResponse(perspective_code=self.perspective.code, check_passed=False,
-                                        errors=[MpicValidationError(error_type=ErrorMessages.CAA_LOOKUP_ERROR.key, error_message=ErrorMessages.CAA_LOOKUP_ERROR.message)],
-                                        details=CaaCheckResponseDetails(caa_record_present=False),  # Possibly should change to present=None to indicate the lookup failed.
-                                        timestamp_ns=time.time_ns())
+            caa_check_response.errors = [MpicValidationError(error_type=ErrorMessages.CAA_LOOKUP_ERROR.key, error_message=ErrorMessages.CAA_LOOKUP_ERROR.message)]
+            caa_check_response.details.found_at = None
+            caa_check_response.details.response = None
         elif not caa_found:  # if domain has no CAA records: valid for issuance
-            response = CaaCheckResponse(perspective_code=self.perspective.code, check_passed=True,
-                                        details=CaaCheckResponseDetails(caa_record_present=False),
-                                        timestamp_ns=time.time_ns())
+            caa_check_response.check_passed = True
+            caa_check_response.details.caa_record_present = False
+            caa_check_response.details.found_at = None
+            caa_check_response.details.response = None
         else:
             valid_for_issuance = MpicCaaChecker.is_valid_for_issuance(caa_domains, is_wc_domain, rrset)
-            response = CaaCheckResponse(perspective_code=self.perspective.code, check_passed=valid_for_issuance,
-                                        details=CaaCheckResponseDetails(caa_record_present=True,
-                                                                        found_at=domain.to_text(omit_final_dot=True),
-                                                                        response=rrset.to_text()),
-                                        timestamp_ns=time.time_ns())
-        return response
+            caa_check_response.check_passed = valid_for_issuance
+            caa_check_response.details.caa_record_present = True
+            caa_check_response.details.found_at = domain.to_text(omit_final_dot=True)
+            caa_check_response.details.response = rrset.to_text()
+        caa_check_response.timestamp_ns = time.time_ns()
+        return caa_check_response

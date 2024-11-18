@@ -6,7 +6,7 @@ from typing_extensions import Annotated
 
 
 class CaaCheckResponseDetails(BaseModel):
-    caa_record_present: bool = False  # TODO allow None to reflect potential error state; rename to just 'present'?
+    caa_record_present: bool | None = None  # TODO allow None to reflect potential error state; rename to just 'present'?
     found_at: str | None = None  # domain where CAA record was found  # FIXME set this properly
     response: str | None = None  # base64 format of DNS RRset of response to CAA query  # FIXME set this properly
 
