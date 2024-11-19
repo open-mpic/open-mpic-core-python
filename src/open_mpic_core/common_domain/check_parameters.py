@@ -34,6 +34,7 @@ class DcvWebsiteChangeValidationDetails(DcvValidationDetails):
 class DcvDnsChangeValidationDetails(DcvValidationDetails):
     validation_method: Literal[DcvValidationMethod.DNS_CHANGE] = DcvValidationMethod.DNS_CHANGE
     challenge_value: str
+    require_exact_match: bool = True
     dns_name_prefix: str
     dns_record_type: DnsRecordType
 

@@ -209,6 +209,16 @@ class TestMpicDcvChecker:
         dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
         assert dcv_response.check_passed is True
 
+    def dns_change_validation__should_allow_finding_expected_challenge_as_substring(self, set_env_variables, mocker):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.DNS_CHANGE)
+        dcv_request.dcv_check_parameters.validation_details.challenge_value = 'extraStuffchallenge-valueMoreStuff'
+        self.mock_dns_resolve_call(dcv_request, mocker)
+        dcv_request.dcv_check_parameters.validation_details.challenge_value = 'challenge-value'
+        dcv_request.dcv_check_parameters.validation_details.require_exact_match = False
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.perform_dns_change_validation(dcv_request)
+        assert dcv_response.check_passed is True
+
     @pytest.mark.parametrize('dns_name_prefix', ['_dnsauth', '', None])
     def dns_change_validation__should_use_dns_name_prefix_if_provided(self, set_env_variables, dns_name_prefix, mocker):
         dcv_request = ValidCheckCreator.create_valid_dns_check_request()

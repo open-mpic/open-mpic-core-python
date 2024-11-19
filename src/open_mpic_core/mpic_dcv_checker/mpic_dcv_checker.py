@@ -57,12 +57,14 @@ class MpicDcvChecker:
         else:
             name_to_resolve = domain_or_ip_target
         expected_dns_record_content = request.dcv_check_parameters.validation_details.challenge_value
+        exact_match = request.dcv_check_parameters.validation_details.require_exact_match
         dcv_check_response = self.create_empty_check_response(DcvValidationMethod.DNS_CHANGE)
 
         try:
             # TODO add leading underscore to name_to_resolve if it's not found?
             lookup = dns.resolver.resolve(name_to_resolve, dns_record_type)
-            MpicDcvChecker.evaluate_dns_lookup_response(dcv_check_response, lookup, dns_record_type, expected_dns_record_content)
+            MpicDcvChecker.evaluate_dns_lookup_response(dcv_check_response, lookup, dns_record_type,
+                                                        expected_dns_record_content, exact_match)
         except dns.exception.DNSException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)]
@@ -134,7 +136,8 @@ class MpicDcvChecker:
                 MpicValidationError(error_type=str(lookup_response.status_code), error_message=lookup_response.reason)]
 
     @staticmethod
-    def evaluate_dns_lookup_response(dcv_check_response: DcvCheckResponse, lookup_response: dns.resolver.Answer, dns_record_type: RdataType, expected_dns_record_content: str):
+    def evaluate_dns_lookup_response(dcv_check_response: DcvCheckResponse, lookup_response: dns.resolver.Answer,
+                                     dns_record_type: RdataType, expected_dns_record_content: str, exact_match: bool = True):
         response_code = lookup_response.response.rcode
         records_as_strings = []
         for response_answer in lookup_response.response.answer:
@@ -146,7 +149,10 @@ class MpicDcvChecker:
                         record_data_as_string = record_data_as_string[1:-1]
                     records_as_strings.append(record_data_as_string)
 
-        dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
+        if exact_match:
+            dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
+        else:
+            dcv_check_response.check_passed = any(expected_dns_record_content in record for record in records_as_strings)
         dcv_check_response.timestamp_ns = time.time_ns()
         dcv_check_response.details.records_seen = records_as_strings
         dcv_check_response.details.response_code = response_code
