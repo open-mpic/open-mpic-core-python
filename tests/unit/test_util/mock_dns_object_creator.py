@@ -3,6 +3,8 @@ from dns.flags import Flag
 from dns.rdtypes.ANY.CAA import CAA
 from dns.rdtypes.ANY.CNAME import CNAME
 from dns.rdtypes.ANY.TXT import TXT
+from dns.rdtypes.IN.A import A
+from dns.rdtypes.IN.AAAA import AAAA
 from dns.rrset import RRset
 
 from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
@@ -29,9 +31,13 @@ class MockDnsObjectCreator:
             case DnsRecordType.TXT:
                 return TXT(dns.rdataclass.IN, dns.rdatatype.TXT, strings=[value.encode('utf-8')])
             case DnsRecordType.CAA:
-                flags = record_data['flag']
-                tag = record_data['tag']
+                flags = record_data['flag'] if 'flag' in record_data else 0
+                tag = record_data['tag'] if 'tag' in record_data else 'issue'
                 return CAA(dns.rdataclass.IN, dns.rdatatype.CAA, flags=flags, tag=tag.encode('utf-8'), value=value.encode('utf-8'))
+            case DnsRecordType.A:
+                return A(dns.rdataclass.IN, dns.rdatatype.A, address=value)
+            case DnsRecordType.AAAA:
+                return AAAA(dns.rdataclass.IN, dns.rdatatype.AAAA, address=value)
 
     @staticmethod
     def create_caa_query_answer(record_name, flags, tag, value, mocker):
@@ -40,14 +46,7 @@ class MockDnsObjectCreator:
 
     @staticmethod
     def create_dns_query_answer(record_name, record_name_prefix, record_type, record_data, mocker):
-        dns_record = None
-        match record_type:
-            case DnsRecordType.CNAME:
-                dns_record = MockDnsObjectCreator.create_record_by_type(DnsRecordType.CNAME, record_data)
-            case DnsRecordType.TXT:
-                dns_record = MockDnsObjectCreator.create_record_by_type(DnsRecordType.TXT, record_data)
-            case DnsRecordType.CAA:
-                dns_record = MockDnsObjectCreator.create_record_by_type(DnsRecordType.CAA, record_data)
+        dns_record = MockDnsObjectCreator.create_record_by_type(record_type, record_data)
         good_response = MockDnsObjectCreator.create_dns_query_message_with_question(record_name, record_name_prefix, record_type)
         dns_record_name = good_response.question[0].name
         dns_record_type = dns.rdatatype.from_text(record_type)

@@ -45,14 +45,12 @@ class MpicCaaChecker:
         rrset = None
         domain = dns.name.from_text(caa_request.domain_or_ip_target)
 
-        while domain != dns.name.root:  # should we stop at TLD / Public Suffix? (e.g., .com, .ac.uk)
+        while domain != dns.name.root:
             try:
                 lookup = dns.resolver.resolve(domain, dns.rdatatype.CAA)
-                print(f'Found a CAA record for {domain}! Response: {lookup.rrset.to_text()}')
                 rrset = lookup.rrset
                 break
             except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
-                print(f'No CAA record found for {domain}; trying parent domain...')
                 domain = domain.parent()
             except Exception:
                 raise MpicCaaLookupException

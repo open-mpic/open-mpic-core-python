@@ -1,7 +1,7 @@
 from abc import ABC
-from typing import Literal, Union
+from typing import Literal, Union, Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, root_validator, model_validator
 
 from open_mpic_core.common_domain.enum.certificate_type import CertificateType
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
@@ -31,12 +31,43 @@ class DcvWebsiteChangeValidationDetails(DcvValidationDetails):
     # TODO add optional flag to iterate up through the domain hierarchy
 
 
-class DcvDnsChangeValidationDetails(DcvValidationDetails):
-    validation_method: Literal[DcvValidationMethod.DNS_CHANGE] = DcvValidationMethod.DNS_CHANGE
+class DcvGeneralDnsValidationDetails(DcvValidationDetails):
     challenge_value: str
     require_exact_match: bool = True
     dns_name_prefix: str
     dns_record_type: DnsRecordType
+
+
+class DcvDnsChangeValidationDetails(DcvGeneralDnsValidationDetails):
+    validation_method: Literal[DcvValidationMethod.DNS_CHANGE] = DcvValidationMethod.DNS_CHANGE
+    dns_record_type: DnsRecordType = Union[DnsRecordType.CNAME, DnsRecordType.TXT, DnsRecordType.CAA]
+
+
+class DcvContactEmailTxtValidationDetails(DcvGeneralDnsValidationDetails):
+    validation_method: Literal[DcvValidationMethod.CONTACT_EMAIL] = DcvValidationMethod.CONTACT_EMAIL
+    dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
+    dns_name_prefix: Literal['_validation-contactemail'] = '_validation-contactemail'
+
+
+class DcvContactEmailCaaValidationDetails(DcvGeneralDnsValidationDetails):
+    validation_method: Literal[DcvValidationMethod.CONTACT_EMAIL] = DcvValidationMethod.CONTACT_EMAIL
+    dns_record_type: Literal[DnsRecordType.CAA] = DnsRecordType.CAA
+
+
+class DcvContactPhoneTxtValidationDetails(DcvGeneralDnsValidationDetails):
+    validation_method: Literal[DcvValidationMethod.CONTACT_PHONE] = DcvValidationMethod.CONTACT_PHONE
+    dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
+    dns_name_prefix: Literal['_validation-contactphone'] = '_validation-contactphone'
+
+
+class DcvContactPhoneCaaValidationDetails(DcvGeneralDnsValidationDetails):
+    validation_method: Literal[DcvValidationMethod.CONTACT_PHONE] = DcvValidationMethod.CONTACT_PHONE
+    dns_record_type: Literal[DnsRecordType.CAA] = DnsRecordType.CAA
+
+
+class DcvIpLookupValidationDetails(DcvGeneralDnsValidationDetails):
+    validation_method: Literal[DcvValidationMethod.IP_LOOKUP] = DcvValidationMethod.IP_LOOKUP
+    # dns_record_type: Union[DnsRecordType.A, DnsRecordType.AAAA]
 
 
 class DcvAcmeHttp01ValidationDetails(DcvValidationDetails):
@@ -48,6 +79,8 @@ class DcvAcmeHttp01ValidationDetails(DcvValidationDetails):
 class DcvAcmeDns01ValidationDetails(DcvValidationDetails):
     validation_method: Literal[DcvValidationMethod.ACME_DNS_01] = DcvValidationMethod.ACME_DNS_01
     key_authorization: str
+    dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
+    dns_name_prefix: Literal['_acme-challenge'] = '_acme-challenge'
 
 
 class DcvCheckParameters(BaseModel):
@@ -55,5 +88,10 @@ class DcvCheckParameters(BaseModel):
         DcvWebsiteChangeValidationDetails,
         DcvDnsChangeValidationDetails,
         DcvAcmeHttp01ValidationDetails,
-        DcvAcmeDns01ValidationDetails
+        DcvAcmeDns01ValidationDetails,
+        DcvContactEmailTxtValidationDetails,
+        DcvContactEmailCaaValidationDetails,
+        DcvContactPhoneTxtValidationDetails,
+        DcvContactPhoneCaaValidationDetails,
+        DcvIpLookupValidationDetails
     ]

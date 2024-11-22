@@ -7,8 +7,7 @@ import concurrent.futures
 from datetime import datetime
 import hashlib
 
-from open_mpic_core.common_domain.check_response import CaaCheckResponse, \
-    CaaCheckResponseDetails, DcvCheckResponse, DcvCheckResponseDetails
+from open_mpic_core.common_domain.check_response import CaaCheckResponse, CaaCheckResponseDetails, DcvCheckResponse
 from open_mpic_core.common_domain.check_request import CaaCheckRequest, DcvCheckRequest
 from open_mpic_core.common_domain.check_response_details import DcvCheckResponseDetailsBuilder
 from open_mpic_core.common_domain.validation_error import MpicValidationError
