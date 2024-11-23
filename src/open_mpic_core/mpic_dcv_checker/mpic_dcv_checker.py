@@ -85,7 +85,6 @@ class MpicDcvChecker:
 
         dns_rdata_type = dns.rdatatype.from_text(dns_record_type)
         lookup = None
-        # walk_domain_tree = False  # TODO remove this and test logic
         if walk_domain_tree:
             domain = dns.name.from_text(name_to_resolve)
 

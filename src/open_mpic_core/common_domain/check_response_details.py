@@ -34,7 +34,7 @@ class DcvDnsCheckResponseDetails(BaseModel):
     records_seen: list[str] | None = None  # list of records found in DNS query; not base64 encoded
     response_code: int | None = None  # DNS response code
     ad_flag: bool | None = None  # was AD flag set in DNS response
-    found_at: str | None = None  # domain where DNS record was found  # FIXME set this properly
+    found_at: str | None = None  # domain where DNS record was found
 
 
 DcvCheckResponseDetails = Annotated[Union[
