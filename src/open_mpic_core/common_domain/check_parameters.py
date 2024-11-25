@@ -67,7 +67,7 @@ class DcvContactPhoneCaaValidationDetails(DcvGeneralDnsValidationDetails):
 
 class DcvIpLookupValidationDetails(DcvGeneralDnsValidationDetails):
     validation_method: Literal[DcvValidationMethod.IP_LOOKUP] = DcvValidationMethod.IP_LOOKUP
-    # dns_record_type: Union[DnsRecordType.A, DnsRecordType.AAAA]
+    dns_record_type: DnsRecordType = Union[DnsRecordType.A, DnsRecordType.AAAA]
 
 
 class DcvAcmeHttp01ValidationDetails(DcvValidationDetails):

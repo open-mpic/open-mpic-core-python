@@ -48,6 +48,10 @@ version.path = "src/open_mpic_core/__about__.py"
 build.sources = ["src"]
 build.targets.wheel.packages = ["src/open_mpic_core"]
 
+[tool.api]
+spec_version = "2.2.0"
+spec_repository = "https://github.com/open-mpic/open-mpic-specification"
+
 [tool.hatch.envs.default]
 skip-install = false
 type="virtual"
