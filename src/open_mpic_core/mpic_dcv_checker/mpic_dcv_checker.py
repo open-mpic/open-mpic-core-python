@@ -139,7 +139,7 @@ class MpicDcvChecker:
 
     @staticmethod
     def evaluate_dns_lookup_response(dcv_check_response: DcvCheckResponse, lookup_response: dns.resolver.Answer, dns_record_type: RdataType, expected_dns_record_content: str):
-        response_code = lookup_response.response.rcode
+        response_code = lookup_response.response.rcode()
         records_as_strings = []
         for response_answer in lookup_response.response.answer:
             if response_answer.rdtype == dns_record_type:
