@@ -117,6 +117,17 @@ class TestMpicDcvRequest:
         mpic_request = MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
         assert mpic_request.dcv_check_parameters.validation_details.url_scheme == UrlScheme.HTTP
 
+    @pytest.mark.parametrize('validation_method, expected_prefix', [
+        (DcvValidationMethod.CONTACT_EMAIL, '_validation-contactemail'),
+        (DcvValidationMethod.CONTACT_PHONE, '_validation-contactphone')
+    ])  # imperfect test because Pydantic seems to spit out a ton of errors trying to deserialize the JSON correctly
+    def mpic_dcv_request__should_enforce_domain_prefix_for_contact_lookup_for_txt_records(self, validation_method, expected_prefix):
+        request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(validation_method)
+        request.dcv_check_parameters.validation_details.dns_name_prefix = 'moo'
+        with pytest.raises(pydantic.ValidationError) as validation_error:
+            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
+        assert expected_prefix in str(validation_error.value)
+
 
 if __name__ == '__main__':
     pytest.main()

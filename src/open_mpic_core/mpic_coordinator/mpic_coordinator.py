@@ -7,8 +7,7 @@ import concurrent.futures
 from datetime import datetime
 import hashlib
 
-from open_mpic_core.common_domain.check_response import CaaCheckResponse, \
-    CaaCheckResponseDetails, DcvCheckResponse, DcvCheckResponseDetails
+from open_mpic_core.common_domain.check_response import CaaCheckResponse, CaaCheckResponseDetails, DcvCheckResponse
 from open_mpic_core.common_domain.check_request import CaaCheckRequest, DcvCheckRequest
 from open_mpic_core.common_domain.check_response_details import DcvCheckResponseDetailsBuilder
 from open_mpic_core.common_domain.validation_error import MpicValidationError
@@ -144,16 +143,14 @@ class MpicCoordinator:
 
         # example code: https://docs.python.org/3/library/concurrent.futures.html
         with concurrent.futures.ThreadPoolExecutor(max_workers=perspective_count) as executor:
-            exec_begin = time.perf_counter()
+            # exec_begin = time.perf_counter()
             futures_to_call_configs = {executor.submit(self.call_remote_perspective, self.call_remote_perspective_function, call_config): call_config
                                        for call_config in async_calls_to_issue}
             for future in concurrent.futures.as_completed(futures_to_call_configs):
                 call_configuration = futures_to_call_configs[future]
                 perspective: RemotePerspective = call_configuration.perspective
                 now = time.perf_counter()
-                print(
-                    f"Unpacking future result for {perspective.code} at time {str(datetime.now())}: {now - exec_begin:.2f} \
-                    seconds from beginning")
+                # print(f"Unpacking future result for {perspective.code} at time {str(datetime.now())}: {now - exec_begin:.2f} seconds from beginning")
                 try:
                     check_response = future.result()  # expecting a CheckResponse object
                     validity_per_perspective[perspective.code] |= check_response.check_passed

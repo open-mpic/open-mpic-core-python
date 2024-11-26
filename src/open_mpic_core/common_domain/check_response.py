@@ -9,9 +9,9 @@ from typing_extensions import Annotated
 
 class BaseCheckResponse(BaseModel):
     perspective_code: str
-    check_passed: bool = False  # TODO rename to is_valid ?
+    check_passed: bool = False
     errors: list[MpicValidationError] | None = None
-    timestamp_ns: int | None = None  # TODO what do we name this field?
+    timestamp_ns: int | None = None
 
 
 class CaaCheckResponse(BaseCheckResponse):

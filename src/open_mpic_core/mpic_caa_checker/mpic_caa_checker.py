@@ -13,6 +13,9 @@ from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
 
 ISSUE_TAG: Final[str] = 'issue'
 ISSUEWILD_TAG: Final[str] = 'issuewild'
+# to accommodate email and phone based DCV that gets contact info from CAA records
+CONTACTEMAIL_TAG: Final[str] = 'contactemail'
+CONTACTPHONE_TAG: Final[str] = 'contactphone'
 
 
 class MpicCaaLookupException(Exception):  # This is a python exception type used for raise statements.
@@ -38,18 +41,16 @@ class MpicCaaChecker:
         return False
 
     @staticmethod
-    def find_caa_record_and_domain(caa_request) -> tuple[RRset, Name]:
+    def find_caa_records_and_domain(caa_request) -> tuple[RRset, Name]:
         rrset = None
         domain = dns.name.from_text(caa_request.domain_or_ip_target)
 
-        while domain != dns.name.root:  # should we stop at TLD / Public Suffix? (e.g., .com, .ac.uk)
+        while domain != dns.name.root:
             try:
                 lookup = dns.resolver.resolve(domain, dns.rdatatype.CAA)
-                print(f'Found a CAA record for {domain}! Response: {lookup.rrset.to_text()}')
                 rrset = lookup.rrset
                 break
             except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
-                print(f'No CAA record found for {domain}; trying parent domain...')
                 domain = domain.parent()
             except Exception:
                 raise MpicCaaLookupException
@@ -71,7 +72,8 @@ class MpicCaaChecker:
                 issue_tags.append(val)
             elif tag_lower == ISSUEWILD_TAG:
                 issue_wild_tags.append(val)
-            elif resource_record.flags & 0b10000000:  # bitwise-and to check if flags are 128 (the critical flag)
+            elif (tag_lower != CONTACTEMAIL_TAG and tag_lower != CONTACTPHONE_TAG and
+                  resource_record.flags & 0b10000000):  # bitwise-and to check if flags are 128 (the critical flag)
                 has_unknown_critical_flags = True
 
         if has_unknown_critical_flags:
@@ -103,26 +105,37 @@ class MpicCaaChecker:
         caa_found = False
         domain = None
         rrset = None
+
+        caa_check_response = CaaCheckResponse(
+            perspective_code=self.perspective.code,
+            check_passed=False,
+            errors=None,
+            details=CaaCheckResponseDetails(
+                caa_record_present=None
+            ),
+            timestamp_ns=None
+        )
+
         try:
-            rrset, domain = MpicCaaChecker.find_caa_record_and_domain(caa_request)
+            rrset, domain = MpicCaaChecker.find_caa_records_and_domain(caa_request)
             caa_found = rrset is not None
         except MpicCaaLookupException:
             caa_lookup_error = True
 
         if caa_lookup_error:
-            response = CaaCheckResponse(perspective_code=self.perspective.code, check_passed=False,
-                                        errors=[MpicValidationError(error_type=ErrorMessages.CAA_LOOKUP_ERROR.key, error_message=ErrorMessages.CAA_LOOKUP_ERROR.message)],
-                                        details=CaaCheckResponseDetails(caa_record_present=False),  # Possibly should change to present=None to indicate the lookup failed.
-                                        timestamp_ns=time.time_ns())
+            caa_check_response.errors = [MpicValidationError(error_type=ErrorMessages.CAA_LOOKUP_ERROR.key, error_message=ErrorMessages.CAA_LOOKUP_ERROR.message)]
+            caa_check_response.details.found_at = None
+            caa_check_response.details.records_seen = None
         elif not caa_found:  # if domain has no CAA records: valid for issuance
-            response = CaaCheckResponse(perspective_code=self.perspective.code, check_passed=True,
-                                        details=CaaCheckResponseDetails(caa_record_present=False),
-                                        timestamp_ns=time.time_ns())
+            caa_check_response.check_passed = True
+            caa_check_response.details.caa_record_present = False
+            caa_check_response.details.found_at = None
+            caa_check_response.details.records_seen = None
         else:
             valid_for_issuance = MpicCaaChecker.is_valid_for_issuance(caa_domains, is_wc_domain, rrset)
-            response = CaaCheckResponse(perspective_code=self.perspective.code, check_passed=valid_for_issuance,
-                                        details=CaaCheckResponseDetails(caa_record_present=True,
-                                                                        found_at=domain.to_text(omit_final_dot=True),
-                                                                        response=rrset.to_text()),
-                                        timestamp_ns=time.time_ns())
-        return response
+            caa_check_response.check_passed = valid_for_issuance
+            caa_check_response.details.caa_record_present = True
+            caa_check_response.details.found_at = domain.to_text(omit_final_dot=True)
+            caa_check_response.details.records_seen = [record_data.to_text() for record_data in rrset]
+        caa_check_response.timestamp_ns = time.time_ns()
+        return caa_check_response
