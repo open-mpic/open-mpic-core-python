@@ -1,3 +1,4 @@
+import base64
 from io import BytesIO
 from unittest.mock import MagicMock
 
@@ -38,10 +39,9 @@ class TestMpicDcvChecker:
 
     @staticmethod
     def create_mock_response(status_code: int, content: str, kwargs: dict = None):
-        response = MagicMock()
+        response = Response()
         response.status_code = status_code
         response.raw = BytesIO(content.encode('utf-8'))
-        response.text = content
         if kwargs is not None:
             for k, v in kwargs.items():
                 setattr(response, k, v)
@@ -55,20 +55,20 @@ class TestMpicDcvChecker:
                                                                 (DcvValidationMethod.ACME_DNS_01, None)])
     def check_dcv__should_perform_appropriate_check_and_allow_issuance_given_target_record_found(self, set_env_variables, validation_method, record_type, mocker):
         match validation_method:
-            case DcvValidationMethod.WEBSITE_CHANGE_V2:
+            case DcvValidationMethod.WEBSITE_CHANGE_V2 | DcvValidationMethod.ACME_HTTP_01:
                 dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
-                self.mock_http_call_response(dcv_request, mocker)
+                requests_get_mock = self.mock_http_call_response(dcv_request, mocker)
             case DcvValidationMethod.DNS_CHANGE:
                 dcv_request = ValidCheckCreator.create_valid_dns_check_request(record_type)
                 self.mock_dns_resolve_call(dcv_request, mocker)
-            case DcvValidationMethod.ACME_HTTP_01:
-                dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
-                self.mock_http_call_response(dcv_request, mocker)
             case _:
                 dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
                 self.mock_dns_resolve_call(dcv_request, mocker)
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         dcv_response = dcv_checker.check_dcv(dcv_request)
+        match validation_method:
+            case DcvValidationMethod.WEBSITE_CHANGE_V2 | DcvValidationMethod.ACME_HTTP_01:
+                assert requests_get_mock.call_args.kwargs['stream'] is True
         dcv_response.timestamp_ns = None  # ignore timestamp for comparison
         assert dcv_response.check_passed is True
 
@@ -182,14 +182,36 @@ class TestMpicDcvChecker:
         assert redirects[1].url == 'https://example.com/redirected-2'
         assert redirects[1].status_code == 302
 
+    @pytest.mark.parametrize('validation_method',
+                             [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
+    def http_based_dcv_checks__should_include_base64_encoded_response_page_in_details(self, validation_method, mocker):
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
+        expected_b64_response_page = self.mock_website_change_validation_response_page(mocker)
+        dcv_response = dcv_checker.check_dcv(dcv_request)
+        assert dcv_response.details.response_page == expected_b64_response_page
+
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
     def http_based_dcv_checks__should_include_up_to_first_100_bytes_of_returned_content_in_details(self, set_env_variables, validation_method, mocker):
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
         self.mock_website_change_validation_large_payload(mocker)
         dcv_response = dcv_checker.check_dcv(dcv_request)
-        hundred_a_chars = b'a' * 100  # store 100 'a' characters in a byte array
-        assert dcv_response.details.response_page == hundred_a_chars
+        hundred_a_chars_b64 = base64.b64encode(b'a' * 100).decode()  # store 100 'a' characters in a base64 encoded string
+        assert dcv_response.details.response_page == hundred_a_chars_b64
+
+    @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
+    def http_based_dcv_checks__should_leverage_requests_decoding_capabilities(self, validation_method, mocker):
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
+        expected_str = self.mock_website_change_validation_response_with_specific_encoding(mocker)
+        match validation_method:
+            case DcvValidationMethod.WEBSITE_CHANGE_V2:
+                dcv_request.dcv_check_parameters.validation_details.challenge_value = expected_str
+            case DcvValidationMethod.ACME_HTTP_01:
+                dcv_request.dcv_check_parameters.validation_details.key_authorization = expected_str
+        dcv_response = dcv_checker.check_dcv(dcv_request)
+        assert dcv_response.check_passed is True
 
     @pytest.mark.parametrize('url_scheme', ['http', 'https'])
     def website_change_v2_validation__should_use_specified_url_scheme(self, set_env_variables, url_scheme, mocker):
@@ -309,10 +331,20 @@ class TestMpicDcvChecker:
                 expected_url = f"http://{dcv_request.domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
                 expected_challenge = dcv_request.dcv_check_parameters.validation_details.key_authorization
         success_response = TestMpicDcvChecker.create_mock_response(200, expected_challenge)
-        mocker.patch('requests.get', side_effect=lambda *args, **kwargs: (
+        return mocker.patch('requests.get', side_effect=lambda *args, **kwargs: (
             success_response if kwargs.get('url') == expected_url else
             TestMpicDcvChecker.create_mock_response(404, 'Not Found', {'reason': 'Not Found'})
         ))
+
+    def mock_website_change_validation_response_page(self, mocker):
+        response = Response()
+        response.status_code = 200
+        response_page = b'aaa'
+        response.raw = BytesIO(response_page)
+        mocker.patch('requests.get', side_effect=lambda *args, **kwargs: (
+            response
+        ))
+        return base64.b64encode(response_page).decode()
 
     def mock_website_change_validation_large_payload(self, mocker):
         response = Response()
@@ -321,6 +353,18 @@ class TestMpicDcvChecker:
         mocker.patch('requests.get', side_effect=lambda *args, **kwargs: (
             response
         ))
+
+    def mock_website_change_validation_response_with_specific_encoding(self, mocker):
+        response = Response()
+        response.status_code = 200
+        # Expected to be received in the Content-Type header.
+        str_enc = "ISO-8859-1"
+        response.encoding = str_enc
+        # "Café" in ISO-8859-1 is chosen as it is different, for example, when UTF-8 encoded: "43 61 66 C3 A9"
+        str_bytes = b'\x43\x61\x66\xE9'
+        response.raw = BytesIO(str_bytes)
+        mocker.patch('requests.get', side_effect=lambda *args, **kwargs: response)
+        return str_bytes.decode(str_enc)
 
     def mock_http_call_response_with_redirects(self, dcv_request: DcvCheckRequest, mocker):
         match dcv_request.dcv_check_parameters.validation_details.validation_method:
