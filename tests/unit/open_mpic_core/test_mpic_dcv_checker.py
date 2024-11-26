@@ -414,7 +414,7 @@ class TestMpicDcvChecker:
 
     def mock_dns_resolve_call_with_specific_response_code(self, dcv_request: DcvCheckRequest, response_code, mocker):
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
-        test_dns_query_answer.response.rcode = response_code
+        test_dns_query_answer.response.rcode = lambda: response_code
         mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: test_dns_query_answer)
 
     def mock_dns_resolve_call_with_specific_flag(self, dcv_request: DcvCheckRequest, flag, mocker):

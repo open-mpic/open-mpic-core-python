@@ -152,7 +152,7 @@ class MpicDcvChecker:
     def evaluate_dns_lookup_response(dcv_check_response: DcvCheckResponse, lookup_response: dns.resolver.Answer,
                                      validation_method: DcvValidationMethod, dns_record_type: DnsRecordType,
                                      expected_dns_record_content: str, exact_match: bool = True):
-        response_code = lookup_response.response.rcode
+        response_code = lookup_response.response.rcode()
         records_as_strings = []
         dns_rdata_type = dns.rdatatype.from_text(dns_record_type)
         for response_answer in lookup_response.response.answer:
