@@ -50,9 +50,11 @@ class TestMpicDcvChecker:
                                                                 (DcvValidationMethod.ACME_DNS_01, None)])
     def check_dcv__should_perform_appropriate_check_and_allow_issuance_given_target_record_found(self, validation_method, record_type, mocker):
         dcv_request = None
+        requests_get_mock = None
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE_V2 | DcvValidationMethod.ACME_HTTP_01:
                 dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
+
             case DcvValidationMethod.DNS_CHANGE:
                 dcv_request = ValidCheckCreator.create_valid_dns_check_request(record_type)
             case DcvValidationMethod.CONTACT_EMAIL | DcvValidationMethod.CONTACT_PHONE:
@@ -63,7 +65,7 @@ class TestMpicDcvChecker:
                 dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
         if (validation_method == DcvValidationMethod.WEBSITE_CHANGE_V2 or
                 validation_method == DcvValidationMethod.ACME_HTTP_01):
-            self.mock_http_call_response(dcv_request, mocker)
+            requests_get_mock = self.mock_http_call_response(dcv_request, mocker)
         else:
             self.mock_dns_resolve_call(dcv_request, mocker)
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
