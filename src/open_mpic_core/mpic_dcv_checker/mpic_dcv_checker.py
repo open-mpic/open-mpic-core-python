@@ -10,6 +10,7 @@ from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidatio
 from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
 from open_mpic_core.common_domain.remote_perspective import RemotePerspective
 from open_mpic_core.common_domain.validation_error import MpicValidationError
+import base64
 
 
 # noinspection PyUnusedLocal
@@ -107,7 +108,7 @@ class MpicDcvChecker:
 
         try:
             urllib3.disable_warnings(category=urllib3.exceptions.InsecureRequestWarning)
-            response = requests.get(url=token_url, verify=False)  # don't verify SSL so can follow redirects to HTTPS (correct?)
+            response = requests.get(url=token_url, stream=True, verify=False)  # don't verify SSL so can follow redirects to HTTPS (correct?)
             MpicDcvChecker.evaluate_http_lookup_response(dcv_check_response, response, token_url, expected_response_content)
         except requests.exceptions.RequestException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
@@ -125,6 +126,7 @@ class MpicDcvChecker:
 
     @staticmethod
     def evaluate_http_lookup_response(dcv_check_response: DcvCheckResponse, lookup_response: requests.Response, target_url: str, challenge_value: str):
+        # TODO introduce a test to ensure that only the first 100 bytes of a potentially gigantic response are ever read. Important to prevent an attacker, for example, to force the CA to incur in excessive egress o large Lambda execution times cost.
         content = lookup_response.raw.read(100)
 
         response_history = None
@@ -137,13 +139,15 @@ class MpicDcvChecker:
         dcv_check_response.timestamp_ns = time.time_ns()
 
         if lookup_response.status_code == requests.codes.OK:
+            # Setting the internal Response._content to leverage decoding capabilities of Response.text without reading the entire response.
+            lookup_response._content = content
             result = lookup_response.text.strip()
             expected_response_content = challenge_value
             dcv_check_response.check_passed = (result == expected_response_content)
             dcv_check_response.details.response_status_code = lookup_response.status_code
             dcv_check_response.details.response_url = target_url
             dcv_check_response.details.response_history = response_history
-            dcv_check_response.details.response_page = content
+            dcv_check_response.details.response_page = base64.b64encode(content).decode()
         else:
             dcv_check_response.errors = [
                 MpicValidationError(error_type=str(lookup_response.status_code), error_message=lookup_response.reason)]

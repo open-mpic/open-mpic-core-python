@@ -21,7 +21,7 @@ class DcvHttpCheckResponseDetails(BaseModel):
     response_history: list[RedirectResponse] | None = None  # list of redirects followed to final page
     response_url: str | None = None
     response_status_code: int | None = None
-    response_page: str | None = None  # first 100 bytes of page returned at final url (not base64 encoded)
+    response_page: str | None = None  # Base64 encoded first 100 bytes of page returned at final url
     # resolved_ip -- ip address used to communicate with domain_or_ip_target
 
 
