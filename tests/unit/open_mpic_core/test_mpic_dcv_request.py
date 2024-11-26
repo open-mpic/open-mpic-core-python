@@ -126,7 +126,6 @@ class TestMpicDcvRequest:
         request.dcv_check_parameters.validation_details.dns_name_prefix = 'moo'
         with pytest.raises(pydantic.ValidationError) as validation_error:
             MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
-        print(validation_error.value.json(indent=4))
         assert expected_prefix in str(validation_error.value)
 
 

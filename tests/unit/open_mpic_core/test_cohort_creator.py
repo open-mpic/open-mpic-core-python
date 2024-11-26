@@ -1,7 +1,7 @@
 import hashlib
 from importlib import resources
 from itertools import chain, cycle
-from pprint import pprint
+# from pprint import pprint
 
 import pytest
 import yaml
@@ -77,13 +77,13 @@ class TestCohortCreator:
                                                                                      any_perspectives_too_close,
                                                                                      cohort_size):
         total_perspectives = len(list(chain.from_iterable(perspectives_per_rir.values())))
-        print(f"\ntotal perspectives: {total_perspectives}")
-        print(f"total rirs: {len(perspectives_per_rir.keys())}")
-        print(f"any perspectives too close: {any_perspectives_too_close}")
-        pprint(perspectives_per_rir)
+        # print(f"\ntotal perspectives: {total_perspectives}")
+        # print(f"total rirs: {len(perspectives_per_rir.keys())}")
+        # print(f"any perspectives too close: {any_perspectives_too_close}")
+        # pprint(perspectives_per_rir)
         cohorts = CohortCreator.create_perspective_cohorts(perspectives_per_rir, cohort_size)
-        print(f"total cohorts created: {len(cohorts)}")
-        pprint(cohorts)
+        # print(f"total cohorts created: {len(cohorts)}")
+        # pprint(cohorts)
         assert len(cohorts) > 0
         if not any_perspectives_too_close:  # if no perspectives were too close, should have max possible cohorts
             assert len(cohorts) == total_perspectives // cohort_size
@@ -97,19 +97,17 @@ class TestCohortCreator:
             if cohort_size > 1:
                 assert len(set(map(lambda perspective: perspective.rir, cohort))) >= 2
 
-    @pytest.mark.parametrize('perspectives_per_rir, any_perspectives_too_close, cohort_size', [
+    @pytest.mark.parametrize('perspectives_per_rir, cohort_size', [
         # perspectives_per_rir expects: (total_perspectives, total_rirs, max_per_rir, too_close_flag)
-        ((3, 1, 3, False), False, 3),  # expect 0 cohorts due to too few rirs
-        ((3, 2, 2, True), True, 3),  # expect 0 cohorts due to too close perspectives
-        ((18, 5, 8, True), True, 18),  # expect 0 cohorts due to too close perspectives
+        ((3, 1, 3, False), 3),  # expect 0 cohorts due to too few rirs
+        ((3, 2, 2, True), 3),  # expect 0 cohorts due to too close perspectives
+        ((18, 5, 8, True), 18),  # expect 0 cohorts due to too close perspectives
     ], indirect=['perspectives_per_rir'])
     def create_perspective_cohorts__should_return_0_cohorts_given_no_cohort_would_meet_requirements(self, perspectives_per_rir,
-                                                                                                    any_perspectives_too_close,
                                                                                                     cohort_size):
-        print(f"\ntotal perspectives: {len(list(chain.from_iterable(perspectives_per_rir.values())))}")
-        print(f"total rirs: {len(perspectives_per_rir.keys())}")
-        print(f"any perspectives too close: {any_perspectives_too_close}")
-        pprint(perspectives_per_rir)
+        # print(f"\ntotal perspectives: {len(list(chain.from_iterable(perspectives_per_rir.values())))}")
+        # print(f"total rirs: {len(perspectives_per_rir.keys())}")
+        # pprint(perspectives_per_rir)
         cohorts = CohortCreator.create_perspective_cohorts(perspectives_per_rir, cohort_size)
         assert len(cohorts) == 0
 
