@@ -2,12 +2,12 @@ import time
 import dns.resolver
 import requests
 import urllib3
-from dns.rdatatype import RdataType
 
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
 from open_mpic_core.common_domain.check_response import DcvCheckResponse
 from open_mpic_core.common_domain.check_response_details import RedirectResponse, DcvCheckResponseDetailsBuilder
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
+from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
 from open_mpic_core.common_domain.remote_perspective import RemotePerspective
 from open_mpic_core.common_domain.validation_error import MpicValidationError
 import base64
@@ -17,6 +17,8 @@ import base64
 class MpicDcvChecker:
     WELL_KNOWN_PKI_PATH = '.well-known/pki-validation'
     WELL_KNOWN_ACME_PATH = '.well-known/acme-challenge'
+    CONTACT_EMAIL_TAG = 'contactemail'
+    CONTACT_PHONE_TAG = 'contactphone'
 
     def __init__(self, perspective: RemotePerspective):
         self.perspective = perspective
@@ -26,12 +28,10 @@ class MpicDcvChecker:
         match dcv_request.dcv_check_parameters.validation_details.validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE_V2:
                 return self.perform_website_change_validation(dcv_request)
-            case DcvValidationMethod.DNS_CHANGE:
-                return self.perform_dns_change_validation(dcv_request)
             case DcvValidationMethod.ACME_HTTP_01:
                 return self.perform_acme_http_01_validation(dcv_request)
-            case DcvValidationMethod.ACME_DNS_01:
-                return self.perform_acme_dns_01_validation(dcv_request)
+            case _:  # ACME_DNS_01 | DNS_CHANGE | IP_LOOKUP | CONTACT_EMAIL | CONTACT_PHONE
+                return self.perform_general_dns_validation(dcv_request)
 
     def perform_website_change_validation(self, request) -> DcvCheckResponse:
         domain_or_ip_target = request.domain_or_ip_target  # TODO optionally iterate up through the domain hierarchy
@@ -47,29 +47,57 @@ class MpicDcvChecker:
         except requests.exceptions.RequestException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
-
         return dcv_check_response
 
-    def perform_dns_change_validation(self, request) -> DcvCheckResponse:
-        domain_or_ip_target = request.domain_or_ip_target
-        dns_name_prefix = request.dcv_check_parameters.validation_details.dns_name_prefix
-        dns_record_type = dns.rdatatype.from_text(request.dcv_check_parameters.validation_details.dns_record_type)
+    def perform_general_dns_validation(self, request) -> DcvCheckResponse:
+        validation_details = request.dcv_check_parameters.validation_details
+        validation_method = validation_details.validation_method
+        dns_name_prefix = validation_details.dns_name_prefix
+        dns_record_type = validation_details.dns_record_type
+        exact_match = True
+
         if dns_name_prefix is not None and len(dns_name_prefix) > 0:
-            name_to_resolve = f"{dns_name_prefix}.{domain_or_ip_target}"
+            name_to_resolve = f"{dns_name_prefix}.{request.domain_or_ip_target}"
         else:
-            name_to_resolve = domain_or_ip_target
-        expected_dns_record_content = request.dcv_check_parameters.validation_details.challenge_value
-        dcv_check_response = self.create_empty_check_response(DcvValidationMethod.DNS_CHANGE)
+            name_to_resolve = request.domain_or_ip_target
+
+        if validation_method == DcvValidationMethod.ACME_DNS_01:
+            expected_dns_record_content = validation_details.key_authorization
+        else:
+            expected_dns_record_content = validation_details.challenge_value
+            exact_match = validation_details.require_exact_match
+
+        dcv_check_response = self.create_empty_check_response(validation_method)
 
         try:
-            # TODO add leading underscore to name_to_resolve if it's not found?
-            lookup = dns.resolver.resolve(name_to_resolve, dns_record_type)
-            MpicDcvChecker.evaluate_dns_lookup_response(dcv_check_response, lookup, dns_record_type, expected_dns_record_content)
+            lookup = MpicDcvChecker.perform_dns_resolution(name_to_resolve, validation_method, dns_record_type)
+            MpicDcvChecker.evaluate_dns_lookup_response(dcv_check_response, lookup, validation_method, dns_record_type,
+                                                        expected_dns_record_content, exact_match)
         except dns.exception.DNSException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)]
-
         return dcv_check_response
+
+    @staticmethod
+    def perform_dns_resolution(name_to_resolve, validation_method, dns_record_type):
+        walk_domain_tree = ((validation_method == DcvValidationMethod.CONTACT_EMAIL or
+                            validation_method == DcvValidationMethod.CONTACT_PHONE) and
+                            dns_record_type == DnsRecordType.CAA)
+
+        dns_rdata_type = dns.rdatatype.from_text(dns_record_type)
+        lookup = None
+        if walk_domain_tree:
+            domain = dns.name.from_text(name_to_resolve)
+
+            while domain != dns.name.root:
+                try:
+                    lookup = dns.resolver.resolve(domain, dns_rdata_type)
+                    break
+                except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
+                    domain = domain.parent()
+        else:
+            lookup = dns.resolver.resolve(name_to_resolve, dns_rdata_type)
+        return lookup
 
     def perform_acme_http_01_validation(self, request) -> DcvCheckResponse:
         domain_or_ip_target = request.domain_or_ip_target
@@ -85,23 +113,6 @@ class MpicDcvChecker:
         except requests.exceptions.RequestException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
-
-        return dcv_check_response
-
-    def perform_acme_dns_01_validation(self, request) -> DcvCheckResponse:
-        domain_or_ip_target = request.domain_or_ip_target
-        dns_record_type = dns.rdatatype.TXT
-        name_to_resolve = f"_acme-challenge.{domain_or_ip_target}"
-        expected_dns_record_content = request.dcv_check_parameters.validation_details.key_authorization
-        dcv_check_response = self.create_empty_check_response(DcvValidationMethod.DNS_CHANGE)
-
-        try:
-            lookup = dns.resolver.resolve(name_to_resolve, dns_record_type)
-            MpicDcvChecker.evaluate_dns_lookup_response(dcv_check_response, lookup, dns.rdatatype.TXT, expected_dns_record_content)
-        except dns.exception.DNSException as e:
-            dcv_check_response.timestamp_ns = time.time_ns()
-            dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)]
-
         return dcv_check_response
 
     def create_empty_check_response(self, validation_method: DcvValidationMethod) -> DcvCheckResponse:
@@ -142,20 +153,38 @@ class MpicDcvChecker:
                 MpicValidationError(error_type=str(lookup_response.status_code), error_message=lookup_response.reason)]
 
     @staticmethod
-    def evaluate_dns_lookup_response(dcv_check_response: DcvCheckResponse, lookup_response: dns.resolver.Answer, dns_record_type: RdataType, expected_dns_record_content: str):
+    def evaluate_dns_lookup_response(dcv_check_response: DcvCheckResponse, lookup_response: dns.resolver.Answer,
+                                     validation_method: DcvValidationMethod, dns_record_type: DnsRecordType,
+                                     expected_dns_record_content: str, exact_match: bool = True):
         response_code = lookup_response.response.rcode()
         records_as_strings = []
+        dns_rdata_type = dns.rdatatype.from_text(dns_record_type)
         for response_answer in lookup_response.response.answer:
-            if response_answer.rdtype == dns_record_type:
+            if response_answer.rdtype == dns_rdata_type:
                 for record_data in response_answer:
-                    record_data_as_string = record_data.to_text()
+                    if validation_method == DcvValidationMethod.CONTACT_EMAIL and dns_record_type == DnsRecordType.CAA:
+                        if record_data.tag.decode('utf-8').lower() == MpicDcvChecker.CONTACT_EMAIL_TAG:
+                            record_data_as_string = record_data.value.decode('utf-8')
+                        else:
+                            continue
+                    elif validation_method == DcvValidationMethod.CONTACT_PHONE and dns_record_type == DnsRecordType.CAA:
+                        if record_data.tag.decode('utf-8').lower() == MpicDcvChecker.CONTACT_PHONE_TAG:
+                            record_data_as_string = record_data.value.decode('utf-8')
+                        else:
+                            continue
+                    else:
+                        record_data_as_string = record_data.to_text()
                     # only need to remove enclosing quotes if they're there, e.g., for a TXT record
                     if record_data_as_string[0] == '"' and record_data_as_string[-1] == '"':
                         record_data_as_string = record_data_as_string[1:-1]
                     records_as_strings.append(record_data_as_string)
 
-        dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
+        if exact_match:
+            dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
+        else:
+            dcv_check_response.check_passed = any(expected_dns_record_content in record for record in records_as_strings)
         dcv_check_response.timestamp_ns = time.time_ns()
         dcv_check_response.details.records_seen = records_as_strings
         dcv_check_response.details.response_code = response_code
         dcv_check_response.details.ad_flag = lookup_response.response.flags & dns.flags.AD == dns.flags.AD  # single ampersand
+        dcv_check_response.details.found_at = lookup_response.qname.to_text(omit_final_dot=True)
