@@ -45,6 +45,7 @@ Source = "https://github.com/open-mpic/open-mpic-core-python"
 
 [tool.hatch]
 version.path = "src/open_mpic_core/__about__.py"
+build.name = "open-mpic-core"
 build.sources = ["src"]
 build.targets.wheel.packages = ["src/open_mpic_core"]
 
