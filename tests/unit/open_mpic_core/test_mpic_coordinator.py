@@ -215,6 +215,28 @@ class TestMpicCoordinator:
         assert mpic_response.is_valid is False
         assert mpic_response.actual_orchestration_parameters.attempt_count == 2
 
+    def coordinate_mpic__should_include_all_previous_attempt_results_if_there_were_retries(self):
+        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
+        mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters(quorum_count=1, perspective_count=2, max_attempts=3)
+        # "mock" the remote perspective call function that will fail the first two attempts and succeed for the third
+        # (fail 1a, fail 1b, fail 2a, fail 2b, pass 3a, pass 3b)
+        succeed_after_two_attempts = MagicMock()
+        succeed_after_two_attempts.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
+            self.create_failing_remote_caa_check_response, self.create_failing_remote_caa_check_response,
+            self.create_failing_remote_caa_check_response, self.create_failing_remote_caa_check_response,
+            self.create_successful_remote_caa_check_response, self.create_successful_remote_caa_check_response
+        )
+        mpic_coordinator = MpicCoordinator(succeed_after_two_attempts, mpic_coordinator_config)
+        mpic_response = mpic_coordinator.coordinate_mpic(mpic_request)
+        assert mpic_response.is_valid is True
+        assert mpic_response.actual_orchestration_parameters.attempt_count == 3
+        previous_attempts = mpic_response.previous_attempt_results
+        assert len(previous_attempts) == 2
+        for perspective_result_list in previous_attempts:
+            assert len(perspective_result_list) == 2
+            assert all(not perspective.check_passed for perspective in perspective_result_list)
+
     @pytest.mark.parametrize('check_type', [CheckType.CAA, CheckType.DCV])
     def coordinate_mpic__should_return_check_failure_message_given_remote_perspective_failure(self, check_type):
         mpic_request = None
@@ -241,6 +263,14 @@ class TestMpicCoordinator:
         mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_config)
         with pytest.raises(MpicRequestValidationError):
             mpic_coordinator.coordinate_mpic(mpic_request)
+
+    def coordinate_mpic__should_return_trace_identifier_if_included_in_request(self):
+        mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        mpic_request.trace_identifier = 'test_trace_identifier'
+        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
+        mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_config)
+        mpic_response = mpic_coordinator.coordinate_mpic(mpic_request)
+        assert mpic_response.trace_identifier == 'test_trace_identifier'
 
     def constructor__should_treat_max_attempts_as_optional_and_default_to_none(self):
         mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()

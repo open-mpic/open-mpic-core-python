@@ -14,6 +14,7 @@ class BaseMpicRequest(BaseModel, ABC):
     domain_or_ip_target: str
     check_type: CheckType
     orchestration_parameters: MpicRequestOrchestrationParameters | None = None
+    trace_identifier: str | None = None
 
 
 class MpicCaaRequest(BaseMpicRequest):
