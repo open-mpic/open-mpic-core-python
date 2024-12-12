@@ -28,6 +28,7 @@ class DcvWebsiteChangeValidationDetails(DcvValidationDetails):
     challenge_value: str
     http_token_path: str
     url_scheme: UrlScheme = UrlScheme.HTTP
+    http_headers: dict[str, Any] | None = None
     # TODO add optional flag to iterate up through the domain hierarchy
 
 
@@ -74,6 +75,7 @@ class DcvAcmeHttp01ValidationDetails(DcvValidationDetails):
     validation_method: Literal[DcvValidationMethod.ACME_HTTP_01] = DcvValidationMethod.ACME_HTTP_01
     token: str
     key_authorization: str
+    http_headers: dict[str, Any] | None = None
 
 
 class DcvAcmeDns01ValidationDetails(DcvValidationDetails):
