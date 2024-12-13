@@ -86,7 +86,6 @@ class MpicCoordinator:
             valid_perspective_count = sum(validity_per_perspective.values())
             is_valid_result = valid_perspective_count >= quorum_count
 
-
             if is_valid_result or attempts == max_attempts:
                 response = MpicResponseBuilder.build_response(mpic_request, perspective_count, quorum_count, attempts,
                                                               perspective_responses, is_valid_result, previous_attempt_results)

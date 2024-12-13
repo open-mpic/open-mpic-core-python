@@ -33,7 +33,7 @@ class TestMpicCaaChecker:
         return MpicCaaChecker(["ca1.com", "ca2.net", "ca3.org"], RemotePerspective(rir='arin', code='us-east-4'))
 
     # integration test of a sort -- only mocking dns methods rather than remaining class methods
-    def check_caa__should_return_200_and_allow_issuance_given_no_caa_records_found(self, set_env_variables, mocker):
+    def check_caa__should_allow_issuance_given_no_caa_records_found(self, set_env_variables, mocker):
         mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: exec('raise(dns.resolver.NoAnswer)'))
         caa_request = CaaCheckRequest(domain_or_ip_target='example.com',
                                       caa_check_parameters=CaaCheckParameters(certificate_type=CertificateType.TLS_SERVER, caa_domains=['ca111.com']))
@@ -42,7 +42,7 @@ class TestMpicCaaChecker:
         check_response_details = CaaCheckResponseDetails(caa_record_present=False)
         assert self.is_result_as_expected(caa_response, True, check_response_details) is True
 
-    def check_caa__should_return_200_and_allow_issuance_given_matching_caa_record_found(self, set_env_variables, mocker):
+    def check_caa__should_allow_issuance_given_matching_caa_record_found(self, set_env_variables, mocker):
         test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer('example.com', 0, 'issue', 'ca111.com', mocker)
         mocker.patch('dns.resolver.resolve', side_effect=lambda domain_name, rdtype: (
             test_dns_query_answer if domain_name.to_text() == 'example.com.' else

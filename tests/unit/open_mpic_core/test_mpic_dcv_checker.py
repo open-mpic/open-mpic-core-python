@@ -1,6 +1,6 @@
 import base64
 from io import BytesIO
-from unittest.mock import MagicMock, ANY
+from unittest.mock import MagicMock
 
 import dns
 import pytest
