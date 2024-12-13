@@ -72,6 +72,7 @@ class MpicCoordinator:
         else:
             max_attempts = 1
         attempts = 1
+        previous_attempt_results = None
         cohort_cycle = cycle(perspective_cohorts)
         while attempts <= max_attempts:
             perspectives_to_use = next(cohort_cycle)
@@ -85,11 +86,15 @@ class MpicCoordinator:
             valid_perspective_count = sum(validity_per_perspective.values())
             is_valid_result = valid_perspective_count >= quorum_count
 
+
             if is_valid_result or attempts == max_attempts:
                 response = MpicResponseBuilder.build_response(mpic_request, perspective_count, quorum_count, attempts,
-                                                              perspective_responses, is_valid_result)
+                                                              perspective_responses, is_valid_result, previous_attempt_results)
                 return response
             else:
+                if previous_attempt_results is None:
+                    previous_attempt_results = []
+                previous_attempt_results.append(perspective_responses)
                 attempts += 1
 
     # Returns a random subset of perspectives with a goal of maximum RIR diversity to increase diversity.

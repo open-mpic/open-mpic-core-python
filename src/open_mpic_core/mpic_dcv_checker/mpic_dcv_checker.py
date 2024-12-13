@@ -40,9 +40,10 @@ class MpicDcvChecker:
         token_url = f"{url_scheme}://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{token_path}"  # noqa E501 (http)
         expected_response_content = request.dcv_check_parameters.validation_details.challenge_value
         dcv_check_response = self.create_empty_check_response(DcvValidationMethod.WEBSITE_CHANGE_V2)
+        http_headers = request.dcv_check_parameters.validation_details.http_headers
 
         try:
-            response = requests.get(url=token_url, stream=True)  # FIXME should probably add a timeout here.. but how long?
+            response = requests.get(url=token_url, headers=http_headers, stream=True)  # FIXME should probably add a timeout here.. but how long?
             MpicDcvChecker.evaluate_http_lookup_response(dcv_check_response, response, token_url, expected_response_content)
         except requests.exceptions.RequestException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
@@ -105,10 +106,11 @@ class MpicDcvChecker:
         expected_response_content = request.dcv_check_parameters.validation_details.key_authorization
         token_url = f"http://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
         dcv_check_response = self.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
+        http_headers = request.dcv_check_parameters.validation_details.http_headers
 
         try:
             urllib3.disable_warnings(category=urllib3.exceptions.InsecureRequestWarning)
-            response = requests.get(url=token_url, stream=True, verify=False)  # don't verify SSL so can follow redirects to HTTPS (correct?)
+            response = requests.get(url=token_url, headers=http_headers, stream=True, verify=False)  # don't verify SSL so can follow redirects to HTTPS (correct?)
             MpicDcvChecker.evaluate_http_lookup_response(dcv_check_response, response, token_url, expected_response_content)
         except requests.exceptions.RequestException as e:
             dcv_check_response.timestamp_ns = time.time_ns()

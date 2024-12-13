@@ -1,6 +1,6 @@
 import base64
 from io import BytesIO
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, ANY
 
 import dns
 import pytest
@@ -216,6 +216,15 @@ class TestMpicDcvChecker:
                 dcv_request.dcv_check_parameters.validation_details.key_authorization = expected_str
         dcv_response = dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is True
+
+    @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
+    def http_based_dcv_checks__should_utilize_custom_http_headers_if_provided_in_request(self, validation_method, mocker):
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
+        dcv_request.dcv_check_parameters.validation_details.http_headers = {'X-Test-Header': 'test-value', 'User-Agent': 'test-agent'}
+        requests_get_mock = self.mock_http_call_response(dcv_request, mocker)
+        dcv_checker.check_dcv(dcv_request)
+        assert requests_get_mock.call_args.kwargs['headers'] == dcv_request.dcv_check_parameters.validation_details.http_headers
 
     @pytest.mark.parametrize('url_scheme', ['http', 'https'])
     def website_change_v2_validation__should_use_specified_url_scheme(self, url_scheme, mocker):

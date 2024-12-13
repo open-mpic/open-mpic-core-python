@@ -15,18 +15,21 @@ class BaseMpicResponse(BaseModel, ABC):
     request_orchestration_parameters: MpicRequestOrchestrationParameters | None = None
     actual_orchestration_parameters: MpicEffectiveOrchestrationParameters | None = None
     is_valid: bool | None = False
+    trace_identifier: str | None = None
 
 
 class MpicCaaResponse(BaseMpicResponse):
     check_type: Literal[CheckType.CAA] = CheckType.CAA
-    perspectives: list[CaaCheckResponse] | None = None  # not set in less verbose mode
-    caa_check_parameters: CaaCheckParameters | None = None  # not set in less verbose mode
+    perspectives: list[CaaCheckResponse] | None = None
+    caa_check_parameters: CaaCheckParameters | None = None
+    previous_attempt_results: list[list[CaaCheckResponse]] | None = None
 
 
 class MpicDcvResponse(BaseMpicResponse):
     check_type: Literal[CheckType.DCV] = CheckType.DCV
-    perspectives: list[DcvCheckResponse] | None = None  # not set in less verbose mode
+    perspectives: list[DcvCheckResponse] | None = None
     dcv_check_parameters: DcvCheckParameters | None = None
+    previous_attempt_results: list[list[DcvCheckResponse]] | None = None
 
 
 MpicResponse = Annotated[Union[MpicCaaResponse, MpicDcvResponse], Field(discriminator='check_type')]
