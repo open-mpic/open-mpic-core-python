@@ -287,7 +287,6 @@ class TestMpicCoordinator:
         assert mpic_coordinator.global_max_attempts == mpic_coordinator_configuration.global_max_attempts
         assert mpic_coordinator.target_perspectives == mpic_coordinator_configuration.target_perspectives
         assert mpic_coordinator.default_perspective_count == mpic_coordinator_configuration.default_perspective_count
-        assert mpic_coordinator.enforce_distinct_rir_regions == mpic_coordinator_configuration.enforce_distinct_rir_regions
         assert mpic_coordinator.hash_secret == mpic_coordinator_configuration.hash_secret
         assert mpic_coordinator.call_remote_perspective_function == call_remote_perspective
 
@@ -299,13 +298,11 @@ class TestMpicCoordinator:
         all_perspectives_by_code = TestMpicCoordinator.create_all_perspectives_by_code()
         target_perspectives = [all_perspectives_by_code[code] for code in target_perspective_codes]
         default_perspective_count = 3
-        enforce_distinct_rir_regions = True  # TODO may not need...
         global_max_attempts = None
         hash_secret = 'test_secret'
         mpic_coordinator_configuration = MpicCoordinatorConfiguration(
             target_perspectives,
             default_perspective_count,
-            enforce_distinct_rir_regions,
             global_max_attempts,
             hash_secret)
         return mpic_coordinator_configuration

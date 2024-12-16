@@ -246,7 +246,7 @@ class TestMpicDcvChecker:
 
     def dns_validation__should_allow_finding_expected_challenge_as_substring(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.DNS_CHANGE)
-        dcv_request.dcv_check_parameters.validation_details.challenge_value = 'extraStuffchallenge-valueMoreStuff'
+        dcv_request.dcv_check_parameters.validation_details.challenge_value = 'eXtRaStUfFchallenge-valueMoReStUfF'
         self.mock_dns_resolve_call(dcv_request, mocker)
         dcv_request.dcv_check_parameters.validation_details.challenge_value = 'challenge-value'
         dcv_request.dcv_check_parameters.validation_details.require_exact_match = False

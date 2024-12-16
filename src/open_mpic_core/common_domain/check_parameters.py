@@ -1,7 +1,7 @@
 from abc import ABC
 from typing import Literal, Union, Any
 
-from pydantic import BaseModel, root_validator, model_validator
+from pydantic import BaseModel
 
 from open_mpic_core.common_domain.enum.certificate_type import CertificateType
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
@@ -32,7 +32,7 @@ class DcvWebsiteChangeValidationDetails(DcvValidationDetails):
     # TODO add optional flag to iterate up through the domain hierarchy
 
 
-class DcvGeneralDnsValidationDetails(DcvValidationDetails):
+class DcvGeneralDnsValidationDetails(DcvValidationDetails, ABC):
     challenge_value: str
     require_exact_match: bool = True
     dns_name_prefix: str

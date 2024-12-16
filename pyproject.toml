@@ -49,7 +49,7 @@ build.sources = ["src"]
 build.targets.wheel.packages = ["src/open_mpic_core"]
 
 [tool.api]
-spec_version = "2.3.0"
+spec_version = "2.3.1"
 spec_repository = "https://github.com/open-mpic/open-mpic-specification"
 
 [tool.hatch.envs.default]
