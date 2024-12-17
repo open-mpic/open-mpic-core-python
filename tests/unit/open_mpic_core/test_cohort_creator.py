@@ -8,7 +8,7 @@ import yaml
 from pydantic import TypeAdapter
 
 from open_mpic_core.mpic_coordinator.cohort_creator import CohortCreator
-from open_mpic_core.common_domain.remote_perspective import RemotePerspective
+from open_mpic_core.mpic_coordinator.domain.remote_perspective import RemotePerspective
 
 
 # noinspection PyMethodMayBeStatic

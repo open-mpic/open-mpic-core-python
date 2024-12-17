@@ -4,7 +4,6 @@ import dns.resolver
 from dns.name import Name
 from dns.rrset import RRset
 
-from open_mpic_core.common_domain.remote_perspective import RemotePerspective
 from open_mpic_core.common_domain.check_request import CaaCheckRequest
 from open_mpic_core.common_domain.check_response import CaaCheckResponse, CaaCheckResponseDetails
 from open_mpic_core.common_domain.validation_error import MpicValidationError
@@ -23,9 +22,9 @@ class MpicCaaLookupException(Exception):  # This is a python exception type used
 
 
 class MpicCaaChecker:
-    def __init__(self, default_caa_domain_list: list[str], perspective: RemotePerspective):
+    def __init__(self, default_caa_domain_list: list[str], perspective_code: str):
         self.default_caa_domain_list = default_caa_domain_list
-        self.perspective = perspective
+        self.perspective_code = perspective_code
 
     @staticmethod
     def does_value_list_permit_issuance(value_list: list, caa_domains):
@@ -107,7 +106,7 @@ class MpicCaaChecker:
         rrset = None
 
         caa_check_response = CaaCheckResponse(
-            perspective_code=self.perspective.code,
+            perspective_code=self.perspective_code,
             check_passed=False,
             errors=None,
             details=CaaCheckResponseDetails(

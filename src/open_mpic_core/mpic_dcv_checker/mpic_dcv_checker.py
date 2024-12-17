@@ -8,7 +8,6 @@ from open_mpic_core.common_domain.check_response import DcvCheckResponse
 from open_mpic_core.common_domain.check_response_details import RedirectResponse, DcvCheckResponseDetailsBuilder
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
 from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
-from open_mpic_core.common_domain.remote_perspective import RemotePerspective
 from open_mpic_core.common_domain.validation_error import MpicValidationError
 import base64
 
@@ -20,8 +19,8 @@ class MpicDcvChecker:
     CONTACT_EMAIL_TAG = 'contactemail'
     CONTACT_PHONE_TAG = 'contactphone'
 
-    def __init__(self, perspective: RemotePerspective):
-        self.perspective = perspective
+    def __init__(self, perspective_code: str):
+        self.perspective_code = perspective_code
         # TODO self.dns_resolver = dns.resolver.Resolver() -- set up a way to use Unbound here... maybe take a config?
 
     def check_dcv(self, dcv_request: DcvCheckRequest) -> DcvCheckResponse:
@@ -119,7 +118,7 @@ class MpicDcvChecker:
 
     def create_empty_check_response(self, validation_method: DcvValidationMethod) -> DcvCheckResponse:
         return DcvCheckResponse(
-            perspective_code=self.perspective.code,
+            perspective_code=self.perspective_code,
             check_passed=False,
             timestamp_ns=None,
             errors=None,
