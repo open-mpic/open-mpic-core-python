@@ -1,6 +1,6 @@
 import pytest
 
-from open_mpic_core.common_domain.remote_perspective import RemotePerspective
+from open_mpic_core.mpic_coordinator.domain.remote_perspective import RemotePerspective
 from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import MpicDcvChecker
 
 

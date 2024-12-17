@@ -5,7 +5,6 @@ from open_mpic_core.common_domain.check_request import CaaCheckRequest
 from open_mpic_core.common_domain.check_response import CaaCheckResponse, CaaCheckResponseDetails
 from open_mpic_core.common_domain.enum.certificate_type import CertificateType
 from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
-from open_mpic_core.common_domain.remote_perspective import RemotePerspective
 from open_mpic_core.common_domain.validation_error import MpicValidationError
 from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
 from open_mpic_core.mpic_caa_checker.mpic_caa_checker import MpicCaaChecker
@@ -30,7 +29,7 @@ class TestMpicCaaChecker:
 
     @staticmethod
     def create_configured_caa_checker():
-        return MpicCaaChecker(["ca1.com", "ca2.net", "ca3.org"], RemotePerspective(rir='arin', code='us-east-4'))
+        return MpicCaaChecker(["ca1.com", "ca2.net", "ca3.org"], 'us-east-4')
 
     # integration test of a sort -- only mocking dns methods rather than remaining class methods
     def check_caa__should_allow_issuance_given_no_caa_records_found(self, set_env_variables, mocker):

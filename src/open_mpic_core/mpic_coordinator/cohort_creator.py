@@ -1,7 +1,7 @@
 from itertools import cycle, chain
 import random
 
-from open_mpic_core.common_domain.remote_perspective import RemotePerspective
+from open_mpic_core.mpic_coordinator.domain.remote_perspective import RemotePerspective
 
 
 class CohortCreator:

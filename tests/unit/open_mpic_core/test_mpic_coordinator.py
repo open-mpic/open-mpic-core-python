@@ -8,7 +8,7 @@ from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidatio
 from open_mpic_core.common_domain.enum.check_type import CheckType
 from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
 from open_mpic_core.mpic_coordinator.domain.mpic_orchestration_parameters import MpicRequestOrchestrationParameters
-from open_mpic_core.common_domain.remote_perspective import RemotePerspective
+from open_mpic_core.mpic_coordinator.domain.remote_perspective import RemotePerspective
 from open_mpic_core.mpic_coordinator.domain.mpic_request_validation_error import MpicRequestValidationError
 from open_mpic_core.mpic_coordinator.domain.mpic_response import MpicResponse
 from open_mpic_core.mpic_coordinator.mpic_coordinator import MpicCoordinator, MpicCoordinatorConfiguration

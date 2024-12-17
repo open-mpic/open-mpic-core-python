@@ -10,7 +10,6 @@ from requests import Response, RequestException
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
 from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
-from open_mpic_core.common_domain.remote_perspective import RemotePerspective
 from open_mpic_core.common_domain.validation_error import MpicValidationError
 from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import MpicDcvChecker
 
@@ -21,8 +20,8 @@ from unit.test_util.valid_check_creator import ValidCheckCreator
 # noinspection PyMethodMayBeStatic
 class TestMpicDcvChecker:
     @staticmethod
-    def create_configured_dcv_checker(rir: str = 'arin', perspective_code: str = 'us-east-4'):
-        return MpicDcvChecker(RemotePerspective(rir=rir, code=perspective_code))
+    def create_configured_dcv_checker(perspective_code: str = 'us-east-4'):
+        return MpicDcvChecker(perspective_code)
 
     @staticmethod
     def create_mock_response(status_code: int, content: str, kwargs: dict = None):
