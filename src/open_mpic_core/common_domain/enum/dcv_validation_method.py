@@ -10,4 +10,3 @@ class DcvValidationMethod(StrEnum):
     CONTACT_PHONE = 'contact-phone'  # TXT or CAA record
     IP_LOOKUP = 'ip-lookup'  # A or AAAA record
     ACME_TLS_ALPN_01 = 'acme-tls-alpn-01'  # not implemented yet
-

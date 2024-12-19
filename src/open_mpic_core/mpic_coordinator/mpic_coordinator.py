@@ -18,18 +18,16 @@ from open_mpic_core.mpic_coordinator.domain.mpic_request import MpicCaaRequest, 
 from open_mpic_core.mpic_coordinator.domain.mpic_request_validation_error import MpicRequestValidationError
 from open_mpic_core.mpic_coordinator.domain.mpic_response import MpicResponse
 from open_mpic_core.mpic_coordinator.domain.remote_check_call_configuration import RemoteCheckCallConfiguration
-from open_mpic_core.common_domain.remote_perspective import RemotePerspective
+from open_mpic_core.mpic_coordinator.domain.remote_perspective import RemotePerspective
 from open_mpic_core.mpic_coordinator.messages.mpic_request_validation_messages import MpicRequestValidationMessages
 from open_mpic_core.mpic_coordinator.mpic_request_validator import MpicRequestValidator
 from open_mpic_core.mpic_coordinator.mpic_response_builder import MpicResponseBuilder
 
 
 class MpicCoordinatorConfiguration:
-    def __init__(self, target_perspectives, default_perspective_count,
-                 enforce_distinct_rir_regions, global_max_attempts, hash_secret):
+    def __init__(self, target_perspectives, default_perspective_count, global_max_attempts, hash_secret):
         self.target_perspectives = target_perspectives
         self.default_perspective_count = default_perspective_count
-        self.enforce_distinct_rir_regions = enforce_distinct_rir_regions
         self.global_max_attempts = global_max_attempts
         self.hash_secret = hash_secret
 
@@ -39,7 +37,6 @@ class MpicCoordinator:
     def __init__(self, call_remote_perspective_function, mpic_coordinator_configuration: MpicCoordinatorConfiguration):
         self.target_perspectives = mpic_coordinator_configuration.target_perspectives
         self.default_perspective_count = mpic_coordinator_configuration.default_perspective_count
-        self.enforce_distinct_rir_regions = mpic_coordinator_configuration.enforce_distinct_rir_regions
         self.global_max_attempts = mpic_coordinator_configuration.global_max_attempts
         self.hash_secret = mpic_coordinator_configuration.hash_secret
         self.call_remote_perspective_function = call_remote_perspective_function
@@ -85,7 +82,6 @@ class MpicCoordinator:
 
             valid_perspective_count = sum(validity_per_perspective.values())
             is_valid_result = valid_perspective_count >= quorum_count
-
 
             if is_valid_result or attempts == max_attempts:
                 response = MpicResponseBuilder.build_response(mpic_request, perspective_count, quorum_count, attempts,
