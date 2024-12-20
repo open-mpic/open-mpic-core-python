@@ -19,9 +19,7 @@ class TestCheckRequestDetails:
         ('{"validation_method": "contact-phone", "dns_name_prefix": "test-dnp", "dns_record_type": "CAA", "challenge_value": "test-cv"}', DcvContactPhoneCaaValidationDetails),
         ('{"validation_method": "ip-lookup", "dns_name_prefix": "test-dnp", "dns_record_type": "A", "challenge_value": "test-cv"}', DcvIpLookupValidationDetails)
     ])
-    def check_request_details__should_automatically_deserialize_into_correct_object_based_on_discriminator(self,
-                                                                                                           details_as_json,
-                                                                                                           expected_class):
+    def check_request_details__should_automatically_deserialize_into_correct_object_based_on_discriminator(self, details_as_json, expected_class):
         details_as_object: DcvValidationDetails = expected_class.model_validate_json(details_as_json)
         assert isinstance(details_as_object, expected_class)
 

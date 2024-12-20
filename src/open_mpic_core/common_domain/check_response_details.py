@@ -1,8 +1,7 @@
 from typing import Union, Literal
 
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
-from pydantic import BaseModel, Field
-from typing_extensions import Annotated
+from pydantic import BaseModel
 
 
 class CaaCheckResponseDetails(BaseModel):
@@ -37,9 +36,7 @@ class DcvDnsCheckResponseDetails(BaseModel):
     found_at: str | None = None  # domain where DNS record was found
 
 
-DcvCheckResponseDetails = Annotated[Union[
-    DcvHttpCheckResponseDetails, DcvDnsCheckResponseDetails
-], Field(discriminator='validation_method')]
+DcvCheckResponseDetails = Union[DcvHttpCheckResponseDetails, DcvDnsCheckResponseDetails]
 
 
 # utility class
