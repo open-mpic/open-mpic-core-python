@@ -3,7 +3,7 @@ import pytest
 from open_mpic_core.common_domain.check_response_details import DcvDnsCheckResponseDetails, DcvHttpCheckResponseDetails
 
 
-class TestMpicCaaChecker:
+class TestCheckResponseDetails:
     @pytest.mark.parametrize('details_as_json, expected_class', [
         ('{"validation_method": "dns-change", "records_seen": ["foo"], "response_code": 5, "ad_flag": true, "found_at": "example.com"}',
          DcvDnsCheckResponseDetails),

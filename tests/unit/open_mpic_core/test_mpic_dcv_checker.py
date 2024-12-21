@@ -10,6 +10,7 @@ from requests import Response, RequestException
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
 from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
+from open_mpic_core.common_domain.enum.url_scheme import UrlScheme
 from open_mpic_core.common_domain.validation_error import MpicValidationError
 from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import MpicDcvChecker
 
@@ -79,7 +80,7 @@ class TestMpicDcvChecker:
     def delete_me__this_is_used_for_local_debugging_for_now(self):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
         dcv_request.domain_or_ip_target = 'sectigo.com'  # 404: 'https://blog.fluidui.com/moomoomoo'
-        dcv_request.dcv_check_parameters.validation_details.url_scheme = 'https'
+        dcv_request.dcv_check_parameters.validation_details.url_scheme = UrlScheme.HTTPS
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         dcv_response = dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is True

@@ -25,4 +25,4 @@ class DcvCheckResponse(BaseCheckResponse):
     details: DcvCheckResponseDetails
 
 
-CheckResponse = Annotated[Union[CaaCheckResponse, DcvCheckResponse], Field(discriminator='check_type')]
+CheckResponse = Union[CaaCheckResponse, DcvCheckResponse]
