@@ -27,4 +27,4 @@ class MpicDcvRequest(BaseMpicRequest):
     dcv_check_parameters: DcvCheckParameters
 
 
-MpicRequest = Annotated[Union[MpicCaaRequest, MpicDcvRequest], Field(discriminator='check_type')]
+MpicRequest = Union[MpicCaaRequest, MpicDcvRequest]

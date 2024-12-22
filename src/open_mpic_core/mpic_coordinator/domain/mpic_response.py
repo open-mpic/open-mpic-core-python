@@ -32,4 +32,4 @@ class MpicDcvResponse(BaseMpicResponse):
     previous_attempt_results: list[list[DcvCheckResponse]] | None = None
 
 
-MpicResponse = Annotated[Union[MpicCaaResponse, MpicDcvResponse], Field(discriminator='check_type')]
+MpicResponse = Union[MpicCaaResponse, MpicDcvResponse]

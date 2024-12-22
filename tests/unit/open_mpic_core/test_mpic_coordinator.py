@@ -258,6 +258,7 @@ class TestMpicCoordinator:
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters(quorum_count=15, perspective_count=5,
                                                                                    max_attempts=1)
+        # noinspection PyTypeChecker
         mpic_request.domain_or_ip_target = None
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
         mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_config)
