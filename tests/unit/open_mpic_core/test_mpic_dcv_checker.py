@@ -204,6 +204,15 @@ class TestMpicDcvChecker:
         hundred_a_chars_b64 = base64.b64encode(b'a' * 100).decode()  # store 100 'a' characters in a base64 encoded string
         assert dcv_response.details.response_page == hundred_a_chars_b64
 
+    def http_based_dcv_checks__should_read_more_than_100_bytes_only_if_challenge_value_requires_it(self, mocker):
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE_V2)
+        dcv_request.dcv_check_parameters.validation_details.challenge_value = b'a' * 150  # 150 'a' characters
+        self.mock_website_change_validation_large_payload(mocker)
+        dcv_response = dcv_checker.check_dcv(dcv_request)
+        hundred_fifty_a_chars_b64 = base64.b64encode(b'a' * 150).decode()  # store 150 'a' characters in a base64 encoded string
+        assert len(dcv_response.details.response_page) == len(hundred_fifty_a_chars_b64)
+
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
     def http_based_dcv_checks__should_leverage_requests_decoding_capabilities(self, validation_method, mocker):
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()

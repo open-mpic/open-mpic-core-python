@@ -127,8 +127,8 @@ class MpicDcvChecker:
 
     @staticmethod
     def evaluate_http_lookup_response(dcv_check_response: DcvCheckResponse, lookup_response: requests.Response, target_url: str, challenge_value: str):
-        # TODO introduce a test to ensure that only the first 100 bytes of a potentially gigantic response are ever read. Important to prevent an attacker, for example, to force the CA to incur in excessive egress o large Lambda execution times cost.
-        content = lookup_response.raw.read(100)
+        bytes_to_read = max(100, len(challenge_value))
+        content = lookup_response.raw.read(bytes_to_read)
 
         response_history = None
         if hasattr(lookup_response, 'history') and lookup_response.history is not None and len(lookup_response.history) > 0:
