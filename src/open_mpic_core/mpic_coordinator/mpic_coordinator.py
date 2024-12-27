@@ -150,7 +150,7 @@ class MpicCoordinator:
             for future in concurrent.futures.as_completed(futures_to_call_configs):
                 call_configuration = futures_to_call_configs[future]
                 perspective: RemotePerspective = call_configuration.perspective
-                now = time.perf_counter()
+                # now = time.perf_counter()
                 # print(f"Unpacking future result for {perspective.code} at time {str(datetime.now())}: {now - exec_begin:.2f} seconds from beginning")
                 try:
                     check_response = future.result()  # expecting a CheckResponse object
