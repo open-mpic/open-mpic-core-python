@@ -204,7 +204,7 @@ class TestMpicDcvChecker:
         hundred_a_chars_b64 = base64.b64encode(b'a' * 100).decode()  # store 100 'a' characters in a base64 encoded string
         assert dcv_response.details.response_page == hundred_a_chars_b64
 
-    def http_based_dcv_checks__should_read_more_than_100_bytes_only_if_challenge_value_requires_it(self, mocker):
+    def http_based_dcv_checks__should_read_more_than_100_bytes_if_challenge_value_requires_it(self, mocker):
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE_V2)
         dcv_request.dcv_check_parameters.validation_details.challenge_value = b'a' * 150  # 150 'a' characters
