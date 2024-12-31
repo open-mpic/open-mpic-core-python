@@ -2,6 +2,7 @@ import time
 import dns.resolver
 import requests
 import urllib3
+import re
 
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
 from open_mpic_core.common_domain.check_response import DcvCheckResponse
@@ -38,12 +39,13 @@ class MpicDcvChecker:
         token_path = request.dcv_check_parameters.validation_details.http_token_path
         token_url = f"{url_scheme}://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{token_path}"  # noqa E501 (http)
         expected_response_content = request.dcv_check_parameters.validation_details.challenge_value
+        match_regex = request.dcv_check_parameters.validation_details.match_regex
         dcv_check_response = self.create_empty_check_response(DcvValidationMethod.WEBSITE_CHANGE_V2)
         http_headers = request.dcv_check_parameters.validation_details.http_headers
 
         try:
             response = requests.get(url=token_url, headers=http_headers, stream=True)  # FIXME should probably add a timeout here.. but how long?
-            MpicDcvChecker.evaluate_http_lookup_response(dcv_check_response, response, token_url, expected_response_content)
+            MpicDcvChecker.evaluate_http_lookup_response(dcv_check_response, response, token_url, expected_response_content, match_regex)
         except requests.exceptions.RequestException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
@@ -110,7 +112,7 @@ class MpicDcvChecker:
         try:
             urllib3.disable_warnings(category=urllib3.exceptions.InsecureRequestWarning)
             response = requests.get(url=token_url, headers=http_headers, stream=True, verify=False)  # don't verify SSL so can follow redirects to HTTPS (correct?)
-            MpicDcvChecker.evaluate_http_lookup_response(dcv_check_response, response, token_url, expected_response_content)
+            MpicDcvChecker.evaluate_http_lookup_response(dcv_check_response, response, token_url, expected_response_content, None)
         except requests.exceptions.RequestException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
@@ -126,7 +128,7 @@ class MpicDcvChecker:
         )
 
     @staticmethod
-    def evaluate_http_lookup_response(dcv_check_response: DcvCheckResponse, lookup_response: requests.Response, target_url: str, challenge_value: str):
+    def evaluate_http_lookup_response(dcv_check_response: DcvCheckResponse, lookup_response: requests.Response, target_url: str, challenge_value: str, match_regex: str):
         # TODO introduce a test to ensure that only the first 100 bytes of a potentially gigantic response are ever read. Important to prevent an attacker, for example, to force the CA to incur in excessive egress o large Lambda execution times cost.
         content = lookup_response.raw.read(100)
 
@@ -144,7 +146,15 @@ class MpicDcvChecker:
             lookup_response._content = content
             result = lookup_response.text.strip()
             expected_response_content = challenge_value
-            dcv_check_response.check_passed = (result == expected_response_content)
+            if match_regex is not None and len(match_regex) > 0:
+                match = re.search(match_regex, result)
+                if match:
+                    re_result = match.group(1)
+                    dcv_check_response.check_passed = (re_result == expected_response_content)
+                else:
+                    dcv_check_response.check_passed = (result == expected_response_content)
+            else:
+                dcv_check_response.check_passed = (result == expected_response_content)
             dcv_check_response.details.response_status_code = lookup_response.status_code
             dcv_check_response.details.response_url = target_url
             dcv_check_response.details.response_history = response_history
