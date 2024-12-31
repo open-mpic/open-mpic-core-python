@@ -29,6 +29,7 @@ class DcvWebsiteChangeValidationDetails(DcvValidationDetails):
     http_token_path: str
     url_scheme: UrlScheme = UrlScheme.HTTP
     http_headers: dict[str, Any] | None = None
+    match_regex: str | None = None
     # TODO add optional flag to iterate up through the domain hierarchy
 
 
