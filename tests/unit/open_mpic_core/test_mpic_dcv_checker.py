@@ -241,7 +241,7 @@ class TestMpicDcvChecker:
         dcv_request.dcv_check_parameters.validation_details.url_scheme = url_scheme
         self.mock_http_call_response(dcv_request, mocker)
         dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
-        dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
+        dcv_response = dcv_checker.perform_http_based_validation(dcv_request)
         assert dcv_response.check_passed is True
         assert dcv_response.details.response_url.startswith(f"{url_scheme}://")
 

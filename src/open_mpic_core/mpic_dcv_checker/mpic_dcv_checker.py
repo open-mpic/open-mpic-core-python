@@ -1,7 +1,10 @@
 import time
+from types import TracebackType
+from typing import Optional, Type
+
 import dns.resolver
 import requests
-import urllib3
+import aiohttp
 
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
 from open_mpic_core.common_domain.check_response import DcvCheckResponse
@@ -21,33 +24,24 @@ class MpicDcvChecker:
 
     def __init__(self, perspective_code: str):
         self.perspective_code = perspective_code
-        # TODO self.dns_resolver = dns.resolver.Resolver() -- set up a way to use Unbound here... maybe take a config?
+        # connector=aiohttp.TCPConnector(ssl=False) # don't verify SSL so can follow HTTPS redirects (correct?)
+        # self._async_http_client = aiohttp.ClientSession()  # TODO read about raise_for_status = True
+
+    async def __aenter__(self) -> "MpicDcvChecker":
+        return self
+
+    async def __aexit__(self, exc_type: Optional[Type[BaseException]],
+                        exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]) -> None:
+        if not self._async_http_client.closed:
+            await self._async_http_client.close()
+            return None
 
     def check_dcv(self, dcv_request: DcvCheckRequest) -> DcvCheckResponse:
         match dcv_request.dcv_check_parameters.validation_details.validation_method:
-            case DcvValidationMethod.WEBSITE_CHANGE_V2:
-                return self.perform_website_change_validation(dcv_request)
-            case DcvValidationMethod.ACME_HTTP_01:
-                return self.perform_acme_http_01_validation(dcv_request)
+            case DcvValidationMethod.WEBSITE_CHANGE_V2 | DcvValidationMethod.ACME_HTTP_01:
+                return self.perform_http_based_validation(dcv_request)
             case _:  # ACME_DNS_01 | DNS_CHANGE | IP_LOOKUP | CONTACT_EMAIL | CONTACT_PHONE
                 return self.perform_general_dns_validation(dcv_request)
-
-    def perform_website_change_validation(self, request) -> DcvCheckResponse:
-        domain_or_ip_target = request.domain_or_ip_target  # TODO optionally iterate up through the domain hierarchy
-        url_scheme = request.dcv_check_parameters.validation_details.url_scheme
-        token_path = request.dcv_check_parameters.validation_details.http_token_path
-        token_url = f"{url_scheme}://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{token_path}"  # noqa E501 (http)
-        expected_response_content = request.dcv_check_parameters.validation_details.challenge_value
-        dcv_check_response = self.create_empty_check_response(DcvValidationMethod.WEBSITE_CHANGE_V2)
-        http_headers = request.dcv_check_parameters.validation_details.http_headers
-
-        try:
-            response = requests.get(url=token_url, headers=http_headers, stream=True)  # FIXME should probably add a timeout here.. but how long?
-            MpicDcvChecker.evaluate_http_lookup_response(dcv_check_response, response, token_url, expected_response_content)
-        except requests.exceptions.RequestException as e:
-            dcv_check_response.timestamp_ns = time.time_ns()
-            dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
-        return dcv_check_response
 
     def perform_general_dns_validation(self, request) -> DcvCheckResponse:
         validation_details = request.dcv_check_parameters.validation_details
@@ -79,7 +73,7 @@ class MpicDcvChecker:
         return dcv_check_response
 
     @staticmethod
-    def perform_dns_resolution(name_to_resolve, validation_method, dns_record_type):
+    def perform_dns_resolution(name_to_resolve, validation_method, dns_record_type) -> dns.resolver.Answer:
         walk_domain_tree = ((validation_method == DcvValidationMethod.CONTACT_EMAIL or
                             validation_method == DcvValidationMethod.CONTACT_PHONE) and
                             dns_record_type == DnsRecordType.CAA)
@@ -99,18 +93,28 @@ class MpicDcvChecker:
             lookup = dns.resolver.resolve(name_to_resolve, dns_rdata_type)
         return lookup
 
-    def perform_acme_http_01_validation(self, request) -> DcvCheckResponse:
+    def perform_http_based_validation(self, request) -> DcvCheckResponse:
+        validation_method = request.dcv_check_parameters.validation_details.validation_method
         domain_or_ip_target = request.domain_or_ip_target
-        token = request.dcv_check_parameters.validation_details.token
-        expected_response_content = request.dcv_check_parameters.validation_details.key_authorization
-        token_url = f"http://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
-        dcv_check_response = self.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
         http_headers = request.dcv_check_parameters.validation_details.http_headers
+        if validation_method == DcvValidationMethod.WEBSITE_CHANGE_V2:
+            expected_response_content = request.dcv_check_parameters.validation_details.challenge_value
+            url_scheme = request.dcv_check_parameters.validation_details.url_scheme
+            token_path = request.dcv_check_parameters.validation_details.http_token_path
+            token_url = f"{url_scheme}://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{token_path}"  # noqa E501 (http)
+            dcv_check_response = self.create_empty_check_response(DcvValidationMethod.WEBSITE_CHANGE_V2)
+        else:
+            expected_response_content = request.dcv_check_parameters.validation_details.key_authorization
+            token = request.dcv_check_parameters.validation_details.token
+            token_url = f"http://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
+            dcv_check_response = self.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
 
         try:
-            urllib3.disable_warnings(category=urllib3.exceptions.InsecureRequestWarning)
-            response = requests.get(url=token_url, headers=http_headers, stream=True, verify=False)  # don't verify SSL so can follow redirects to HTTPS (correct?)
-            MpicDcvChecker.evaluate_http_lookup_response(dcv_check_response, response, token_url, expected_response_content)
+            # TODO timeouts? circuit breaker? failsafe? look into it...
+            # async with self._async_http_client.get(url=token_url, headers=http_headers) as response:
+            response = requests.get(url=token_url, headers=http_headers, stream=True, verify=False)
+            MpicDcvChecker.evaluate_http_lookup_response(dcv_check_response, response, token_url,
+                                                                   expected_response_content)
         except requests.exceptions.RequestException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
@@ -142,7 +146,8 @@ class MpicDcvChecker:
         if lookup_response.status_code == requests.codes.OK:
             # Setting the internal Response._content to leverage decoding capabilities of Response.text without reading the entire response.
             lookup_response._content = content
-            result = lookup_response.text.strip()
+            response_text = lookup_response.text
+            result = response_text.strip()
             expected_response_content = challenge_value
             dcv_check_response.check_passed = (result == expected_response_content)
             dcv_check_response.details.response_status_code = lookup_response.status_code
