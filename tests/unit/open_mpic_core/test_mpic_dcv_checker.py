@@ -302,7 +302,7 @@ class TestMpicDcvChecker:
         test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer(
             dcv_request.domain_or_ip_target, dcv_details.dns_name_prefix, DnsRecordType.CAA, record_data, mocker
         )
-        mocker.patch('dns.asyncresolver.resolve', new_callable=AsyncMock, side_effect=lambda domain_name, rdtype: test_dns_query_answer)
+        self.patch_resolver_resolve(mocker, test_dns_query_answer)
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is expected_result
 
@@ -324,7 +324,7 @@ class TestMpicDcvChecker:
         test_dns_query_answer.response.answer[0].add(
             MockDnsObjectCreator.create_record_by_type(DnsRecordType.TXT, {'value': 'not-the-expected-value'})
         )
-        mocker.patch('dns.asyncresolver.resolve', new_callable=AsyncMock, side_effect=lambda domain_name, rdtype: test_dns_query_answer)
+        self.patch_resolver_resolve(mocker, test_dns_query_answer)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False
 
@@ -368,7 +368,7 @@ class TestMpicDcvChecker:
     async def dns_based_dcv_checks__should_return_check_failure_with_errors_given_exception_raised(self, validation_method, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
         no_answer_error = dns.resolver.NoAnswer()
-        mocker.patch('dns.asyncresolver.resolve', new_callable=AsyncMock, side_effect=lambda domain_name, rdtype: self.raise_(no_answer_error))
+        self.patch_resolver_resolve(mocker, no_answer_error)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         errors = [MpicValidationError(error_type=no_answer_error.__class__.__name__, error_message=no_answer_error.msg)]
         assert dcv_response.check_passed is False
@@ -381,46 +381,43 @@ class TestMpicDcvChecker:
         return _raise()
 
     @staticmethod
-    def create_mock_response(status_code: int, content: str, kwargs: dict = None):
-        event_loop = asyncio.get_event_loop()
-
-        response = ClientResponse(
+    def create_base_client_response_for_mock(event_loop):
+        return ClientResponse(
             method='GET', url=URL('http://example.com'), writer=AsyncMock(), continue100=None,
             timer=AsyncMock(), request_info=AsyncMock(), traces=[], loop=event_loop, session=AsyncMock()
         )
 
+    @staticmethod
+    def create_mock_response(status_code: int, content: str, kwargs: dict = None):
+        event_loop = asyncio.get_event_loop()
+        response = TestMpicDcvChecker.create_base_client_response_for_mock(event_loop)
         response.status = status_code
 
         default_headers = {
             'Content-Type': 'text/plain; charset=utf-8',
             'Content-Length': str(len(content))
         }
-        # for now only support 'headers' for testing purposes here
-        additional_headers = kwargs.get('headers', {}) if kwargs is not None else {}
-        all_headers = {**default_headers, **additional_headers}
-        response._headers = CIMultiDictProxy(CIMultiDict(all_headers))
-
         response.content = StreamReader(loop=event_loop)
         response.content.feed_data(bytes(content.encode('utf-8')))
         response.content.feed_eof()
 
+        additional_headers = {}
         if kwargs is not None:
             if 'reason' in kwargs:
                 response.reason = kwargs['reason']
             if 'history' in kwargs:
                 response._history = kwargs['history']
+            additional_headers = kwargs.get('headers', {})
+
+        all_headers = {**default_headers, **additional_headers}
+        response._headers = CIMultiDictProxy(CIMultiDict(all_headers))
 
         return response
 
     @staticmethod
     def create_mock_redirect_response(status_code: int, redirect_url: str):
         event_loop = asyncio.get_event_loop()
-
-        response = ClientResponse(
-            method='GET', url=URL('http://example.com'), writer=AsyncMock(), continue100=None,
-            timer=AsyncMock(), request_info=AsyncMock(), traces=[], loop=event_loop, session=AsyncMock()
-        )
-
+        response = TestMpicDcvChecker.create_base_client_response_for_mock(event_loop)
         response.status = status_code
         response._headers = CIMultiDictProxy(CIMultiDict({'Location': redirect_url}))
         return response
@@ -428,19 +425,12 @@ class TestMpicDcvChecker:
     @staticmethod
     def create_mock_response_with_content_and_encoding(content: bytes, encoding: str):
         event_loop = asyncio.get_event_loop()
-
-        response = ClientResponse(
-            method='GET', url=URL('http://example.com'), writer=AsyncMock(), continue100=None,
-            timer=AsyncMock(), request_info=AsyncMock(), traces=[], loop=event_loop, session=AsyncMock()
-        )
-
+        response = TestMpicDcvChecker.create_base_client_response_for_mock(event_loop)
         response.status = 200
         response._headers = CIMultiDictProxy(CIMultiDict({'Content-Type': f'text/plain; charset={encoding}'}))
         response.content = StreamReader(loop=event_loop)
         response.content.feed_data(content)
-        # response.content.feed_data(bytes(content.encode(encoding)))
         response.content.feed_eof()
-
         return response
 
     def mock_request_specific_http_call_response(self, dcv_checker: MpicDcvChecker, dcv_request: DcvCheckRequest, mocker):
@@ -460,8 +450,7 @@ class TestMpicDcvChecker:
 
         # noinspection PyProtectedMember
         return mocker.patch.object(
-            dcv_checker._async_http_client,
-            'get',
+            dcv_checker._async_http_client, 'get',
             side_effect=lambda *args, **kwargs: AsyncMock(
                 __aenter__=AsyncMock(
                     return_value=success_response if kwargs.get('url') == expected_url else not_found_response
@@ -472,22 +461,28 @@ class TestMpicDcvChecker:
     def mock_request_agnostic_http_call_response(self, dcv_checker: MpicDcvChecker, mock_response: ClientResponse, mocker):
         # noinspection PyProtectedMember
         return mocker.patch.object(
-            dcv_checker._async_http_client,
-            'get',
-            side_effect=lambda *args, **kwargs: AsyncMock(
-                __aenter__=AsyncMock(
-                    return_value=mock_response
-                )
-            )
+            dcv_checker._async_http_client, 'get',
+            side_effect=lambda *args, **kwargs: AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
         )
 
     def mock_http_exception_response(self, dcv_checker: MpicDcvChecker, mocker):
         # noinspection PyProtectedMember
         return mocker.patch.object(
-            dcv_checker._async_http_client,
-            'get',
+            dcv_checker._async_http_client, 'get',
             side_effect=lambda *args, **kwargs: self.raise_(HTTPException(reason='Test Exception'))
         )
+
+    def patch_resolver_resolve_with_side_effect(self, mocker, side_effect):
+        return mocker.patch('dns.asyncresolver.resolve', new_callable=AsyncMock, side_effect=side_effect)
+
+    def patch_resolver_resolve(self, mocker, mocked_response_or_exception):
+        # noinspection PyUnusedLocal
+        async def side_effect(domain_name, rdtype):
+            if isinstance(mocked_response_or_exception, Exception):
+                raise mocked_response_or_exception
+            return mocked_response_or_exception
+
+        return self.patch_resolver_resolve_with_side_effect(mocker, side_effect)
 
     def mock_dns_resolve_call(self, dcv_request: DcvCheckRequest, mocker) -> MagicMock:
         dns_name_prefix = dcv_request.dcv_check_parameters.validation_details.dns_name_prefix
@@ -508,23 +503,24 @@ class TestMpicDcvChecker:
                 else:  # CAA -- using dns names instead of strings
                     expected_domain = dns.name.from_text(expected_domain)
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
-        return mocker.patch(
-            'dns.asyncresolver.resolve',
-            new_callable=AsyncMock,
-            side_effect=lambda domain_name, rdtype: (
-                test_dns_query_answer if domain_name == expected_domain else self.raise_(dns.resolver.NoAnswer)
-            )
-        )
+
+        # noinspection PyUnusedLocal
+        async def side_effect(domain_name, rdtype):
+            if domain_name == expected_domain:
+                return test_dns_query_answer
+            raise self.raise_(dns.resolver.NoAnswer)
+
+        return self.patch_resolver_resolve_with_side_effect(mocker, side_effect)
 
     def mock_dns_resolve_call_with_specific_response_code(self, dcv_request: DcvCheckRequest, response_code, mocker):
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
         test_dns_query_answer.response.rcode = lambda: response_code
-        mocker.patch('dns.asyncresolver.resolve', new_callable=AsyncMock, side_effect=lambda domain_name, rdtype: test_dns_query_answer)
+        self.patch_resolver_resolve(mocker, test_dns_query_answer)
 
     def mock_dns_resolve_call_with_specific_flag(self, dcv_request: DcvCheckRequest, flag, mocker):
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
         test_dns_query_answer.response.flags |= flag
-        mocker.patch('dns.asyncresolver.resolve', new_callable=AsyncMock, side_effect=lambda domain_name, rdtype: test_dns_query_answer)
+        self.patch_resolver_resolve(mocker, test_dns_query_answer)
 
     def mock_dns_resolve_call_getting_multiple_txt_records(self, dcv_request: DcvCheckRequest, mocker):
         dcv_details = dcv_request.dcv_check_parameters.validation_details
@@ -542,7 +538,7 @@ class TestMpicDcvChecker:
             dcv_request.domain_or_ip_target, record_name_prefix, DnsRecordType.TXT,
             *[txt_record_1, txt_record_2, txt_record_3], mocker=mocker
         )
-        mocker.patch('dns.asyncresolver.resolve', new_callable=AsyncMock, side_effect=lambda domain_name, rdtype: test_dns_query_answer)
+        self.patch_resolver_resolve(mocker, test_dns_query_answer)
 
     def create_basic_dns_response_for_mock(self, dcv_request: DcvCheckRequest, mocker) -> dns.resolver.Answer:
         dcv_details = dcv_request.dcv_check_parameters.validation_details
