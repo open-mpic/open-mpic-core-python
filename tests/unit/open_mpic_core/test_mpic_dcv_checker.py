@@ -294,16 +294,23 @@ class TestMpicDcvChecker:
         assert len(dcv_response.details.response_page) == len(hundred_fifty_a_chars_b64)
 
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
-    def http_based_dcv_checks__should_leverage_requests_decoding_capabilities(self, validation_method, mocker):
-        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+    async def http_based_dcv_checks__should_leverage_requests_decoding_capabilities(self, validation_method, mocker):
+        # Expected to be received in the Content-Type header.
+        # "Café" in ISO-8859-1 is chosen as it is different, for example, when UTF-8 encoded: "43 61 66 C3 A9"
+        encoding = "ISO-8859-1"
+        content = b'\x43\x61\x66\xE9'
+        expected_challenge_value = 'Café'
+
+        dcv_checker = await TestMpicDcvChecker.create_initialized_dcv_checker()
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
-        expected_str = self.mock_website_change_validation_response_with_specific_encoding(mocker)
+        mock_response = TestMpicDcvChecker.create_mock_response_with_content_and_encoding(content, encoding)
+        self.mock_request_agnostic_http_call_response(dcv_checker, mock_response, mocker)
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE_V2:
-                dcv_request.dcv_check_parameters.validation_details.challenge_value = expected_str
+                dcv_request.dcv_check_parameters.validation_details.challenge_value = expected_challenge_value
             case DcvValidationMethod.ACME_HTTP_01:
-                dcv_request.dcv_check_parameters.validation_details.key_authorization = expected_str
-        dcv_response = dcv_checker.check_dcv(dcv_request)
+                dcv_request.dcv_check_parameters.validation_details.key_authorization = expected_challenge_value
+        dcv_response = await dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is True
 
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
@@ -523,36 +530,6 @@ class TestMpicDcvChecker:
             'get',
             side_effect=lambda *args, **kwargs: self.raise_(RequestException('Test Exception'))
         )
-
-    def mock_website_change_validation_response_page(self, mocker):
-        response = Response()
-        response.status_code = 200
-        response_page = b'aaa'
-        response.raw = BytesIO(response_page)
-        mocker.patch('requests.get', side_effect=lambda *args, **kwargs: (
-            response
-        ))
-        return base64.b64encode(response_page).decode()
-
-    def mock_website_change_validation_large_payload(self, mocker):
-        response = Response()
-        response.status_code = 200
-        response.raw = BytesIO(b'a' * 1000)
-        mocker.patch('requests.get', side_effect=lambda *args, **kwargs: (
-            response
-        ))
-
-    def mock_website_change_validation_response_with_specific_encoding(self, mocker):
-        response = Response()
-        response.status_code = 200
-        # Expected to be received in the Content-Type header.
-        str_enc = "ISO-8859-1"
-        response.encoding = str_enc
-        # "Café" in ISO-8859-1 is chosen as it is different, for example, when UTF-8 encoded: "43 61 66 C3 A9"
-        str_bytes = b'\x43\x61\x66\xE9'
-        response.raw = BytesIO(str_bytes)
-        mocker.patch('requests.get', side_effect=lambda *args, **kwargs: response)
-        return str_bytes.decode(str_enc)
 
     def mock_dns_resolve_call(self, dcv_request: DcvCheckRequest, mocker) -> MagicMock:
         dns_name_prefix = dcv_request.dcv_check_parameters.validation_details.dns_name_prefix
