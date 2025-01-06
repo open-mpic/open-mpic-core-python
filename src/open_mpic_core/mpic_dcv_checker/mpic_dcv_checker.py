@@ -141,7 +141,7 @@ class MpicDcvChecker:
 
     @staticmethod
     async def evaluate_http_lookup_response(dcv_check_response: DcvCheckResponse, lookup_response: aiohttp.ClientResponse,
-                                      target_url: str, challenge_value: str):
+                                            target_url: str, challenge_value: str):
         response_history = None
         if hasattr(lookup_response, 'history') and lookup_response.history is not None and len(
                 lookup_response.history) > 0:

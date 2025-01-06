@@ -2,6 +2,7 @@ import asyncio
 import base64
 from asyncio import StreamReader
 from io import BytesIO
+from typing import List
 from unittest.mock import MagicMock, AsyncMock
 
 import dns
@@ -80,6 +81,24 @@ class TestMpicDcvChecker:
 
         response.status = status_code
         response._headers = CIMultiDictProxy(CIMultiDict({'Location': redirect_url}))
+        return response
+
+    @staticmethod
+    def create_mock_response_with_content_and_encoding(content: bytes, encoding: str):
+        event_loop = asyncio.get_event_loop()
+
+        response = ClientResponse(
+            method='GET', url=URL('http://example.com'), writer=AsyncMock(), continue100=None,
+            timer=AsyncMock(), request_info=AsyncMock(), traces=[], loop=event_loop, session=AsyncMock()
+        )
+
+        response.status = 200
+        response._headers = CIMultiDictProxy(CIMultiDict({'Content-Type': f'text/plain; charset={encoding}'}))
+        response.content = StreamReader(loop=event_loop)
+        response.content.feed_data(content)
+        # response.content.feed_data(bytes(content.encode(encoding)))
+        response.content.feed_eof()
+
         return response
 
     # TODO should we implement FOLLOWING of CNAME records for other challenges such as TXT?
@@ -246,28 +265,31 @@ class TestMpicDcvChecker:
 
     @pytest.mark.parametrize('validation_method',
                              [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
-    def http_based_dcv_checks__should_include_base64_encoded_response_page_in_details(self, validation_method, mocker):
-        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+    async def http_based_dcv_checks__should_include_base64_encoded_response_page_in_details(self, validation_method, mocker):
+        dcv_checker = await TestMpicDcvChecker.create_initialized_dcv_checker()
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
-        expected_b64_response_page = self.mock_website_change_validation_response_page(mocker)
-        dcv_response = dcv_checker.check_dcv(dcv_request)
-        assert dcv_response.details.response_page == expected_b64_response_page
+        mock_response = TestMpicDcvChecker.create_mock_response_with_content_and_encoding(b'aaa', 'utf-8')
+        self.mock_request_agnostic_http_call_response(dcv_checker, mock_response, mocker)
+        dcv_response = await dcv_checker.check_dcv(dcv_request)
+        assert dcv_response.details.response_page == base64.b64encode(b'aaa').decode()
 
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
-    def http_based_dcv_checks__should_include_up_to_first_100_bytes_of_returned_content_in_details(self, validation_method, mocker):
-        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+    async def http_based_dcv_checks__should_include_up_to_first_100_bytes_of_returned_content_in_details(self, validation_method, mocker):
+        dcv_checker = await TestMpicDcvChecker.create_initialized_dcv_checker()
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
-        self.mock_website_change_validation_large_payload(mocker)
-        dcv_response = dcv_checker.check_dcv(dcv_request)
+        mock_response = TestMpicDcvChecker.create_mock_response_with_content_and_encoding(b'a' * 1000, 'utf-8')
+        self.mock_request_agnostic_http_call_response(dcv_checker, mock_response, mocker)
+        dcv_response = await dcv_checker.check_dcv(dcv_request)
         hundred_a_chars_b64 = base64.b64encode(b'a' * 100).decode()  # store 100 'a' characters in a base64 encoded string
         assert dcv_response.details.response_page == hundred_a_chars_b64
 
-    def http_based_dcv_checks__should_read_more_than_100_bytes_if_challenge_value_requires_it(self, mocker):
-        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+    async def http_based_dcv_checks__should_read_more_than_100_bytes_if_challenge_value_requires_it(self, mocker):
+        dcv_checker = await TestMpicDcvChecker.create_initialized_dcv_checker()
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE_V2)
         dcv_request.dcv_check_parameters.validation_details.challenge_value = b'a' * 150  # 150 'a' characters
-        self.mock_website_change_validation_large_payload(mocker)
-        dcv_response = dcv_checker.check_dcv(dcv_request)
+        mock_response = TestMpicDcvChecker.create_mock_response_with_content_and_encoding(b'a' * 1000, 'utf-8')
+        self.mock_request_agnostic_http_call_response(dcv_checker, mock_response, mocker)
+        dcv_response = await dcv_checker.check_dcv(dcv_request)
         hundred_fifty_a_chars_b64 = base64.b64encode(b'a' * 150).decode()  # store 150 'a' characters in a base64 encoded string
         assert len(dcv_response.details.response_page) == len(hundred_fifty_a_chars_b64)
 
