@@ -152,7 +152,6 @@ class TestMpicDcvChecker:
         dcv_response = await dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is True
 
-    @pytest.mark.asyncio
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
     async def http_based_dcv_checks__should_return_check_success_given_token_file_found_with_expected_content(self, validation_method, mocker):
         dcv_checker = await TestMpicDcvChecker.create_initialized_dcv_checker()
@@ -314,21 +313,21 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is True
 
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
-    def http_based_dcv_checks__should_utilize_custom_http_headers_if_provided_in_request(self, validation_method, mocker):
-        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+    async def http_based_dcv_checks__should_utilize_custom_http_headers_if_provided_in_request(self, validation_method, mocker):
+        dcv_checker = await TestMpicDcvChecker.create_initialized_dcv_checker()
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
         dcv_request.dcv_check_parameters.validation_details.http_headers = {'X-Test-Header': 'test-value', 'User-Agent': 'test-agent'}
-        requests_get_mock = self.mock_request_specific_http_call_response(dcv_request, mocker)
-        dcv_checker.check_dcv(dcv_request)
+        requests_get_mock = self.mock_request_specific_http_call_response(dcv_checker, dcv_request, mocker)
+        await dcv_checker.check_dcv(dcv_request)
         assert requests_get_mock.call_args.kwargs['headers'] == dcv_request.dcv_check_parameters.validation_details.http_headers
 
     @pytest.mark.parametrize('url_scheme', ['http', 'https'])
-    def website_change_v2_validation__should_use_specified_url_scheme(self, url_scheme, mocker):
+    async def website_change_v2_validation__should_use_specified_url_scheme(self, url_scheme, mocker):
+        dcv_checker = await TestMpicDcvChecker.create_initialized_dcv_checker()
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
         dcv_request.dcv_check_parameters.validation_details.url_scheme = url_scheme
-        self.mock_request_specific_http_call_response(dcv_request, mocker)
-        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
-        dcv_response = dcv_checker.perform_http_based_validation(dcv_request)
+        self.mock_request_specific_http_call_response(dcv_checker, dcv_request, mocker)
+        dcv_response = await dcv_checker.perform_http_based_validation(dcv_request)
         assert dcv_response.check_passed is True
         assert dcv_response.details.response_url.startswith(f"{url_scheme}://")
 
