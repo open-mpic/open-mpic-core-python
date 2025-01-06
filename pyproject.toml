@@ -36,6 +36,7 @@ test = [
     "pytest-cov==5.0.0",
     "pytest-mock==3.14.0",
     "pytest-html==4.1.1",
+    "pytest-asyncio==0.25.1",
 ]
 
 [project.urls]
@@ -96,6 +97,7 @@ addopts = [
 ]
 spec_header_format = "Spec for {test_case} ({path}):"
 spec_test_format = "{result} {docstring_summary}"  # defaults to {name} if docstring is not present in test
+asyncio_mode = "auto"  # defaults to "strict"
 
 [tool.coverage.run]
 source = ["src/open_mpic_core"]
