@@ -1,5 +1,5 @@
 from itertools import cycle
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 
 import pytest
 
@@ -78,18 +78,18 @@ class TestMpicCoordinator:
         assert all(call.check_request.dcv_check_parameters.validation_details.validation_method == DcvValidationMethod.DNS_CHANGE for call in call_list)
         assert all(call.check_request.dcv_check_parameters.validation_details.dns_name_prefix == 'test' for call in call_list)
 
-    def coordinate_mpic__should_call_remote_perspective_call_function_with_correct_parameters(self):
+    async def coordinate_mpic__should_call_remote_perspective_call_function_with_correct_parameters(self):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters(quorum_count=2, perspective_count=2,
                                                                                    max_attempts=2)
-        mocked_remote_perspective_call_function = MagicMock()
-        mocked_remote_perspective_call_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
+        mocked_call_remote_perspective_function = AsyncMock()
+        mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
             self.create_successful_remote_caa_check_response, self.create_successful_remote_caa_check_response
         )
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
-        mpic_coordinator = MpicCoordinator(mocked_remote_perspective_call_function, mpic_coordinator_config)
-        mpic_coordinator.coordinate_mpic(mpic_request)
-        call_args_list = mocked_remote_perspective_call_function.call_args_list
+        mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config)
+        await mpic_coordinator.coordinate_mpic(mpic_request)
+        call_args_list = mocked_call_remote_perspective_function.await_args_list
         assert len(call_args_list) == 2
         for call in call_args_list:
             call_args = call.args
