@@ -40,13 +40,13 @@ class MpicCaaChecker:
         return False
 
     @staticmethod
-    def find_caa_records_and_domain(caa_request) -> tuple[RRset, Name]:
+    async def find_caa_records_and_domain(caa_request) -> tuple[RRset, Name]:
         rrset = None
         domain = dns.name.from_text(caa_request.domain_or_ip_target)
 
         while domain != dns.name.root:
             try:
-                lookup = dns.resolver.resolve(domain, dns.rdatatype.CAA)
+                lookup = await dns.asyncresolver.resolve(domain, dns.rdatatype.CAA)
                 rrset = lookup.rrset
                 break
             except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
@@ -87,7 +87,7 @@ class MpicCaaChecker:
                 valid_for_issuance = True
         return valid_for_issuance
 
-    def check_caa(self, caa_request: CaaCheckRequest) -> CaaCheckResponse:
+    async def check_caa(self, caa_request: CaaCheckRequest) -> CaaCheckResponse:
         # Assume the default system configured validation targets and override if sent in the API call.
         caa_domains = self.default_caa_domain_list
         is_wc_domain = False
@@ -116,7 +116,7 @@ class MpicCaaChecker:
         )
 
         try:
-            rrset, domain = MpicCaaChecker.find_caa_records_and_domain(caa_request)
+            rrset, domain = await MpicCaaChecker.find_caa_records_and_domain(caa_request)
             caa_found = rrset is not None
         except MpicCaaLookupException:
             caa_lookup_error = True

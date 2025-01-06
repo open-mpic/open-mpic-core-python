@@ -302,7 +302,7 @@ class TestMpicDcvChecker:
         test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer(
             dcv_request.domain_or_ip_target, dcv_details.dns_name_prefix, DnsRecordType.CAA, record_data, mocker
         )
-        self.patch_resolver_resolve(mocker, test_dns_query_answer)
+        self.patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is expected_result
 
@@ -324,7 +324,7 @@ class TestMpicDcvChecker:
         test_dns_query_answer.response.answer[0].add(
             MockDnsObjectCreator.create_record_by_type(DnsRecordType.TXT, {'value': 'not-the-expected-value'})
         )
-        self.patch_resolver_resolve(mocker, test_dns_query_answer)
+        self.patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False
 
@@ -368,7 +368,7 @@ class TestMpicDcvChecker:
     async def dns_based_dcv_checks__should_return_check_failure_with_errors_given_exception_raised(self, validation_method, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
         no_answer_error = dns.resolver.NoAnswer()
-        self.patch_resolver_resolve(mocker, no_answer_error)
+        self.patch_resolver_with_answer_or_exception(mocker, no_answer_error)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         errors = [MpicValidationError(error_type=no_answer_error.__class__.__name__, error_message=no_answer_error.msg)]
         assert dcv_response.check_passed is False
@@ -475,7 +475,7 @@ class TestMpicDcvChecker:
     def patch_resolver_resolve_with_side_effect(self, mocker, side_effect):
         return mocker.patch('dns.asyncresolver.resolve', new_callable=AsyncMock, side_effect=side_effect)
 
-    def patch_resolver_resolve(self, mocker, mocked_response_or_exception):
+    def patch_resolver_with_answer_or_exception(self, mocker, mocked_response_or_exception):
         # noinspection PyUnusedLocal
         async def side_effect(domain_name, rdtype):
             if isinstance(mocked_response_or_exception, Exception):
@@ -515,12 +515,12 @@ class TestMpicDcvChecker:
     def mock_dns_resolve_call_with_specific_response_code(self, dcv_request: DcvCheckRequest, response_code, mocker):
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
         test_dns_query_answer.response.rcode = lambda: response_code
-        self.patch_resolver_resolve(mocker, test_dns_query_answer)
+        self.patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
 
     def mock_dns_resolve_call_with_specific_flag(self, dcv_request: DcvCheckRequest, flag, mocker):
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
         test_dns_query_answer.response.flags |= flag
-        self.patch_resolver_resolve(mocker, test_dns_query_answer)
+        self.patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
 
     def mock_dns_resolve_call_getting_multiple_txt_records(self, dcv_request: DcvCheckRequest, mocker):
         dcv_details = dcv_request.dcv_check_parameters.validation_details
@@ -538,7 +538,7 @@ class TestMpicDcvChecker:
             dcv_request.domain_or_ip_target, record_name_prefix, DnsRecordType.TXT,
             *[txt_record_1, txt_record_2, txt_record_3], mocker=mocker
         )
-        self.patch_resolver_resolve(mocker, test_dns_query_answer)
+        self.patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
 
     def create_basic_dns_response_for_mock(self, dcv_request: DcvCheckRequest, mocker) -> dns.resolver.Answer:
         dcv_details = dcv_request.dcv_check_parameters.validation_details
