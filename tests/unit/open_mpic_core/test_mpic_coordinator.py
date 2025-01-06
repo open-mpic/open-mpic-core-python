@@ -153,34 +153,37 @@ class TestMpicCoordinator:
         assert mpic_response.is_valid is True
 
     async def coordinate_mpic__should_retry_corroboration_max_attempts_times_if_corroboration_fails(self):
+        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         # there are 3 rirs of 2 perspectives each in the test setup; expect 3 cohorts of 2 perspectives each
         mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters(quorum_count=1, perspective_count=2, max_attempts=3)
         # create mocks that will fail the first two attempts and succeed for the third
-        succeed_after_two_attempts = AsyncMock()
-        succeed_after_two_attempts.side_effect = self.sequence_of(
+        succeed_after_three_attempts = AsyncMock()
+        succeed_after_three_attempts.side_effect = self.sequence_of(
             (2, self.create_failing_remote_caa_check_response),
             (2, self.create_failing_remote_response_with_exception),
             (2, self.create_successful_remote_caa_check_response)
         )
-        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
-        mpic_coordinator = MpicCoordinator(succeed_after_two_attempts, mpic_coordinator_config)
+        mpic_coordinator = MpicCoordinator(succeed_after_three_attempts, mpic_coordinator_config)
         mpic_response = await mpic_coordinator.coordinate_mpic(mpic_request)
         assert mpic_response.is_valid is True
         assert mpic_response.actual_orchestration_parameters.attempt_count == 3
 
-    def coordinate_mpic__should_return_check_failure_if_max_attempts_were_reached_without_successful_check(self):
+    async def coordinate_mpic__should_return_check_failure_if_max_attempts_were_reached_without_successful_check(self):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         # there are 3 rirs of 2 perspectives each in the test setup; expect 3 cohorts of 2 perspectives each
         mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters(quorum_count=1, perspective_count=2, max_attempts=3)
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
-        # "mock" the remote perspective call function to fail all attempts
-        mpic_coordinator = MpicCoordinator(self.create_failing_remote_caa_check_response, mpic_coordinator_config)
-        mpic_response = mpic_coordinator.coordinate_mpic(mpic_request)
+        mocked_call_remote_perspective_function = AsyncMock()
+        mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
+            self.create_failing_remote_caa_check_response
+        )
+        mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config)
+        mpic_response = await mpic_coordinator.coordinate_mpic(mpic_request)
         assert mpic_response.is_valid is False
         assert mpic_response.actual_orchestration_parameters.attempt_count == 3
 
-    def coordinate_mpic__should_cycle_through_perspective_cohorts_if_attempts_exceeds_cohort_number(self):
+    async def coordinate_mpic__should_cycle_through_perspective_cohorts_if_attempts_exceeds_cohort_number(self):
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
 
         first_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
@@ -188,13 +191,13 @@ class TestMpicCoordinator:
         first_request.orchestration_parameters = MpicRequestOrchestrationParameters(quorum_count=1, perspective_count=2, max_attempts=2)
         # "mock" the remote perspective call function that will fail the first cohort and succeed for the second
         # (fail 1a, fail 1b, pass 2a, pass 2b)
-        succeed_after_two_attempts = MagicMock()
-        succeed_after_two_attempts.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
-            self.create_failing_remote_caa_check_response, self.create_failing_remote_caa_check_response,
-            self.create_successful_remote_caa_check_response, self.create_successful_remote_caa_check_response
+        succeed_after_two_attempts = AsyncMock()
+        succeed_after_two_attempts.side_effect = self.sequence_of(
+            (2, self.create_failing_remote_caa_check_response),
+            (2, self.create_successful_remote_caa_check_response)
         )
         mpic_coordinator = MpicCoordinator(succeed_after_two_attempts, mpic_coordinator_config)
-        first_response: MpicResponse = mpic_coordinator.coordinate_mpic(first_request)
+        first_response: MpicResponse = await mpic_coordinator.coordinate_mpic(first_request)
         first_cohort = first_response.perspectives
         first_cohort_sorted = sorted(first_cohort, key=lambda check_response: check_response.perspective_code)
 
@@ -203,31 +206,31 @@ class TestMpicCoordinator:
         # "mock" the remote perspective call function that will fail the first four cohorts and succeed for the fifth
         # (loop back, 1-2-3-1-2, i.e., fail 1a+1b, fail 2a+2b, fail 3a+3b, fail 1a+1b again, pass 2a+2b)
         succeed_after_five_attempts = MagicMock()
-        succeed_after_five_attempts.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
-            self.create_failing_remote_caa_check_response, self.create_failing_remote_caa_check_response,
-            self.create_failing_remote_caa_check_response, self.create_failing_remote_caa_check_response,
-            self.create_failing_remote_caa_check_response, self.create_failing_remote_caa_check_response,
-            self.create_failing_remote_caa_check_response, self.create_failing_remote_caa_check_response,
-            self.create_successful_remote_caa_check_response, self.create_successful_remote_caa_check_response
+        succeed_after_five_attempts.side_effect = self.sequence_of(
+            (8, self.create_failing_remote_caa_check_response),
+            (2, self.create_successful_remote_caa_check_response)
         )
         mpic_coordinator = MpicCoordinator(succeed_after_five_attempts, mpic_coordinator_config)
-        second_response: MpicResponse = mpic_coordinator.coordinate_mpic(second_request)
+        second_response: MpicResponse = await mpic_coordinator.coordinate_mpic(second_request)
         second_cohort = second_response.perspectives
         second_cohort_sorted = sorted(second_cohort, key=lambda check_response: check_response.perspective_code)
 
         # assert that perspectives in first cohort and in second cohort are the same perspectives
         assert all(first_cohort_sorted[i].perspective_code == second_cohort_sorted[i].perspective_code for i in range(len(first_cohort_sorted)))
 
-    def coordinate_mpic__should_cap_attempts_at_max_attempts_if_configured(self):
-        mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
-        mpic_coordinator_configuration.global_max_attempts = 2
+    async def coordinate_mpic__should_cap_attempts_at_max_attempts_if_configured(self):
+        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
+        mpic_coordinator_config.global_max_attempts = 2
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         # there are 3 rirs of 2 perspectives each in the test setup; expect 3 cohorts of 2 perspectives each
         mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters(quorum_count=1, perspective_count=2,
                                                                                    max_attempts=4)
-        # "mock" a remote perspective call function that will fail all attempts
-        mpic_coordinator = MpicCoordinator(self.create_failing_remote_caa_check_response, mpic_coordinator_configuration)
-        mpic_response = mpic_coordinator.coordinate_mpic(mpic_request)
+        mocked_call_remote_perspective_function = AsyncMock()
+        mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
+            self.create_failing_remote_caa_check_response
+        )
+        mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config)
+        mpic_response = await mpic_coordinator.coordinate_mpic(mpic_request)
         assert mpic_response.is_valid is False
         assert mpic_response.actual_orchestration_parameters.attempt_count == 2
 
