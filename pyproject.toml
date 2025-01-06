@@ -98,6 +98,7 @@ addopts = [
 spec_header_format = "Spec for {test_case} ({path}):"
 spec_test_format = "{result} {docstring_summary}"  # defaults to {name} if docstring is not present in test
 asyncio_mode = "auto"  # defaults to "strict"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.coverage.run]
 source = ["src/open_mpic_core"]
