@@ -125,7 +125,7 @@ class MpicDcvChecker:
             async with self._async_http_client.get(url=token_url, headers=http_headers) as response:
                 await MpicDcvChecker.evaluate_http_lookup_response(dcv_check_response, response, token_url,
                                                                    expected_response_content)
-        except requests.exceptions.RequestException as e:
+        except aiohttp.web.HTTPException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
         return dcv_check_response

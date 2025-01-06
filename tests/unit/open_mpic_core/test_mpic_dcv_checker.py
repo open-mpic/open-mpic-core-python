@@ -1,18 +1,15 @@
 import asyncio
 import base64
-from asyncio import StreamReader
-from io import BytesIO
-from typing import List
-from unittest.mock import MagicMock, AsyncMock
-
 import dns
 import pytest
-from multidict import CIMultiDictProxy, CIMultiDict
-from yarl import URL
-from dns.rcode import Rcode
 
+from unittest.mock import MagicMock, AsyncMock
+from yarl import URL
+from asyncio import StreamReader
 from aiohttp import ClientResponse
-from requests import Response, RequestException
+from aiohttp.web import HTTPException
+from multidict import CIMultiDictProxy, CIMultiDict
+from dns.rcode import Rcode
 
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
@@ -38,69 +35,6 @@ class TestMpicDcvChecker:
     def create_configured_dcv_checker(perspective_code: str = 'us-east-4'):
         return MpicDcvChecker(perspective_code)
 
-    @staticmethod
-    def create_mock_response(status_code: int, content: str, kwargs: dict = None):
-        event_loop = asyncio.get_event_loop()
-
-        response = ClientResponse(
-            method='GET', url=URL('http://example.com'), writer=AsyncMock(), continue100=None,
-            timer=AsyncMock(), request_info=AsyncMock(), traces=[], loop=event_loop, session=AsyncMock()
-        )
-
-        response.status = status_code
-
-        default_headers = {
-            'Content-Type': 'text/plain; charset=utf-8',
-            'Content-Length': str(len(content))
-        }
-        # for now only support 'headers' for testing purposes here
-        additional_headers = kwargs.get('headers', {}) if kwargs is not None else {}
-        all_headers = {**default_headers, **additional_headers}
-        response._headers = CIMultiDictProxy(CIMultiDict(all_headers))
-
-        response.content = StreamReader(loop=event_loop)
-        response.content.feed_data(bytes(content.encode('utf-8')))
-        response.content.feed_eof()
-
-        if kwargs is not None:
-            if 'reason' in kwargs:
-                response.reason = kwargs['reason']
-            if 'history' in kwargs:
-                response._history = kwargs['history']
-
-        return response
-
-    @staticmethod
-    def create_mock_redirect_response(status_code: int, redirect_url: str):
-        event_loop = asyncio.get_event_loop()
-
-        response = ClientResponse(
-            method='GET', url=URL('http://example.com'), writer=AsyncMock(), continue100=None,
-            timer=AsyncMock(), request_info=AsyncMock(), traces=[], loop=event_loop, session=AsyncMock()
-        )
-
-        response.status = status_code
-        response._headers = CIMultiDictProxy(CIMultiDict({'Location': redirect_url}))
-        return response
-
-    @staticmethod
-    def create_mock_response_with_content_and_encoding(content: bytes, encoding: str):
-        event_loop = asyncio.get_event_loop()
-
-        response = ClientResponse(
-            method='GET', url=URL('http://example.com'), writer=AsyncMock(), continue100=None,
-            timer=AsyncMock(), request_info=AsyncMock(), traces=[], loop=event_loop, session=AsyncMock()
-        )
-
-        response.status = 200
-        response._headers = CIMultiDictProxy(CIMultiDict({'Content-Type': f'text/plain; charset={encoding}'}))
-        response.content = StreamReader(loop=event_loop)
-        response.content.feed_data(content)
-        # response.content.feed_data(bytes(content.encode(encoding)))
-        response.content.feed_eof()
-
-        return response
-
     # TODO should we implement FOLLOWING of CNAME records for other challenges such as TXT?
     # integration test of a sort -- only mocking dns methods rather than remaining class methods
     @pytest.mark.parametrize('validation_method, record_type', [(DcvValidationMethod.WEBSITE_CHANGE_V2, None),
@@ -115,9 +49,9 @@ class TestMpicDcvChecker:
                                                                 (DcvValidationMethod.IP_LOOKUP, DnsRecordType.AAAA),
                                                                 (DcvValidationMethod.ACME_HTTP_01, None),
                                                                 (DcvValidationMethod.ACME_DNS_01, None)])
-    def check_dcv__should_perform_appropriate_check_and_allow_issuance_given_target_record_found(self, validation_method, record_type, mocker):
+    async def check_dcv__should_perform_appropriate_check_and_allow_issuance_given_target_record_found(self, validation_method, record_type, mocker):
+        dcv_checker = await TestMpicDcvChecker.create_initialized_dcv_checker()
         dcv_request = None
-        requests_get_mock = None
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE_V2 | DcvValidationMethod.ACME_HTTP_01:
                 dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
@@ -132,14 +66,10 @@ class TestMpicDcvChecker:
                 dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
         if (validation_method == DcvValidationMethod.WEBSITE_CHANGE_V2 or
                 validation_method == DcvValidationMethod.ACME_HTTP_01):
-            requests_get_mock = self.mock_request_specific_http_call_response(dcv_request, mocker)
+            self.mock_request_specific_http_call_response(dcv_checker, dcv_request, mocker)
         else:
             self.mock_dns_resolve_call(dcv_request, mocker)
-        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
-        dcv_response = dcv_checker.check_dcv(dcv_request)
-        match validation_method:
-            case DcvValidationMethod.WEBSITE_CHANGE_V2 | DcvValidationMethod.ACME_HTTP_01:
-                assert requests_get_mock.call_args.kwargs['stream'] is True
+        dcv_response = await dcv_checker.check_dcv(dcv_request)
         dcv_response.timestamp_ns = None  # ignore timestamp for comparison
         assert dcv_response.check_passed is True
 
@@ -203,11 +133,10 @@ class TestMpicDcvChecker:
     async def http_based_dcv_checks__should_return_check_failure_and_error_details_given_exception_raised(self, validation_method, mocker):
         dcv_checker = await TestMpicDcvChecker.create_initialized_dcv_checker()
         self.mock_http_exception_response(dcv_checker, mocker)
-        # mocker.patch('requests.get', side_effect=lambda *args, **kwargs: self.raise_(RequestException('Test Exception')))
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
         dcv_response = await dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False
-        errors = [MpicValidationError(error_type='RequestException', error_message='Test Exception')]
+        errors = [MpicValidationError(error_type='HTTPException', error_message='Test Exception')]
         assert dcv_response.errors == errors
 
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
@@ -484,6 +413,69 @@ class TestMpicDcvChecker:
             raise ex
         return _raise()
 
+    @staticmethod
+    def create_mock_response(status_code: int, content: str, kwargs: dict = None):
+        event_loop = asyncio.get_event_loop()
+
+        response = ClientResponse(
+            method='GET', url=URL('http://example.com'), writer=AsyncMock(), continue100=None,
+            timer=AsyncMock(), request_info=AsyncMock(), traces=[], loop=event_loop, session=AsyncMock()
+        )
+
+        response.status = status_code
+
+        default_headers = {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Content-Length': str(len(content))
+        }
+        # for now only support 'headers' for testing purposes here
+        additional_headers = kwargs.get('headers', {}) if kwargs is not None else {}
+        all_headers = {**default_headers, **additional_headers}
+        response._headers = CIMultiDictProxy(CIMultiDict(all_headers))
+
+        response.content = StreamReader(loop=event_loop)
+        response.content.feed_data(bytes(content.encode('utf-8')))
+        response.content.feed_eof()
+
+        if kwargs is not None:
+            if 'reason' in kwargs:
+                response.reason = kwargs['reason']
+            if 'history' in kwargs:
+                response._history = kwargs['history']
+
+        return response
+
+    @staticmethod
+    def create_mock_redirect_response(status_code: int, redirect_url: str):
+        event_loop = asyncio.get_event_loop()
+
+        response = ClientResponse(
+            method='GET', url=URL('http://example.com'), writer=AsyncMock(), continue100=None,
+            timer=AsyncMock(), request_info=AsyncMock(), traces=[], loop=event_loop, session=AsyncMock()
+        )
+
+        response.status = status_code
+        response._headers = CIMultiDictProxy(CIMultiDict({'Location': redirect_url}))
+        return response
+
+    @staticmethod
+    def create_mock_response_with_content_and_encoding(content: bytes, encoding: str):
+        event_loop = asyncio.get_event_loop()
+
+        response = ClientResponse(
+            method='GET', url=URL('http://example.com'), writer=AsyncMock(), continue100=None,
+            timer=AsyncMock(), request_info=AsyncMock(), traces=[], loop=event_loop, session=AsyncMock()
+        )
+
+        response.status = 200
+        response._headers = CIMultiDictProxy(CIMultiDict({'Content-Type': f'text/plain; charset={encoding}'}))
+        response.content = StreamReader(loop=event_loop)
+        response.content.feed_data(content)
+        # response.content.feed_data(bytes(content.encode(encoding)))
+        response.content.feed_eof()
+
+        return response
+
     def mock_request_specific_http_call_response(self, dcv_checker: MpicDcvChecker, dcv_request: DcvCheckRequest, mocker):
         match dcv_request.dcv_check_parameters.validation_details.validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE_V2:
@@ -527,7 +519,7 @@ class TestMpicDcvChecker:
         return mocker.patch.object(
             dcv_checker._async_http_client,
             'get',
-            side_effect=lambda *args, **kwargs: self.raise_(RequestException('Test Exception'))
+            side_effect=lambda *args, **kwargs: self.raise_(HTTPException(reason='Test Exception'))
         )
 
     def mock_dns_resolve_call(self, dcv_request: DcvCheckRequest, mocker) -> MagicMock:
