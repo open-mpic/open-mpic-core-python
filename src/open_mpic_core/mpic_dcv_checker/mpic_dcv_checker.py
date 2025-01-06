@@ -2,7 +2,7 @@ import time
 from types import TracebackType
 from typing import Optional, Type
 
-import dns.resolver
+import dns.asyncresolver
 import requests
 import aiohttp
 
@@ -51,9 +51,9 @@ class MpicDcvChecker:
             case DcvValidationMethod.WEBSITE_CHANGE_V2 | DcvValidationMethod.ACME_HTTP_01:
                 return await self.perform_http_based_validation(dcv_request)
             case _:  # ACME_DNS_01 | DNS_CHANGE | IP_LOOKUP | CONTACT_EMAIL | CONTACT_PHONE
-                return self.perform_general_dns_validation(dcv_request)
+                return await self.perform_general_dns_validation(dcv_request)
 
-    def perform_general_dns_validation(self, request) -> DcvCheckResponse:
+    async def perform_general_dns_validation(self, request) -> DcvCheckResponse:
         validation_details = request.dcv_check_parameters.validation_details
         validation_method = validation_details.validation_method
         dns_name_prefix = validation_details.dns_name_prefix
@@ -74,7 +74,7 @@ class MpicDcvChecker:
         dcv_check_response = self.create_empty_check_response(validation_method)
 
         try:
-            lookup = MpicDcvChecker.perform_dns_resolution(name_to_resolve, validation_method, dns_record_type)
+            lookup = await MpicDcvChecker.perform_dns_resolution(name_to_resolve, validation_method, dns_record_type)
             MpicDcvChecker.evaluate_dns_lookup_response(dcv_check_response, lookup, validation_method, dns_record_type,
                                                         expected_dns_record_content, exact_match)
         except dns.exception.DNSException as e:
@@ -83,7 +83,7 @@ class MpicDcvChecker:
         return dcv_check_response
 
     @staticmethod
-    def perform_dns_resolution(name_to_resolve, validation_method, dns_record_type) -> dns.resolver.Answer:
+    async def perform_dns_resolution(name_to_resolve, validation_method, dns_record_type) -> dns.resolver.Answer:
         walk_domain_tree = ((validation_method == DcvValidationMethod.CONTACT_EMAIL or
                              validation_method == DcvValidationMethod.CONTACT_PHONE) and
                             dns_record_type == DnsRecordType.CAA)
@@ -95,12 +95,12 @@ class MpicDcvChecker:
 
             while domain != dns.name.root:
                 try:
-                    lookup = dns.resolver.resolve(domain, dns_rdata_type)
+                    lookup = await dns.asyncresolver.resolve(domain, dns_rdata_type)
                     break
                 except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
                     domain = domain.parent()
         else:
-            lookup = dns.resolver.resolve(name_to_resolve, dns_rdata_type)
+            lookup = await dns.asyncresolver.resolve(name_to_resolve, dns_rdata_type)
         return lookup
 
     async def perform_http_based_validation(self, request) -> DcvCheckResponse:
