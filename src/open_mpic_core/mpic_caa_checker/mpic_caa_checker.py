@@ -1,6 +1,7 @@
 import time
 from typing import Final
 import dns.resolver
+import dns.asyncresolver
 from dns.name import Name
 from dns.rrset import RRset
 
@@ -51,8 +52,9 @@ class MpicCaaChecker:
                 break
             except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
                 domain = domain.parent()
-            except Exception:
-                raise MpicCaaLookupException
+            except Exception as e:
+                print(f"Exception during CAA lookup: {e}")
+                raise MpicCaaLookupException from Exception(e)
 
         return rrset, domain
 

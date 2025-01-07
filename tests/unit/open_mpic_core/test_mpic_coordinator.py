@@ -1,5 +1,5 @@
 from itertools import cycle
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock
 
 import pytest
 
