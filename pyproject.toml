@@ -102,11 +102,7 @@ spec_test_format = "{result} {docstring_summary}"  # defaults to {name} if docst
 asyncio_mode = "auto"  # defaults to "strict"
 asyncio_default_fixture_loop_scope = "function"
 pytest_plugins = [
-#    "pytest_asyncio.plugin",
     "pytest_profiling.plugin",
-#    "pytest_cov.plugin",
-#    "pytest_html.plugin",
-#    "pytest_mock.plugin",
 ]
 
 [tool.coverage.run]
