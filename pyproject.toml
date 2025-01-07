@@ -37,6 +37,7 @@ test = [
     "pytest-mock==3.14.0",
     "pytest-html==4.1.1",
     "pytest-asyncio==0.25.1",
+    "pytest-profiling==1.8.1",
 ]
 
 [project.urls]
@@ -72,6 +73,7 @@ unit = "pytest -rp --disable-warnings"
 unit-html = "pytest --html=testreports/index.html" # generate html report (warning: uses an aging plugin, 11-2023)
 integration = "pytest tests/integration"
 coverage = "pytest --cov=src/open_mpic_core --cov-report=term-missing --cov-report=html"
+profile = "pytest --profile"
 
 [tool.hatch.envs.hatch-test]
 features = [
@@ -99,6 +101,13 @@ spec_header_format = "Spec for {test_case} ({path}):"
 spec_test_format = "{result} {docstring_summary}"  # defaults to {name} if docstring is not present in test
 asyncio_mode = "auto"  # defaults to "strict"
 asyncio_default_fixture_loop_scope = "function"
+pytest_plugins = [
+#    "pytest_asyncio.plugin",
+    "pytest_profiling.plugin",
+#    "pytest_cov.plugin",
+#    "pytest_html.plugin",
+#    "pytest_mock.plugin",
+]
 
 [tool.coverage.run]
 source = ["src/open_mpic_core"]

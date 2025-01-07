@@ -78,7 +78,7 @@ class TestMpicCoordinator:
         assert all(call.check_request.dcv_check_parameters.validation_details.validation_method == DcvValidationMethod.DNS_CHANGE for call in call_list)
         assert all(call.check_request.dcv_check_parameters.validation_details.dns_name_prefix == 'test' for call in call_list)
 
-    async def coordinate_mpic__should_call_remote_perspective_call_function_with_correct_parameters(self):
+    async def coordinate_mpic__should_invoke_async_call_remote_perspective_function_with_correct_parameters(self):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters(quorum_count=2, perspective_count=2,
                                                                                    max_attempts=2)
