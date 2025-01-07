@@ -1,6 +1,4 @@
 import time
-from types import TracebackType
-from typing import Optional, Type
 
 import dns.asyncresolver
 import requests
@@ -29,22 +27,26 @@ class MpicDcvChecker:
     async def initialize(self):
         """Initialize the async HTTP client.
 
-        Will need to call this as part of lazy initialization in something like startup event.
-        For example, FastAPI's `@app.on_event("startup")`.
+        Will need to call this as part of lazy initialization in wrapping code.
+        For example, FastAPI's lifespan (https://fastapi.tiangolo.com/advanced/events/)
         :return:
         """
-        # connector=aiohttp.TCPConnector(ssl=False) # don't verify SSL so can follow HTTPS redirects (correct?)
-        self._async_http_client = aiohttp.ClientSession()  # TODO read about raise_for_status = True
+        # connector=aiohttp.TCPConnector(ssl=False) # don't verify SSL so can follow all sorts of HTTPS redirects?
+        self._async_http_client = aiohttp.ClientSession(
+            trust_env=True,  # Use environment SSL certificates
+            timeout=aiohttp.ClientTimeout(total=30),  # Add reasonable timeouts
+        )
 
-    # __aenter__ and __aexit__ turn this class into an async context manager
-    # to take advantage of a long-lived ClientSession async http client for multiple requests
-    async def __aenter__(self) -> "MpicDcvChecker":
-        return self
+    async def shutdown(self):
+        """ Close the async HTTP client.
 
-    async def __aexit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException],
-                        exc_tb: Optional[TracebackType]) -> None:
-        if not self._async_http_client.closed:
+        Will need to call this as part of shutdown in wrapping code.
+        For example, FastAPI's lifespan (https://fastapi.tiangolo.com/advanced/events/)
+        :return:
+        """
+        if self._async_http_client and not self._async_http_client.closed:
             await self._async_http_client.close()
+            self._async_http_client = None
 
     async def check_dcv(self, dcv_request: DcvCheckRequest) -> DcvCheckResponse:
         match dcv_request.dcv_check_parameters.validation_details.validation_method:
@@ -104,6 +106,9 @@ class MpicDcvChecker:
         return lookup
 
     async def perform_http_based_validation(self, request) -> DcvCheckResponse:
+        if self._async_http_client is None:
+            raise RuntimeError("Checker not initialized - call initialize() first")
+
         validation_method = request.dcv_check_parameters.validation_details.validation_method
         domain_or_ip_target = request.domain_or_ip_target
         http_headers = request.dcv_check_parameters.validation_details.http_headers
@@ -121,7 +126,6 @@ class MpicDcvChecker:
 
         try:
             # TODO timeouts? circuit breaker? failsafe? look into it...
-            # response = requests.get(url=token_url, headers=http_headers, stream=True, verify=False)
             async with self._async_http_client.get(url=token_url, headers=http_headers) as response:
                 await MpicDcvChecker.evaluate_http_lookup_response(dcv_check_response, response, token_url,
                                                                    expected_response_content)

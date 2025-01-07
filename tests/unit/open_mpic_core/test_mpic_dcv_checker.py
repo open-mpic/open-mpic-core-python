@@ -76,6 +76,14 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is True
 
+    async def http_based_dcv_checks__should_raise_runtime_error_if_http_client_not_initialized(self):
+        # noinspection PyAttributeOutsideInit
+        self.dcv_checker = MpicDcvChecker('us-east-4')  # not calling .initialize()
+        dcv_request = ValidCheckCreator.create_valid_http_check_request()
+        with pytest.raises(RuntimeError) as runtime_error:
+            await self.dcv_checker.check_dcv(dcv_request)
+        assert str(runtime_error.value) == 'Checker not initialized - call initialize() first'
+
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
     async def http_based_dcv_checks__should_return_check_success_given_token_file_found_with_expected_content(self, validation_method, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
