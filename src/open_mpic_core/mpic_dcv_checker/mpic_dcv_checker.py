@@ -201,13 +201,18 @@ class MpicDcvChecker:
                         record_data_as_string = record_data_as_string[1:-1]
                     records_as_strings.append(record_data_as_string)
 
+        dcv_check_response.details.response_code = response_code
+        dcv_check_response.details.records_seen = records_as_strings
+        dcv_check_response.details.ad_flag = lookup_response.response.flags & dns.flags.AD == dns.flags.AD  # single ampersand
+        dcv_check_response.details.found_at = lookup_response.qname.to_text(omit_final_dot=True)
+
+        if dns_record_type == DnsRecordType.CNAME:  # case-insensitive comparison -> convert strings to lowercase
+            expected_dns_record_content = expected_dns_record_content.lower()
+            records_as_strings = [record.lower() for record in records_as_strings]
+
         if exact_match:
             dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
         else:
             dcv_check_response.check_passed = any(
                 expected_dns_record_content in record for record in records_as_strings)
         dcv_check_response.timestamp_ns = time.time_ns()
-        dcv_check_response.details.records_seen = records_as_strings
-        dcv_check_response.details.response_code = response_code
-        dcv_check_response.details.ad_flag = lookup_response.response.flags & dns.flags.AD == dns.flags.AD  # single ampersand
-        dcv_check_response.details.found_at = lookup_response.qname.to_text(omit_final_dot=True)

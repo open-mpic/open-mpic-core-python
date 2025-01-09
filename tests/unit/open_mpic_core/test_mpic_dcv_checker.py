@@ -255,6 +255,14 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
 
+    async def dns_validation__should_be_case_insensitive_for_cname_records(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_dns_check_request(DnsRecordType.CNAME)
+        dcv_request.dcv_check_parameters.validation_details.challenge_value = 'CNAME-VALUE'
+        self.mock_dns_resolve_call(dcv_request, mocker)
+        dcv_request.dcv_check_parameters.validation_details.challenge_value = 'cname-value'
+        dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
+        assert dcv_response.check_passed is True
+
     async def dns_validation__should_allow_finding_expected_challenge_as_substring(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.DNS_CHANGE)
         dcv_request.dcv_check_parameters.validation_details.challenge_value = 'eXtRaStUfFchallenge-valueMoReStUfF'
