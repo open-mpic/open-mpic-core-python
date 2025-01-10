@@ -304,6 +304,18 @@ class TestMpicCoordinator:
         mpic_response = await mpic_coordinator.coordinate_mpic(mpic_request)
         assert mpic_response.trace_identifier == 'test_trace_identifier'
 
+    async def coordinate_mpic__should_return_domain_or_ip_target_if_included_in_request(self):
+        mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        mpic_request.domain_or_ip_target = 'test_domain_or_ip_target'
+        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
+        mocked_call_remote_perspective_function = AsyncMock()
+        mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
+            self.create_successful_remote_caa_check_response
+        )
+        mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config)
+        mpic_response = await mpic_coordinator.coordinate_mpic(mpic_request)
+        assert mpic_response.domain_or_ip_target == 'test_domain_or_ip_target'
+
     def constructor__should_treat_max_attempts_as_optional_and_default_to_none(self):
         mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
         mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_configuration)
