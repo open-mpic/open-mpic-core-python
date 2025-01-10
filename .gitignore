@@ -73,6 +73,9 @@ coverage.xml
 cover/
 testreports/
 
+# Profiling information
+prof
+
 # Translations
 *.mo
 *.pot

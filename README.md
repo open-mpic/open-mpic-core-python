@@ -46,7 +46,7 @@ caa_request = CaaCheckRequest(
 
 # Perform the CAA check
 checker = MpicCaaChecker()
-caa_response = checker.check_caa(caa_request)
+caa_response = await checker.check_caa(caa_request)
 
 # Process the response
 if caa_response.check_passed:

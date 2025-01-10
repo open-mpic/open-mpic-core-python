@@ -14,6 +14,8 @@ from typing_extensions import Annotated
 class BaseMpicResponse(BaseModel, ABC):
     request_orchestration_parameters: MpicRequestOrchestrationParameters | None = None
     actual_orchestration_parameters: MpicEffectiveOrchestrationParameters | None = None
+    check_type: CheckType
+    domain_or_ip_target: str | None = None
     is_valid: bool | None = False
     trace_identifier: str | None = None
 

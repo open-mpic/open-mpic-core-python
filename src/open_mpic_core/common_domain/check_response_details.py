@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 
 class CaaCheckResponseDetails(BaseModel):
-    caa_record_present: bool | None = None  # TODO allow None to reflect potential error state; rename to just 'present'?
+    caa_record_present: bool | None = None  # was a CAA record found (None indicates N/A, e.g. due to error)
     found_at: str | None = None  # domain where CAA record was found
     records_seen: list[str] | None = None  # list of records found in DNS query
 
