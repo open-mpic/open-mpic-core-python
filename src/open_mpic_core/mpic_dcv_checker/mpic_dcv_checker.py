@@ -2,7 +2,6 @@ import time
 
 import dns.asyncresolver
 import requests
-import urllib3
 import re
 import aiohttp
 
