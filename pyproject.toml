@@ -27,6 +27,7 @@ dependencies = [
   "requests>=2.32.3",
   "dnspython==2.6.1",
   "pydantic==2.8.2",
+  "aiohttp==3.11.11"
 ]
 
 [project.optional-dependencies]
@@ -35,6 +36,8 @@ test = [
     "pytest-cov==5.0.0",
     "pytest-mock==3.14.0",
     "pytest-html==4.1.1",
+    "pytest-asyncio==0.25.1",
+    "pytest-profiling==1.8.1",
 ]
 
 [project.urls]
@@ -48,8 +51,11 @@ build.name = "open-mpic-core"
 build.sources = ["src"]
 build.targets.wheel.packages = ["src/open_mpic_core"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"./tests/unit/test_util" = "open_mpic_core_test/test_util"  # include tests in the wheel to facilitate integration testing in wrapper projects
+
 [tool.api]
-spec_version = "2.5.0"
+spec_version = "2.6.0"
 spec_repository = "https://github.com/open-mpic/open-mpic-specification"
 
 [tool.hatch.envs.default]
@@ -67,6 +73,7 @@ unit = "pytest -rp --disable-warnings"
 unit-html = "pytest --html=testreports/index.html" # generate html report (warning: uses an aging plugin, 11-2023)
 integration = "pytest tests/integration"
 coverage = "pytest --cov=src/open_mpic_core --cov-report=term-missing --cov-report=html"
+profile = "pytest --profile"
 
 [tool.hatch.envs.hatch-test]
 features = [
@@ -92,6 +99,11 @@ addopts = [
 ]
 spec_header_format = "Spec for {test_case} ({path}):"
 spec_test_format = "{result} {docstring_summary}"  # defaults to {name} if docstring is not present in test
+asyncio_mode = "auto"  # defaults to "strict"
+asyncio_default_fixture_loop_scope = "function"
+pytest_plugins = [
+    "pytest_profiling.plugin",
+]
 
 [tool.coverage.run]
 source = ["src/open_mpic_core"]

@@ -15,13 +15,14 @@ class MpicResponseBuilder:
 
         if type(request) is MpicDcvRequest:  # type() instead of isinstance() because of inheritance
             response = MpicDcvResponse(
-                dcv_check_parameters=request.dcv_check_parameters
+                dcv_check_parameters=request.dcv_check_parameters,
             )
         else:
             response = MpicCaaResponse(
-                caa_check_parameters=request.caa_check_parameters
+                caa_check_parameters=request.caa_check_parameters,
             )
 
+        response.domain_or_ip_target=request.domain_or_ip_target
         response.request_orchestration_parameters = request.orchestration_parameters
         response.actual_orchestration_parameters = actual_orchestration_parameters
         response.is_valid = is_result_valid

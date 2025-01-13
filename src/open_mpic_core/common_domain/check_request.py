@@ -1,4 +1,6 @@
 from abc import ABC
+from typing import Union
+
 from pydantic import BaseModel
 
 from open_mpic_core.common_domain.check_parameters import CaaCheckParameters, DcvCheckParameters
@@ -14,3 +16,6 @@ class CaaCheckRequest(BaseCheckRequest):
 
 class DcvCheckRequest(BaseCheckRequest):
     dcv_check_parameters: DcvCheckParameters
+
+
+CheckRequest = Union[CaaCheckRequest, DcvCheckRequest]
