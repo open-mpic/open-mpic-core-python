@@ -205,7 +205,7 @@ class TestMpicDcvChecker:
 
     async def http_based_dcv_checks__should_read_more_than_100_bytes_if_challenge_value_requires_it(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE_V2)
-        dcv_request.dcv_check_parameters.validation_details.challenge_value = b'a' * 150  # 150 'a' characters
+        dcv_request.dcv_check_parameters.validation_details.challenge_value = "".join(["a"] * 150)  # 150 'a' characters
         mock_response = TestMpicDcvChecker.create_mock_response_with_content_and_encoding(b'a' * 1000, 'utf-8')
         self.mock_request_agnostic_http_call_response(self.dcv_checker, mock_response, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
@@ -248,20 +248,18 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is True
         assert dcv_response.details.response_url.startswith(f"{url_scheme}://")
 
-    def website_change_v2_validation__should_set_is_valid_true_with_regex_match(self, mocker):
+    async def website_change_v2_validation__should_set_is_valid_true_with_regex_match(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
         dcv_request.dcv_check_parameters.validation_details.match_regex = "^challenge_[0-9]*$"
-        self.mock_http_call_response(dcv_request, mocker)
-        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
-        dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
+        self.mock_request_specific_http_call_response(self.dcv_checker, dcv_request, mocker)
+        dcv_response = await self.dcv_checker.perform_http_based_validation(dcv_request)
         assert dcv_response.check_passed is True
 
-    def website_change_v2_validation__should_set_is_valid_false_with_regex_not_matching(self, mocker):
+    async def website_change_v2_validation__should_set_is_valid_false_with_regex_not_matching(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
         dcv_request.dcv_check_parameters.validation_details.match_regex = "^challenge_[2-9]*$"
-        self.mock_http_call_response(dcv_request, mocker)
-        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
-        dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
+        self.mock_request_specific_http_call_response(self.dcv_checker, dcv_request, mocker)
+        dcv_response = await self.dcv_checker.perform_http_based_validation(dcv_request)
         assert dcv_response.check_passed is False
 
 
