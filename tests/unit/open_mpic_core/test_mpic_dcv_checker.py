@@ -236,6 +236,23 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is True
         assert dcv_response.details.response_url.startswith(f"{url_scheme}://")
 
+    def website_change_v2_validation__should_set_is_valid_true_with_regex_match(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_http_check_request()
+        dcv_request.dcv_check_parameters.validation_details.match_regex = "^challenge_[0-9]*$"
+        self.mock_http_call_response(dcv_request, mocker)
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
+        assert dcv_response.check_passed is True
+
+    def website_change_v2_validation__should_set_is_valid_false_with_regex_not_matching(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_http_check_request()
+        dcv_request.dcv_check_parameters.validation_details.match_regex = "^challenge_[2-9]*$"
+        self.mock_http_call_response(dcv_request, mocker)
+        dcv_checker = TestMpicDcvChecker.create_configured_dcv_checker()
+        dcv_response = dcv_checker.perform_website_change_validation(dcv_request)
+        assert dcv_response.check_passed is False
+
+
     @pytest.mark.parametrize('record_type', [DnsRecordType.TXT, DnsRecordType.CNAME])
     def dns_validation__should_return_check_success_given_expected_dns_record_found(self, record_type, mocker):
         dcv_request = ValidCheckCreator.create_valid_dns_check_request(record_type)
