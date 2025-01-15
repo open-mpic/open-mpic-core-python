@@ -7,6 +7,7 @@ class MpicRequestValidationMessages(Enum):
     INVALID_CERTIFICATE_TYPE = ('invalid-certificate-type', "Invalid 'certificate-type' specified: {0}")
     INVALID_VALIDATION_METHOD_RECORD_TYPE_COMBINATION = ('invalid-validation-method-record-type-combination', 'Invalid validation method and record type combination: {0} and {1}')
     REQUEST_VALIDATION_FAILED = ('request-validation-failed', 'Request validation failed.')
+    EMPTY_CHALLENGE_VALUE = ('empty-challenge-value', 'Empty challenge value.')
 
     def __init__(self, key, message):
         self.key = key
