@@ -1,11 +1,8 @@
 import asyncio
 import json
-import traceback
 from itertools import cycle
 
 import time
-import concurrent.futures
-from datetime import datetime
 import hashlib
 
 from open_mpic_core.common_domain.check_response import CaaCheckResponse, CaaCheckResponseDetails, DcvCheckResponse, \
@@ -16,7 +13,7 @@ from open_mpic_core.common_domain.validation_error import MpicValidationError
 from open_mpic_core.common_domain.enum.check_type import CheckType
 from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
 from open_mpic_core.mpic_coordinator.cohort_creator import CohortCreator
-from open_mpic_core.mpic_coordinator.domain.mpic_request import MpicCaaRequest, MpicRequest, MpicDcvRequest
+from open_mpic_core.mpic_coordinator.domain.mpic_request import MpicRequest
 from open_mpic_core.mpic_coordinator.domain.mpic_request_validation_error import MpicRequestValidationError
 from open_mpic_core.mpic_coordinator.domain.mpic_response import MpicResponse
 from open_mpic_core.mpic_coordinator.domain.remote_check_exception import RemoteCheckException
