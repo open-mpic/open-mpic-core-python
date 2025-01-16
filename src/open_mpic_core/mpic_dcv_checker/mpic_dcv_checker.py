@@ -172,24 +172,13 @@ class MpicDcvChecker:
             response_text = await lookup_response.text()
             result = response_text.strip()
             expected_response_content = challenge_value
-            if match_regex is not None and len(match_regex) > 0:
-                match = re.search(match_regex, result)
-                if match:
-                    if exact_match:
-                        # This case is somewhat strange because the content must exactly match the specified content so the regex match seems a bit unnecessary.
-                        # Since these settings don't literally conflict, continuing with processing.
-                        dcv_check_response.check_passed = (result == expected_response_content)
-                    else:
-                        # Inexact match (i.e., string include)
-                        dcv_check_response.check_passed = (expected_response_content in result)
-                else:
-                    # If the regex was provided but failed, the check is false regardless of the state of the content.
-                    dcv_check_response.check_passed = False
+            if exact_match:
+                dcv_check_response.check_passed = (result == expected_response_content)
             else:
-                if exact_match:
-                    dcv_check_response.check_passed = (result == expected_response_content)
-                else:
-                    dcv_check_response.check_passed = (expected_response_content in result)
+                dcv_check_response.check_passed = (expected_response_content in result)
+                if match_regex is not None and len(match_regex) > 0:
+                    match = re.search(match_regex, result)
+                    dcv_check_response.check_passed = dcv_check_response.check_passed and (match is not None)
             dcv_check_response.details.response_status_code = lookup_response.status
             dcv_check_response.details.response_url = target_url
             dcv_check_response.details.response_history = response_history
