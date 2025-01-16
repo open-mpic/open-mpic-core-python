@@ -250,6 +250,19 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is True
         assert dcv_response.details.response_url.startswith(f"{url_scheme}://")
 
+    @pytest.mark.parametrize('challenge_value, check_passed', [
+        ('eXtRaStUfFchallenge-valueMoReStUfF', True), ('eXtRaStUfFchallenge-bad-valueMoReStUfF', False)
+    ])
+    async def website_change_v2_validation__should_use_substring_matching_for_challenge_value(
+            self, challenge_value, check_passed, mocker
+    ):
+        dcv_request = ValidCheckCreator.create_valid_http_check_request()
+        dcv_request.dcv_check_parameters.validation_details.challenge_value = challenge_value
+        self.mock_request_specific_http_response(self.dcv_checker, dcv_request, mocker)
+        dcv_request.dcv_check_parameters.validation_details.challenge_value = 'challenge-value'
+        dcv_response = await self.dcv_checker.perform_http_based_validation(dcv_request)
+        assert dcv_response.check_passed is check_passed
+
     async def website_change_v2_validation__should_set_is_valid_true_with_regex_match(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
         dcv_request.dcv_check_parameters.validation_details.match_regex = "^challenge_[0-9]*$"
@@ -263,6 +276,19 @@ class TestMpicDcvChecker:
         self.mock_request_specific_http_response(self.dcv_checker, dcv_request, mocker)
         dcv_response = await self.dcv_checker.perform_http_based_validation(dcv_request)
         assert dcv_response.check_passed is False
+
+    @pytest.mark.parametrize('key_authorization, check_passed', [
+        ('challenge_111', True), ('eXtRaStUfFchallenge_111MoReStUfF', False)
+    ])
+    async def acme_http_01_validation__should_use_exact_matching_for_challenge_value(
+            self, key_authorization, check_passed, mocker
+    ):
+        dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
+        dcv_request.dcv_check_parameters.validation_details.key_authorization = key_authorization
+        self.mock_request_specific_http_response(self.dcv_checker, dcv_request, mocker)
+        dcv_request.dcv_check_parameters.validation_details.key_authorization = 'challenge_111'
+        dcv_response = await self.dcv_checker.perform_http_based_validation(dcv_request)
+        assert dcv_response.check_passed is check_passed
 
     @pytest.mark.parametrize('record_type', [DnsRecordType.TXT, DnsRecordType.CNAME])
     async def dns_validation__should_return_check_success_given_expected_dns_record_found(self, record_type, mocker):

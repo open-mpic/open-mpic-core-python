@@ -162,15 +162,14 @@ class MpicDcvChecker:
             content = await lookup_response.content.read(bytes_to_read)
             # set internal _content to leverage decoding capabilities of ClientResponse.text without reading the entire response
             lookup_response._body = content
-            # lookup_response._content = content
             response_text = await lookup_response.text()
             result = response_text.strip()
             expected_response_content = challenge_value
             if dcv_check_request.dcv_check_parameters.validation_details.validation_method == DcvValidationMethod.ACME_HTTP_01:
                 # need to match exactly for ACME HTTP-01
-                dcv_check_response.check_passed = (result == expected_response_content)
+                dcv_check_response.check_passed = expected_response_content == result
             else:
-                dcv_check_response.check_passed = (expected_response_content in result)
+                dcv_check_response.check_passed = expected_response_content in result
                 match_regex = dcv_check_request.dcv_check_parameters.validation_details.match_regex
                 if match_regex is not None and len(match_regex) > 0:
                     match = re.search(match_regex, result)
