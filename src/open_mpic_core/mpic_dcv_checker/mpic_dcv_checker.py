@@ -21,8 +21,9 @@ class MpicDcvChecker:
     CONTACT_EMAIL_TAG = 'contactemail'
     CONTACT_PHONE_TAG = 'contactphone'
 
-    def __init__(self, perspective_code: str):
+    def __init__(self, perspective_code: str, verify_ssl: bool = False):
         self.perspective_code = perspective_code
+        self.verify_ssl = verify_ssl
         self._async_http_client = None
 
     async def initialize(self):
@@ -32,9 +33,9 @@ class MpicDcvChecker:
         For example, FastAPI's lifespan (https://fastapi.tiangolo.com/advanced/events/)
         :return:
         """
-        # connector=aiohttp.TCPConnector(ssl=False) # don't verify SSL so can follow all sorts of HTTPS redirects?
+        connector = aiohttp.TCPConnector(ssl=self.verify_ssl)  # flag to verify TLS certificates; defaults to False
         self._async_http_client = aiohttp.ClientSession(
-            trust_env=True,  # Use environment SSL certificates
+            connector=connector,
             timeout=aiohttp.ClientTimeout(total=30),  # Add reasonable timeouts
         )
 
