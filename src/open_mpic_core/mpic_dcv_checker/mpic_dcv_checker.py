@@ -114,28 +114,22 @@ class MpicDcvChecker:
         validation_method = request.dcv_check_parameters.validation_details.validation_method
         domain_or_ip_target = request.domain_or_ip_target
         http_headers = request.dcv_check_parameters.validation_details.http_headers
-        exact_match = True
-        regex_expression = None
         if validation_method == DcvValidationMethod.WEBSITE_CHANGE_V2:
             expected_response_content = request.dcv_check_parameters.validation_details.challenge_value
             url_scheme = request.dcv_check_parameters.validation_details.url_scheme
             token_path = request.dcv_check_parameters.validation_details.http_token_path
             token_url = f"{url_scheme}://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{token_path}"  # noqa E501 (http)
             dcv_check_response = self.create_empty_check_response(DcvValidationMethod.WEBSITE_CHANGE_V2)
-            exact_match = False
-            regex_expression = request.dcv_check_parameters.validation_details.match_regex
         else:
             expected_response_content = request.dcv_check_parameters.validation_details.key_authorization
             token = request.dcv_check_parameters.validation_details.token
             token_url = f"http://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
             dcv_check_response = self.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
-            exact_match = True
-            regex_expression = None
         try:
             # TODO timeouts? circuit breaker? failsafe? look into it...
             async with self._async_http_client.get(url=token_url, headers=http_headers) as response:
-                await MpicDcvChecker.evaluate_http_lookup_response(dcv_check_response, response, token_url,
-                                                                   expected_response_content, regex_expression, exact_match)
+                await MpicDcvChecker.evaluate_http_lookup_response(request, dcv_check_response, response, token_url,
+                                                                   expected_response_content)
         except aiohttp.web.HTTPException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
@@ -151,8 +145,8 @@ class MpicDcvChecker:
         )
 
     @staticmethod
-    async def evaluate_http_lookup_response(dcv_check_response: DcvCheckResponse, lookup_response: aiohttp.ClientResponse,
-                                            target_url: str, challenge_value: str, match_regex: str, exact_match: bool):
+    async def evaluate_http_lookup_response(dcv_check_request: DcvCheckRequest, dcv_check_response: DcvCheckResponse, lookup_response: aiohttp.ClientResponse,
+                                            target_url: str, challenge_value: str):
         response_history = None
         if hasattr(lookup_response, 'history') and lookup_response.history is not None and len(
                 lookup_response.history) > 0:
@@ -172,10 +166,12 @@ class MpicDcvChecker:
             response_text = await lookup_response.text()
             result = response_text.strip()
             expected_response_content = challenge_value
-            if exact_match:
+            if dcv_check_request.dcv_check_parameters.validation_details.validation_method == DcvValidationMethod.ACME_HTTP_01:
+                # need to match exactly for ACME HTTP-01
                 dcv_check_response.check_passed = (result == expected_response_content)
             else:
                 dcv_check_response.check_passed = (expected_response_content in result)
+                match_regex = dcv_check_request.dcv_check_parameters.validation_details.match_regex
                 if match_regex is not None and len(match_regex) > 0:
                     match = re.search(match_regex, result)
                     dcv_check_response.check_passed = dcv_check_response.check_passed and (match is not None)
