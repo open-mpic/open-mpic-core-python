@@ -441,7 +441,7 @@ class TestMpicDcvChecker:
     @staticmethod
     def create_base_client_response_for_mock(event_loop):
         return ClientResponse(
-            method='GET', url=URL('http://example.com'), writer=AsyncMock(), continue100=None,
+            method='GET', url=URL('http://example.com'), writer=MagicMock(), continue100=None,
             timer=AsyncMock(), request_info=AsyncMock(), traces=[], loop=event_loop, session=AsyncMock()
         )
 
