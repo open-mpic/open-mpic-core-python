@@ -1,3 +1,5 @@
+import logging
+from io import StringIO
 from itertools import cycle
 from unittest.mock import AsyncMock
 
@@ -12,12 +14,32 @@ from open_mpic_core.mpic_coordinator.domain.remote_perspective import RemotePers
 from open_mpic_core.mpic_coordinator.domain.mpic_request_validation_error import MpicRequestValidationError
 from open_mpic_core.mpic_coordinator.domain.mpic_response import MpicResponse
 from open_mpic_core.mpic_coordinator.mpic_coordinator import MpicCoordinator, MpicCoordinatorConfiguration
+from open_mpic_core.common_util.trace_level_logger import TRACE_LEVEL
 
 from unit.test_util.valid_mpic_request_creator import ValidMpicRequestCreator
 
 
 # noinspection PyMethodMayBeStatic
 class TestMpicCoordinator:
+    @pytest.fixture(autouse=True)
+    def setup_logging(self):
+        # Clear existing handlers
+        root = logging.getLogger()
+        for handler in root.handlers[:]:
+            root.removeHandler(handler)
+
+        # noinspection PyAttributeOutsideInit
+        self.log_output = StringIO()  # to be able to inspect what gets logged
+        handler = logging.StreamHandler(self.log_output)
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
+        # Configure fresh logging
+        logging.basicConfig(
+            level=TRACE_LEVEL,
+            handlers=[handler]
+        )
+        yield
+
     def create_cohorts_of_randomly_selected_perspectives__should_throw_error_given_requested_count_exceeds_total_perspectives(self):
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
         target_perspectives = mpic_coordinator_config.target_perspectives
@@ -316,6 +338,23 @@ class TestMpicCoordinator:
         mpic_response = await mpic_coordinator.coordinate_mpic(mpic_request)
         assert mpic_response.domain_or_ip_target == 'test_domain_or_ip_target'
 
+    async def coordinate_mpic__should_be_able_to_trace_timing_of_remote_perspective_calls(self):
+        mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
+        mocked_call_remote_perspective_function = AsyncMock()
+        mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
+            self.create_successful_remote_caa_check_response
+        )
+        # note the TRACE_LEVEL here
+        mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config, TRACE_LEVEL)
+        await mpic_coordinator.coordinate_mpic(mpic_request)
+        # Get the log output and assert
+        log_contents = self.log_output.getvalue()
+        assert "TRACE" in log_contents
+        assert mpic_coordinator.logger.name in log_contents
+        assert "seconds" in log_contents
+        print(log_contents)
+
     def constructor__should_treat_max_attempts_as_optional_and_default_to_none(self):
         mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
         mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_configuration)
@@ -333,6 +372,24 @@ class TestMpicCoordinator:
         assert mpic_coordinator.default_perspective_count == mpic_coordinator_configuration.default_perspective_count
         assert mpic_coordinator.hash_secret == mpic_coordinator_configuration.hash_secret
         assert mpic_coordinator.call_remote_perspective_function == call_remote_perspective
+
+    def constructor__should_set_log_level_if_provided(self):
+        mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
+        mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_configuration, logging.ERROR)
+        assert mpic_coordinator.logger.level == logging.ERROR
+
+    def mpic_coordinator__should_be_able_to_log_at_trace_level(self):
+        mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
+        mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_configuration, TRACE_LEVEL)
+
+        test_message = "This is a trace log message."
+        mpic_coordinator.logger.trace(test_message)
+
+        # Get the log output and assert
+        log_contents = self.log_output.getvalue()
+        assert test_message in log_contents
+        assert "TRACE" in log_contents
+        assert mpic_coordinator.logger.name in log_contents
 
     @staticmethod
     def create_mpic_coordinator_configuration() -> MpicCoordinatorConfiguration:
