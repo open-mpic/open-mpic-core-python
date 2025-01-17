@@ -23,7 +23,7 @@ def get_logger(name: str) -> logging.Logger:
 
     if not hasattr(logging.Logger, 'trace_timing'):
         @asynccontextmanager
-        async def trace_timing(self, operation_name, *args, **kwargs):
+        async def trace_timing(self, operation_description, *args, **kwargs):
             """
             Used to log the time taken for an async operation to complete. Use 'with', when timing an 'await'.
             """
@@ -33,7 +33,7 @@ def get_logger(name: str) -> logging.Logger:
                     yield
                 finally:
                     elapsed = time.perf_counter() - start
-                    self._log(TRACE_LEVEL, f"{operation_name} took {elapsed:.4f} seconds", args, **kwargs)
+                    self._log(TRACE_LEVEL, f"{operation_description} took {elapsed:.4f} seconds", args, **kwargs)
             else:
                 yield
         logging.Logger.trace_timing = trace_timing

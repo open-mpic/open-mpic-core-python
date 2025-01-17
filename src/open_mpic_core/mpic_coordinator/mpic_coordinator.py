@@ -88,9 +88,7 @@ class MpicCoordinator:
             # Collect async calls to invoke for each perspective.
             async_calls_to_issue = MpicCoordinator.collect_async_calls_to_issue(mpic_request, perspectives_to_use)
 
-            # noinspection PyUnresolvedReferences
-            async with logger.trace_timing(f"MPIC request {mpic_request.trace_identifier} attempt {attempts} with {perspective_count} perspectives"):
-                perspective_responses, validity_per_perspective = await self.issue_async_calls_and_collect_responses(perspectives_to_use, async_calls_to_issue)
+            perspective_responses, validity_per_perspective = await self.issue_async_calls_and_collect_responses(perspectives_to_use, async_calls_to_issue)
 
             valid_perspective_count = sum(validity_per_perspective.values())
             is_valid_result = valid_perspective_count >= quorum_count
@@ -148,9 +146,8 @@ class MpicCoordinator:
 
         return async_calls_to_issue
 
-    @staticmethod
     async def call_remote_perspective(
-            call_remote_perspective_function, call_config: RemoteCheckCallConfiguration
+            self, call_remote_perspective_function, call_config: RemoteCheckCallConfiguration
     ) -> (CheckResponse, RemoteCheckCallConfiguration):
         """
         Async wrapper around the perspective call function.
@@ -158,7 +155,9 @@ class MpicCoordinator:
         or that we'll wrap the sync function using asyncio.to_thread() if needed.
         """
         try:
-            response = await call_remote_perspective_function(call_config.perspective, call_config.check_type, call_config.check_request)
+            # noinspection PyUnresolvedReferences
+            async with self.logger.trace_timing(f"MPIC round-trip communication with perspective {call_config.perspective.code}"):
+                response = await call_remote_perspective_function(call_config.perspective, call_config.check_type, call_config.check_request)
         except Exception as exc:
             raise RemoteCheckException(
                 f"Check failed for perspective {call_config.perspective.code}",
@@ -205,10 +204,12 @@ class MpicCoordinator:
         validity_per_perspective = {perspective.code: False for perspective in perspectives_to_use}
 
         tasks = [
-            MpicCoordinator.call_remote_perspective(self.call_remote_perspective_function, call_config) for call_config in async_calls_to_issue
+            self.call_remote_perspective(self.call_remote_perspective_function, call_config) for call_config in async_calls_to_issue
         ]
 
-        responses = await asyncio.gather(*tasks, return_exceptions=True)
+        # noinspection PyUnresolvedReferences
+        async with self.logger.trace_timing(f"MPIC round-trip communication with {len(perspectives_to_use)} perspectives"):
+            responses = await asyncio.gather(*tasks, return_exceptions=True)
 
         for response in responses:
             # check for exception (return_exceptions=True above will return exceptions as responses)
