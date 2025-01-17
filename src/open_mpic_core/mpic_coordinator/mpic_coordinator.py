@@ -51,7 +51,7 @@ class MpicCoordinator:
 
     async def coordinate_mpic(self, mpic_request: MpicRequest) -> MpicResponse:
         # noinspection PyUnresolvedReferences
-        self.logger.trace(f"Received MPIC request with trace ID {mpic_request.trace_identifier}")
+        self.logger.trace(f"Coordinating MPIC request with trace ID {mpic_request.trace_identifier}")
         is_request_valid, validation_issues = MpicRequestValidator.is_request_valid(mpic_request, self.target_perspectives)
 
         if not is_request_valid:

@@ -1,5 +1,7 @@
 import asyncio
 import base64
+import logging
+from io import StringIO
 from typing import List
 
 import dns
@@ -16,8 +18,8 @@ from dns.rcode import Rcode
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
 from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
-from open_mpic_core.common_domain.enum.url_scheme import UrlScheme
 from open_mpic_core.common_domain.validation_error import MpicValidationError
+from open_mpic_core.common_util.trace_level_logger import TRACE_LEVEL
 from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import MpicDcvChecker
 
 from unit.test_util.mock_dns_object_creator import MockDnsObjectCreator
@@ -33,6 +35,36 @@ class TestMpicDcvChecker:
         await self.dcv_checker.initialize()
         # dcv_checker._async_http_client = AsyncMock()
         yield self.dcv_checker
+
+    @pytest.fixture(autouse=True)
+    def setup_logging(self):
+        # Clear existing handlers
+        root = logging.getLogger()
+        for handler in root.handlers[:]:
+            root.removeHandler(handler)
+
+        # noinspection PyAttributeOutsideInit
+        self.log_output = StringIO()  # to be able to inspect what gets logged
+        handler = logging.StreamHandler(self.log_output)
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
+        # Configure fresh logging
+        logging.basicConfig(
+            level=TRACE_LEVEL,
+            handlers=[handler]
+        )
+        yield
+
+    def constructor__should_set_log_level_if_provided(self):
+        dcv_checker = MpicDcvChecker('us-east-4', log_level=logging.ERROR)
+        assert dcv_checker.logger.level == logging.ERROR
+
+    def mpic_dcv_checker__should_be_able_to_log_at_trace_level(self):
+        dcv_checker = MpicDcvChecker('us-east-4', log_level=TRACE_LEVEL)
+        test_message = "This is a trace log message."
+        dcv_checker.logger.trace(test_message)
+        log_contents = self.log_output.getvalue()
+        assert all(text in log_contents for text in [test_message, "TRACE", dcv_checker.logger.name])
 
     # TODO should we implement FOLLOWING of CNAME records for other challenges such as TXT?
     # integration test of a sort -- only mocking dns methods rather than remaining class methods
@@ -70,13 +102,21 @@ class TestMpicDcvChecker:
         dcv_response.timestamp_ns = None  # ignore timestamp for comparison
         assert dcv_response.check_passed is True
 
-    @pytest.mark.skip('this is just for local debugging...')  # FIXME delete this before long
-    async def delete_me__this_is_used_for_local_debugging_for_now(self):
-        dcv_request = ValidCheckCreator.create_valid_http_check_request()
-        dcv_request.domain_or_ip_target = 'sectigo.com'  # 404: 'https://blog.fluidui.com/moomoomoo'
-        dcv_request.dcv_check_parameters.validation_details.url_scheme = UrlScheme.HTTPS
-        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
-        assert dcv_response.check_passed is True
+    @pytest.mark.parametrize('validation_method', [DcvValidationMethod.ACME_HTTP_01, DcvValidationMethod.ACME_DNS_01])
+    async def check_dcv__should_be_able_to_trace_timing_of_http_and_dns_lookups(self, validation_method, mocker):
+        tracing_dcv_checker = MpicDcvChecker('us-east-4', log_level=TRACE_LEVEL)
+        await tracing_dcv_checker.initialize()
+
+        if validation_method == DcvValidationMethod.ACME_HTTP_01:
+            dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
+            self.mock_request_specific_http_response(tracing_dcv_checker, dcv_request, mocker)
+        else:
+            dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
+            self.mock_dns_resolve_call(dcv_request, mocker)
+
+        await tracing_dcv_checker.check_dcv(dcv_request)
+        log_contents = self.log_output.getvalue()
+        assert all(text in log_contents for text in ['seconds', 'TRACE', tracing_dcv_checker.logger.name])
 
     async def http_based_dcv_checks__should_raise_runtime_error_if_http_client_not_initialized(self):
         # noinspection PyAttributeOutsideInit

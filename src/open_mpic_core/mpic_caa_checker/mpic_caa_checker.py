@@ -98,6 +98,9 @@ class MpicCaaChecker:
         return valid_for_issuance
 
     async def check_caa(self, caa_request: CaaCheckRequest) -> CaaCheckResponse:
+        # noinspection PyUnresolvedReferences
+        self.logger.trace(f"Checking CAA for {dcv_request.domain_or_ip_target}")
+
         # Assume the default system configured validation targets and override if sent in the API call.
         caa_domains = self.default_caa_domain_list
         is_wc_domain = False
@@ -149,4 +152,7 @@ class MpicCaaChecker:
             caa_check_response.details.found_at = domain.to_text(omit_final_dot=True)
             caa_check_response.details.records_seen = [record_data.to_text() for record_data in rrset]
         caa_check_response.timestamp_ns = time.time_ns()
+
+        # noinspection PyUnresolvedReferences
+        self.logger.trace(f"Completed CAA for {dcv_request.domain_or_ip_target}")
         return caa_check_response
