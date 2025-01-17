@@ -40,6 +40,37 @@ class TestMpicCoordinator:
         )
         yield
 
+    def constructor__should_treat_max_attempts_as_optional_and_default_to_none(self):
+        mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
+        mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_configuration)
+        assert mpic_coordinator.global_max_attempts is None
+
+    def constructor__should_set_configuration_and_remote_perspective_call_function(self):
+        mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
+
+        def call_remote_perspective():
+            return 'this_is_a_dummy_response'
+
+        mpic_coordinator = MpicCoordinator(call_remote_perspective, mpic_coordinator_configuration)
+        assert mpic_coordinator.global_max_attempts == mpic_coordinator_configuration.global_max_attempts
+        assert mpic_coordinator.target_perspectives == mpic_coordinator_configuration.target_perspectives
+        assert mpic_coordinator.default_perspective_count == mpic_coordinator_configuration.default_perspective_count
+        assert mpic_coordinator.hash_secret == mpic_coordinator_configuration.hash_secret
+        assert mpic_coordinator.call_remote_perspective_function == call_remote_perspective
+
+    def constructor__should_set_log_level_if_provided(self):
+        mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
+        mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_configuration, logging.ERROR)
+        assert mpic_coordinator.logger.level == logging.ERROR
+
+    def mpic_coordinator__should_be_able_to_log_at_trace_level(self):
+        mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
+        mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_configuration, TRACE_LEVEL)
+        test_message = "This is a trace log message."
+        mpic_coordinator.logger.trace(test_message)
+        log_contents = self.log_output.getvalue()
+        assert all(text in log_contents for text in [test_message, "TRACE", mpic_coordinator.logger.name])
+
     def create_cohorts_of_randomly_selected_perspectives__should_throw_error_given_requested_count_exceeds_total_perspectives(self):
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
         target_perspectives = mpic_coordinator_config.target_perspectives
@@ -350,46 +381,7 @@ class TestMpicCoordinator:
         await mpic_coordinator.coordinate_mpic(mpic_request)
         # Get the log output and assert
         log_contents = self.log_output.getvalue()
-        assert "TRACE" in log_contents
-        assert mpic_coordinator.logger.name in log_contents
-        assert "seconds" in log_contents
-        print(log_contents)
-
-    def constructor__should_treat_max_attempts_as_optional_and_default_to_none(self):
-        mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
-        mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_configuration)
-        assert mpic_coordinator.global_max_attempts is None
-
-    def constructor__should_set_configuration_and_remote_perspective_call_function(self):
-        mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
-
-        def call_remote_perspective():
-            return 'this_is_a_dummy_response'
-
-        mpic_coordinator = MpicCoordinator(call_remote_perspective, mpic_coordinator_configuration)
-        assert mpic_coordinator.global_max_attempts == mpic_coordinator_configuration.global_max_attempts
-        assert mpic_coordinator.target_perspectives == mpic_coordinator_configuration.target_perspectives
-        assert mpic_coordinator.default_perspective_count == mpic_coordinator_configuration.default_perspective_count
-        assert mpic_coordinator.hash_secret == mpic_coordinator_configuration.hash_secret
-        assert mpic_coordinator.call_remote_perspective_function == call_remote_perspective
-
-    def constructor__should_set_log_level_if_provided(self):
-        mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
-        mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_configuration, logging.ERROR)
-        assert mpic_coordinator.logger.level == logging.ERROR
-
-    def mpic_coordinator__should_be_able_to_log_at_trace_level(self):
-        mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
-        mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_configuration, TRACE_LEVEL)
-
-        test_message = "This is a trace log message."
-        mpic_coordinator.logger.trace(test_message)
-
-        # Get the log output and assert
-        log_contents = self.log_output.getvalue()
-        assert test_message in log_contents
-        assert "TRACE" in log_contents
-        assert mpic_coordinator.logger.name in log_contents
+        assert all(text in log_contents for text in ['seconds', 'TRACE', mpic_coordinator.logger.name])
 
     @staticmethod
     def create_mpic_coordinator_configuration() -> MpicCoordinatorConfiguration:

@@ -1,3 +1,6 @@
+import logging
+from io import StringIO
+
 import dns
 import pytest
 
@@ -11,6 +14,7 @@ from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
 from open_mpic_core.common_domain.validation_error import MpicValidationError
 from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
 from open_mpic_core.mpic_caa_checker.mpic_caa_checker import MpicCaaChecker
+from open_mpic_core.common_util.trace_level_logger import TRACE_LEVEL
 
 from unit.test_util.mock_dns_object_creator import MockDnsObjectCreator
 
@@ -18,7 +22,7 @@ from unit.test_util.mock_dns_object_creator import MockDnsObjectCreator
 # noinspection PyMethodMayBeStatic
 class TestMpicCaaChecker:
     @staticmethod
-    @pytest.fixture(scope='class')
+    @pytest.fixture(scope='class', autouse=True)
     def set_env_variables():
         envvars = {
             'default_caa_domains': 'ca1.com|ca2.net|ca3.org',
@@ -30,12 +34,42 @@ class TestMpicCaaChecker:
                 class_scoped_monkeypatch.setenv(k, v)
             yield class_scoped_monkeypatch  # restore the environment afterward
 
+    @pytest.fixture(autouse=True)
+    def setup_logging(self):
+        # Clear existing handlers
+        root = logging.getLogger()
+        for handler in root.handlers[:]:
+            root.removeHandler(handler)
+
+        # noinspection PyAttributeOutsideInit
+        self.log_output = StringIO()  # to be able to inspect what gets logged
+        handler = logging.StreamHandler(self.log_output)
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
+        # Configure fresh logging
+        logging.basicConfig(
+            level=TRACE_LEVEL,
+            handlers=[handler]
+        )
+        yield
+
     @staticmethod
-    def create_configured_caa_checker():
-        return MpicCaaChecker(["ca1.com", "ca2.net", "ca3.org"], 'us-east-4')
+    def create_configured_caa_checker(log_level=None):
+        return MpicCaaChecker(["ca1.com", "ca2.net", "ca3.org"], 'us-east-4', log_level)
+
+    def constructor__should_set_log_level_if_provided(self):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker(logging.ERROR)
+        assert caa_checker.logger.level == logging.ERROR
+
+    def mpic_caa_checker__should_be_able_to_log_at_trace_level(self):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker(TRACE_LEVEL)
+        test_message = "This is a trace log message."
+        caa_checker.logger.trace(test_message)
+        log_contents = self.log_output.getvalue()
+        assert all(text in log_contents for text in [test_message, "TRACE", caa_checker.logger.name])
 
     # integration test of a sort -- only mocking dns methods rather than remaining class methods
-    async def check_caa__should_allow_issuance_given_no_caa_records_found(self, set_env_variables, mocker):
+    async def check_caa__should_allow_issuance_given_no_caa_records_found(self, mocker):
         self.patch_resolver_with_answer_or_exception(mocker, dns.resolver.NoAnswer())
         caa_request = CaaCheckRequest(domain_or_ip_target='example.com',
                                       caa_check_parameters=CaaCheckParameters(certificate_type=CertificateType.TLS_SERVER, caa_domains=['ca111.com']))
@@ -44,7 +78,7 @@ class TestMpicCaaChecker:
         check_response_details = CaaCheckResponseDetails(caa_record_present=False)
         assert self.is_result_as_expected(caa_response, True, check_response_details) is True
 
-    async def check_caa__should_allow_issuance_given_matching_caa_record_found(self, set_env_variables, mocker):
+    async def check_caa__should_allow_issuance_given_matching_caa_record_found(self, mocker):
         record_name, expected_domain = 'example.com', 'example.com.'
         test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(record_name, 0, 'issue', 'ca111.com', mocker)
         self.patch_resolver_with_conditional_answer_and_exception(mocker, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer)
@@ -58,7 +92,7 @@ class TestMpicCaaChecker:
         check_response_details = CaaCheckResponseDetails(caa_record_present=True, found_at='example.com', records_seen=expected_records_seen)
         assert self.is_result_as_expected(caa_response, True, check_response_details) is True
 
-    async def check_caa__should_allow_issuance_given_matching_caa_record_found_in_parent_of_nonexistent_domain(self, set_env_variables, mocker):
+    async def check_caa__should_allow_issuance_given_matching_caa_record_found_in_parent_of_nonexistent_domain(self, mocker):
         record_name, expected_domain = 'example.com', 'example.com.'
         test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(record_name, 0, 'issue', 'ca111.com', mocker)
         self.patch_resolver_with_conditional_answer_and_exception(mocker, expected_domain, test_dns_query_answer, dns.resolver.NXDOMAIN)
@@ -68,7 +102,7 @@ class TestMpicCaaChecker:
         caa_response = await caa_checker.check_caa(caa_request)
         assert caa_response.check_passed is True
 
-    async def check_caa__should_disallow_issuance_given_non_matching_caa_record_found(self, set_env_variables, mocker):
+    async def check_caa__should_disallow_issuance_given_non_matching_caa_record_found(self, mocker):
         record_name, expected_domain = 'example.com', 'example.com.'
         test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(record_name, 0, 'issue', 'ca222.com', mocker)
         self.patch_resolver_with_conditional_answer_and_exception(mocker, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer)
@@ -78,7 +112,7 @@ class TestMpicCaaChecker:
         caa_response = await caa_checker.check_caa(caa_request)
         assert caa_response.check_passed is False
 
-    async def check_caa__should_allow_issuance_relying_on_default_caa_domains(self, set_env_variables, mocker):
+    async def check_caa__should_allow_issuance_relying_on_default_caa_domains(self, mocker):
         record_name, expected_domain = 'example.com', 'example.com.'
         test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(record_name, 0, 'issue', 'ca2.net', mocker)
         self.patch_resolver_with_conditional_answer_and_exception(mocker, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer)
@@ -87,7 +121,7 @@ class TestMpicCaaChecker:
         caa_response = await caa_checker.check_caa(caa_request)
         assert caa_response.check_passed is True
 
-    async def check_caa__should_include_timestamp_in_nanos_in_result(self, set_env_variables, mocker):
+    async def check_caa__should_include_timestamp_in_nanos_in_result(self, mocker):
         self.patch_resolver_with_answer_or_exception(mocker, dns.resolver.NoAnswer())
         caa_request = CaaCheckRequest(domain_or_ip_target='example.com', caa_check_parameters=CaaCheckParameters(
                                           certificate_type=CertificateType.TLS_SERVER, caa_domains=['ca111.com']))
@@ -95,7 +129,7 @@ class TestMpicCaaChecker:
         caa_response = await caa_checker.check_caa(caa_request)
         assert caa_response.timestamp_ns is not None
 
-    async def check_caa__should_return_failure_response_with_errors_given_error_in_dns_lookup(self, set_env_variables, mocker):
+    async def check_caa__should_return_failure_response_with_errors_given_error_in_dns_lookup(self, mocker):
         self.patch_resolver_with_answer_or_exception(mocker, dns.resolver.NoNameservers)
         caa_request = CaaCheckRequest(domain_or_ip_target='example.com', caa_check_parameters=CaaCheckParameters(
                                           certificate_type=CertificateType.TLS_SERVER, caa_domains=['ca111.com']))
@@ -106,7 +140,7 @@ class TestMpicCaaChecker:
         assert self.is_result_as_expected(caa_response, False, check_response_details, errors) is True
 
     @pytest.mark.parametrize('caa_answer_value, check_passed', [('ca1allowed.org', True), ('ca1notallowed.org', False)])
-    async def check_caa__should_return_rrset_and_domain_given_domain_with_caa_record_on_success_or_failure(self, set_env_variables, caa_answer_value, check_passed, mocker):
+    async def check_caa__should_return_rrset_and_domain_given_domain_with_caa_record_on_success_or_failure(self, caa_answer_value, check_passed, mocker):
         record_name, expected_domain = 'example.com', 'example.com.'
         test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(record_name, 0, 'issue', caa_answer_value, mocker)
         self.patch_resolver_with_conditional_answer_and_exception(mocker, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer)
@@ -118,7 +152,7 @@ class TestMpicCaaChecker:
         assert caa_response.details.found_at == 'example.com'
         assert caa_response.details.records_seen == [f"0 issue \"{caa_answer_value}\""]
 
-    async def check_caa__should_return_rrset_and_domain_given_extra_subdomain(self, set_env_variables, mocker):
+    async def check_caa__should_return_rrset_and_domain_given_extra_subdomain(self, mocker):
         record_name, expected_domain = 'example.com', 'example.com.'
         test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(record_name, 0, 'issue', 'ca1.org', mocker)
         self.patch_resolver_with_conditional_answer_and_exception(mocker, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer)
@@ -129,7 +163,7 @@ class TestMpicCaaChecker:
         assert caa_response.details.found_at == 'example.com'
         assert caa_response.details.records_seen == ['0 issue "ca1.org"']
 
-    async def check_caa__should_return_no_rrset_and_no_domain_given_no_caa_record_for_domain(self, set_env_variables, mocker):
+    async def check_caa__should_return_no_rrset_and_no_domain_given_no_caa_record_for_domain(self, mocker):
         record_name, expected_domain = 'example.com', 'example.org.'  # DIFFERENT domain expected in  mock
         test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(record_name, 0, 'issue', 'ca1.org', mocker)
         self.patch_resolver_with_conditional_answer_and_exception(mocker, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer)
@@ -141,7 +175,7 @@ class TestMpicCaaChecker:
         assert caa_response.details.records_seen is None
 
     @pytest.mark.parametrize('target_domain, record_present', [('example.com', True), ('example.org', False)])
-    async def check_caa__should_return_whether_caa_record_was_found(self, set_env_variables, target_domain, record_present, mocker):
+    async def check_caa__should_return_whether_caa_record_was_found(self, target_domain, record_present, mocker):
         record_name, expected_domain = 'example.com', 'example.com.'
         test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(record_name, 0, 'issue', 'ca1.org', mocker)
         self.patch_resolver_with_conditional_answer_and_exception(mocker, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer)
@@ -154,7 +188,7 @@ class TestMpicCaaChecker:
         caa_response = await caa_checker.check_caa(caa_request)
         assert caa_response.details.caa_record_present == record_present
 
-    async def check_caa__should_support_wildcard_domain(self, set_env_variables, mocker):
+    async def check_caa__should_support_wildcard_domain(self, mocker):
         record_name, expected_domain = '*.example.com', '*.example.com.'
         test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(record_name, 0, 'issue', 'ca1.com', mocker)
         self.patch_resolver_with_conditional_answer_and_exception(mocker, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer)
@@ -165,7 +199,7 @@ class TestMpicCaaChecker:
         assert caa_response.check_passed is True
 
     @pytest.mark.parametrize('property_tag, property_value', [('contactemail', 'contactme@example.com'), ('contactphone', '+1 (555) 555-5555')])
-    async def check_caa__should_accommodate_contact_info_properties_in_caa_records(self, set_env_variables, property_tag, property_value, mocker):
+    async def check_caa__should_accommodate_contact_info_properties_in_caa_records(self, property_tag, property_value, mocker):
         records = [MockDnsObjectCreator.create_caa_record(0, 'issue', 'ca1.com'),
                    MockDnsObjectCreator.create_caa_record(0, property_tag, property_value)]
         test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer_with_multiple_records(
@@ -178,6 +212,17 @@ class TestMpicCaaChecker:
         caa_response = await caa_checker.check_caa(caa_request)
         assert caa_response.check_passed is True
         assert caa_response.details.records_seen == [f'0 issue "ca1.com"', f'0 {property_tag} "{property_value}"']
+
+    async def check_caa__should_be_able_to_trace_timing_of_caa_lookup(self, mocker):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker(TRACE_LEVEL)  # note the TRACE_LEVEL here
+        self.patch_resolver_with_answer_or_exception(mocker, dns.resolver.NoAnswer())
+        caa_request = CaaCheckRequest(domain_or_ip_target='example.com',
+                                      caa_check_parameters=CaaCheckParameters(
+                                          certificate_type=CertificateType.TLS_SERVER, caa_domains=['ca111.com']))
+        await caa_checker.check_caa(caa_request)
+        # Get the log output and assert
+        log_contents = self.log_output.getvalue()
+        assert all(text in log_contents for text in ['seconds', 'TRACE', caa_checker.logger.name])
 
     @pytest.mark.parametrize('value_list, caa_domains', [
         (['ca111.org'], ['ca111.org']),
