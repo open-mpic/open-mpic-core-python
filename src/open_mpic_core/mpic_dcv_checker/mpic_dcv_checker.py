@@ -2,6 +2,7 @@ import time
 
 import dns.asyncresolver
 import requests
+import re
 import aiohttp
 
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
@@ -124,11 +125,10 @@ class MpicDcvChecker:
             token = request.dcv_check_parameters.validation_details.token
             token_url = f"http://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
             dcv_check_response = self.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
-
         try:
             # TODO timeouts? circuit breaker? failsafe? look into it...
             async with self._async_http_client.get(url=token_url, headers=http_headers) as response:
-                await MpicDcvChecker.evaluate_http_lookup_response(dcv_check_response, response, token_url,
+                await MpicDcvChecker.evaluate_http_lookup_response(request, dcv_check_response, response, token_url,
                                                                    expected_response_content)
         except aiohttp.web.HTTPException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
@@ -145,7 +145,7 @@ class MpicDcvChecker:
         )
 
     @staticmethod
-    async def evaluate_http_lookup_response(dcv_check_response: DcvCheckResponse, lookup_response: aiohttp.ClientResponse,
+    async def evaluate_http_lookup_response(dcv_check_request: DcvCheckRequest, dcv_check_response: DcvCheckResponse, lookup_response: aiohttp.ClientResponse,
                                             target_url: str, challenge_value: str):
         response_history = None
         if hasattr(lookup_response, 'history') and lookup_response.history is not None and len(
@@ -162,11 +162,18 @@ class MpicDcvChecker:
             content = await lookup_response.content.read(bytes_to_read)
             # set internal _content to leverage decoding capabilities of ClientResponse.text without reading the entire response
             lookup_response._body = content
-            # lookup_response._content = content
             response_text = await lookup_response.text()
             result = response_text.strip()
             expected_response_content = challenge_value
-            dcv_check_response.check_passed = (result == expected_response_content)
+            if dcv_check_request.dcv_check_parameters.validation_details.validation_method == DcvValidationMethod.ACME_HTTP_01:
+                # need to match exactly for ACME HTTP-01
+                dcv_check_response.check_passed = expected_response_content == result
+            else:
+                dcv_check_response.check_passed = expected_response_content in result
+                match_regex = dcv_check_request.dcv_check_parameters.validation_details.match_regex
+                if match_regex is not None and len(match_regex) > 0:
+                    match = re.search(match_regex, result)
+                    dcv_check_response.check_passed = dcv_check_response.check_passed and (match is not None)
             dcv_check_response.details.response_status_code = lookup_response.status
             dcv_check_response.details.response_url = target_url
             dcv_check_response.details.response_history = response_history
