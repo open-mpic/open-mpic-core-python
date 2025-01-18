@@ -3,15 +3,18 @@ import time
 from contextlib import asynccontextmanager
 
 TRACE_LEVEL = 5
-logging.addLevelName(TRACE_LEVEL, "TRACE")
+logging.addLevelName(TRACE_LEVEL, 'TRACE')
 
 
 def get_logger(name: str) -> logging.Logger:
     """
-    Returns a logger with trace capability added (if it doesn't exist).
-    Use this instead of logging.getLogger() directly.
-    :param name: logger name
+        Returns a logger with trace capability added (if it doesn't exist).
+        Use this instead of logging.getLogger() directly.
+        :param name: logger name
     """
+    if not hasattr(logging, 'TRACE'):
+        logging.TRACE = TRACE_LEVEL
+
     if not hasattr(logging.Logger, 'trace'):
         def trace(self, message, *args, **kwargs):
             """
