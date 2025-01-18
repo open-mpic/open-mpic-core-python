@@ -375,7 +375,7 @@ class TestMpicDcvChecker:
     async def dns_validation__should_allow_finding_expected_challenge_exactly_if_specified(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.DNS_CHANGE)
         dcv_request.dcv_check_parameters.validation_details.challenge_value = 'challenge-value'
-        self.mock_dns_resolve_call(dcv_request, mocker)
+        self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
         dcv_request.dcv_check_parameters.validation_details.require_exact_match = True
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
