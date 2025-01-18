@@ -92,6 +92,25 @@ class TestMpicCaaChecker:
         check_response_details = CaaCheckResponseDetails(caa_record_present=True, found_at='example.com', records_seen=expected_records_seen)
         assert self.is_result_as_expected(caa_response, True, check_response_details) is True
 
+    @pytest.mark.parametrize('domain, encoded_domain', [
+        ("bücher.example.de", "xn--bcher-kva.example.de."),
+        ('café.com', 'xn--caf-dma.com.')
+    ])
+    async def check_caa__should_handle_domains_with_non_ascii_characters(self, domain, encoded_domain, mocker):
+        test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(
+            encoded_domain, 0, 'issue', 'ca111.com', mocker
+        )
+        self.patch_resolver_with_conditional_answer_and_exception(
+            mocker, encoded_domain, test_dns_query_answer, dns.resolver.NoAnswer
+        )
+        caa_request = CaaCheckRequest(domain_or_ip_target=domain,
+                                      caa_check_parameters=CaaCheckParameters(certificate_type=CertificateType.TLS_SERVER,
+                                                                              caa_domains=['ca111.com']))
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
+        caa_response = await caa_checker.check_caa(caa_request)
+        assert caa_response.details.records_seen == [record_data.to_text() for record_data in test_dns_query_answer.rrset]
+        assert caa_response.check_passed is True
+
     async def check_caa__should_allow_issuance_given_matching_caa_record_found_in_parent_of_nonexistent_domain(self, mocker):
         record_name, expected_domain = 'example.com', 'example.com.'
         test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(record_name, 0, 'issue', 'ca111.com', mocker)

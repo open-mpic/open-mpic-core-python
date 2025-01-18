@@ -14,6 +14,7 @@ from open_mpic_core.common_domain.check_response_details import RedirectResponse
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
 from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
 from open_mpic_core.common_domain.validation_error import MpicValidationError
+from open_mpic_core.common_util.domain_encoder import DomainEncoder
 from open_mpic_core.common_util.trace_level_logger import get_logger
 
 logger = get_logger(__name__)
@@ -65,7 +66,7 @@ class MpicDcvChecker:
         self.logger.trace(f"Checking DCV for {dcv_request.domain_or_ip_target} with method {validation_method}")
 
         # encode domain if needed
-        dcv_request.domain_or_ip_target = MpicDcvChecker.prepare_target_for_lookup(dcv_request.domain_or_ip_target)
+        dcv_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(dcv_request.domain_or_ip_target)
 
         result = None
         match validation_method:
@@ -249,20 +250,3 @@ class MpicDcvChecker:
             dcv_check_response.check_passed = any(
                 expected_dns_record_content in record for record in records_as_strings)
         dcv_check_response.timestamp_ns = time.time_ns()
-
-    @staticmethod
-    def prepare_target_for_lookup(domain_or_ip_target) -> str:
-        try:
-            # First check if it's an IP address
-            ipaddress.ip_address(domain_or_ip_target)
-            return domain_or_ip_target
-        except ValueError:
-            # Not an IP address, process as domain
-            pass
-
-        # Convert to IDNA/Punycode
-        try:
-            encoded_domain = idna.encode(domain_or_ip_target, uts46=True).decode('ascii')
-            return encoded_domain
-        except idna.IDNAError as e:
-            raise ValueError(f"Invalid domain name: {str(e)}")
