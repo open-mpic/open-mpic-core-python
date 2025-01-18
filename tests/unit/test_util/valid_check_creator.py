@@ -39,7 +39,6 @@ class ValidCheckCreator:
                                     challenge_value=f"{record_type}_challenge_111.ca1.com."
                                 )
                             ))
-        check_request.dcv_check_parameters.validation_details.require_exact_match = False
         return check_request
 
     @staticmethod

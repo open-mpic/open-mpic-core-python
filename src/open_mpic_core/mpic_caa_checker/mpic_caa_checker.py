@@ -109,9 +109,9 @@ class MpicCaaChecker:
             if caa_request.caa_check_parameters.caa_domains:
                 caa_domains = caa_request.caa_check_parameters.caa_domains
 
-            # Use the cert type field to check if the domain is a wildcard.
-            certificate_type = caa_request.caa_check_parameters.certificate_type
-            if certificate_type is not None and certificate_type == CertificateType.TLS_SERVER_WILDCARD:
+            # Use the domain name to determine if it is a wildcard domain
+            # check if domain or ip target has an asterisk as its lowest (first) label (e.g. *.example.com)
+            if caa_request.domain_or_ip_target.startswith("*."):
                 is_wc_domain = True
 
         caa_lookup_error = False
