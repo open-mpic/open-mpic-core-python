@@ -92,6 +92,12 @@ class MpicCoordinator:
             valid_perspective_count = sum(validity_per_perspective.values())
             is_valid_result = valid_perspective_count >= quorum_count
 
+            # if cohort size is larger than 2, then at least two RIRs must be represented in the SUCCESSFUL perspectives
+            if len(perspectives_to_use) > 2:
+                valid_perspectives = [perspective for perspective in perspectives_to_use if validity_per_perspective[perspective.code]]
+                rir_count = len(set(perspective.rir for perspective in valid_perspectives))
+                is_valid_result &= rir_count >= 2
+
             if is_valid_result or attempts == max_attempts:
                 response = MpicResponseBuilder.build_response(mpic_request, perspective_count, quorum_count, attempts,
                                                               perspective_responses, is_valid_result, previous_attempt_results)
@@ -106,15 +112,15 @@ class MpicCoordinator:
                 attempts += 1
 
     # Returns a random subset of perspectives with a goal of maximum RIR diversity to increase diversity.
-    # Perspectives must be of the form 'RIR.AWS-region'.
-    def create_cohorts_of_randomly_selected_perspectives(self, target_perspectives, count, domain_or_ip_target):
-        if count > len(target_perspectives):
+    # If more than 2 perspectives are needed (count), it will enforce a minimum of 2 RIRs per cohort.
+    def create_cohorts_of_randomly_selected_perspectives(self, target_perspectives, cohort_size, domain_or_ip_target):
+        if cohort_size > len(target_perspectives):
             raise ValueError(
-                f"Count ({count}) must be <= the number of available perspectives ({len(target_perspectives)})")
+                f"Count ({cohort_size}) must be <= the number of available perspectives ({len(target_perspectives)})")
 
         random_seed = hashlib.sha256((self.hash_secret + domain_or_ip_target.lower()).encode('ASCII')).digest()
         perspectives_per_rir = CohortCreator.build_randomly_shuffled_available_perspectives_per_rir(target_perspectives, random_seed)
-        cohorts = CohortCreator.create_perspective_cohorts(perspectives_per_rir, count)
+        cohorts = CohortCreator.create_perspective_cohorts(perspectives_per_rir, cohort_size)
         return cohorts
 
     # Determines the minimum required quorum size if none is specified in the request.

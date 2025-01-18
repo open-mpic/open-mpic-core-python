@@ -8,18 +8,6 @@ class CohortCreator:
     @staticmethod
     def build_randomly_shuffled_available_perspectives_per_rir(remote_perspectives: list[RemotePerspective],
                                                                random_seed: bytes) -> dict[str, list[RemotePerspective]]:
-        # # convert available_perspectives to a list of FULLY DEFINED RemotePerspective objects
-        # remote_perspectives = []
-        # # TODO delete: all_possible_perspectives_by_code = CohortCreator.load_aws_region_config()
-        #
-        # for perspective_code in available_perspective_codes:
-        #     if perspective_code not in all_possible_perspectives_by_code.keys():
-        #         continue  # TODO throw an error? check this case in the validator?
-        #     else:
-        #         fully_defined_perspective = all_possible_perspectives_by_code[perspective_code]
-        #         # TODO discuss: do we even need RIRs specified in the input? code should be unique enough
-        #         remote_perspectives.append(fully_defined_perspective)
-
         # first sort all perspectives deterministically
         remote_perspectives.sort(key=lambda remote_perspective: remote_perspective.code)
         local_random = random.Random(random_seed)
@@ -34,9 +22,22 @@ class CohortCreator:
 
     @staticmethod
     def create_perspective_cohorts(perspectives_per_rir: dict, cohort_size: int):
-        if cohort_size == 1:
-            return [[region] for region in
-                    chain.from_iterable(perspectives_per_rir.values())]  # TODO limit cohort number in this case?
+        if cohort_size == 1:  # too few perspectives; invalid state; raise exception
+            raise ValueError("Cohort size must be greater than 1")
+        elif cohort_size == 2:  # don't need RIR diversity according to TLS Baseline Requirements
+            # create pairs of perspectives, trying to maximize RIR diversity if possible (just not required)
+            number_of_cohorts_to_create = len(list(chain.from_iterable(perspectives_per_rir.values()))) // 2
+            cohorts = []
+            rirs_cycle = cycle(perspectives_per_rir.keys())
+            while number_of_cohorts_to_create > 0:
+                next_cohort = []
+                while len(next_cohort) < 2 and len(list(chain.from_iterable(perspectives_per_rir.values()))) > 0:
+                    current_rir = next(rirs_cycle)
+                    if len(perspectives_per_rir[current_rir]) > 0:
+                        next_cohort.append(perspectives_per_rir[current_rir].pop(0))
+                cohorts.append(next_cohort)
+                number_of_cohorts_to_create -= 1
+            return cohorts
         elif len(perspectives_per_rir.keys()) < 2:  # else if only one rir, can't meet requirements
             return []  # TODO throw an error? check this case in the validator?
 

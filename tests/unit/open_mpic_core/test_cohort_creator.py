@@ -58,13 +58,16 @@ class TestCohortCreator:
         assert all(perspective.name is not None for perspective in shuffled_perspectives_flattened)
         assert any(len(perspective.too_close_codes) > 0 for perspective in shuffled_perspectives_flattened)
 
-    # @pytest.mark.skip('This test is not yet implemented')
+    def create_perspective_cohorts__should_raise_exception_if_requested_cohort_size_is_less_than_2(self):
+        with pytest.raises(Exception):
+            CohortCreator.create_perspective_cohorts(self.all_perspectives_per_rir, 1)
+
     @pytest.mark.parametrize('perspectives_per_rir, any_perspectives_too_close, cohort_size', [
         # perspectives_per_rir expects: (total_perspectives, total_rirs, max_per_rir, too_close_flag)
-        ((3, 2, 2, False), False, 1),  # expect 3 cohorts of 1
         ((3, 2, 2, False), False, 2),  # expect 1 cohort of 2
         ((6, 3, 2, False), False, 2),  # expect 3 cohorts of 2
         ((6, 3, 2, True), True, 2),  # expect 3 cohorts of 2
+        ((6, 1, 6, False), False, 2),  # expect 3 cohorts of 2
         ((10, 2, 5, False), False, 5),  # expect 2 cohorts of 5
         ((10, 2, 5, True), True, 5),  # expect 1 cohort of 5
         ((10, 2, 5, True), True, 4),  # expect 2 cohorts of 4
@@ -93,8 +96,8 @@ class TestCohortCreator:
             for i in range(len(cohort)):
                 for j in range(i + 1, len(cohort)):
                     assert not cohort[i].is_perspective_too_close(cohort[j])
-            # assert that all cohorts have at least 2 RIRs (unless desired cohort size is 1)
-            if cohort_size > 1:
+            # assert that all cohorts have at least 2 RIRs (unless desired cohort size is 2)
+            if cohort_size > 2:
                 assert len(set(map(lambda perspective: perspective.rir, cohort))) >= 2
 
     @pytest.mark.parametrize('perspectives_per_rir, cohort_size', [

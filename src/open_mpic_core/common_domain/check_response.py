@@ -3,8 +3,7 @@ from typing import Union, Literal
 from open_mpic_core.common_domain.check_response_details import CaaCheckResponseDetails, DcvCheckResponseDetails
 from open_mpic_core.common_domain.validation_error import MpicValidationError
 from open_mpic_core.common_domain.enum.check_type import CheckType
-from pydantic import BaseModel, Field
-from typing_extensions import Annotated
+from pydantic import BaseModel
 
 
 class BaseCheckResponse(BaseModel):
