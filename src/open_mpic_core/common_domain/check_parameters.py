@@ -10,7 +10,7 @@ from open_mpic_core.common_domain.enum.url_scheme import UrlScheme
 
 
 class CaaCheckParameters(BaseModel):
-    certificate_type: CertificateType | None = None
+    certificate_type: CertificateType
     caa_domains: list[str] | None = None
     # contact_info_query: bool | False = False  # to better accommodate email/phone based DCV using contact info in CAA
 
