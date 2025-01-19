@@ -37,8 +37,14 @@ class MpicCoordinatorConfiguration:
 
 
 class MpicCoordinator:
-    # call_remote_perspective_function: a "dumb" transport for serialized data to a remote perspective and a serialized response from the remote perspective. MPIC Coordinator is tasked with ensuring the data from this function is sane and handling the serialization/deserialization of the data. This function may raise an exception if something goes wrong.
     def __init__(self, call_remote_perspective_function, mpic_coordinator_configuration: MpicCoordinatorConfiguration, log_level: int = None):
+        """
+        :param call_remote_perspective_function: a "dumb" transport for serialized data to a remote perspective and a serialized
+               response from the remote perspective. MPIC Coordinator is tasked with ensuring the data from this function is sane
+               and handling the serialization/deserialization of the data. This function may raise an exception if something goes wrong.
+        :param mpic_coordinator_configuration: environment-specific configuration for the coordinator.
+        :param log_level: optional parameter for logging. For now really just used for TRACE logging.
+        """
         self.target_perspectives = mpic_coordinator_configuration.target_perspectives
         self.default_perspective_count = mpic_coordinator_configuration.default_perspective_count
         self.global_max_attempts = mpic_coordinator_configuration.global_max_attempts
