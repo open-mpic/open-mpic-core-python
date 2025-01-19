@@ -42,6 +42,4 @@ def get_logger(name: str) -> logging.Logger:
         logging.Logger.trace_timing = trace_timing
 
     logger = logging.getLogger(name)
-    # TODO set logger level here based on environment configuration
-
     return logger
