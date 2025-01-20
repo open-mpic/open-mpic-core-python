@@ -10,6 +10,8 @@ from open_mpic_core.common_domain.check_response import CaaCheckResponse, CaaChe
 from open_mpic_core.common_domain.validation_error import MpicValidationError
 from open_mpic_core.common_domain.enum.certificate_type import CertificateType
 from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
+from open_mpic_core.common_util.domain_encoder import DomainEncoder
+from open_mpic_core.common_util.trace_level_logger import get_logger
 
 ISSUE_TAG: Final[str] = 'issue'
 ISSUEWILD_TAG: Final[str] = 'issuewild'
@@ -18,14 +20,21 @@ CONTACTEMAIL_TAG: Final[str] = 'contactemail'
 CONTACTPHONE_TAG: Final[str] = 'contactphone'
 
 
+logger = get_logger(__name__)
+
+
 class MpicCaaLookupException(Exception):  # This is a python exception type used for raise statements.
     pass
 
 
 class MpicCaaChecker:
-    def __init__(self, default_caa_domain_list: list[str], perspective_code: str):
+    def __init__(self, default_caa_domain_list: list[str], perspective_code: str, log_level: int = None):
         self.default_caa_domain_list = default_caa_domain_list
         self.perspective_code = perspective_code
+
+        self.logger = logger.getChild(self.__class__.__name__)
+        if log_level is not None:
+            self.logger.setLevel(log_level)
 
     @staticmethod
     def does_value_list_permit_issuance(value_list: list, caa_domains):
@@ -90,6 +99,9 @@ class MpicCaaChecker:
         return valid_for_issuance
 
     async def check_caa(self, caa_request: CaaCheckRequest) -> CaaCheckResponse:
+        # noinspection PyUnresolvedReferences
+        self.logger.trace(f"Checking CAA for {caa_request.domain_or_ip_target}")
+
         # Assume the default system configured validation targets and override if sent in the API call.
         caa_domains = self.default_caa_domain_list
         is_wc_domain = False
@@ -117,8 +129,13 @@ class MpicCaaChecker:
             timestamp_ns=None
         )
 
+        # encode domain if needed
+        caa_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(caa_request.domain_or_ip_target)
+
         try:
-            rrset, domain = await MpicCaaChecker.find_caa_records_and_domain(caa_request)
+            # noinspection PyUnresolvedReferences
+            async with self.logger.trace_timing(f"CAA lookup for target {caa_request.domain_or_ip_target}"):
+                rrset, domain = await MpicCaaChecker.find_caa_records_and_domain(caa_request)
             caa_found = rrset is not None
         except MpicCaaLookupException:
             caa_lookup_error = True
@@ -139,4 +156,7 @@ class MpicCaaChecker:
             caa_check_response.details.found_at = domain.to_text(omit_final_dot=True)
             caa_check_response.details.records_seen = [record_data.to_text() for record_data in rrset]
         caa_check_response.timestamp_ns = time.time_ns()
+
+        # noinspection PyUnresolvedReferences
+        self.logger.trace(f"Completed CAA for {caa_request.domain_or_ip_target}")
         return caa_check_response

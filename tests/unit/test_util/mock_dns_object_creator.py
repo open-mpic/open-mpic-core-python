@@ -6,6 +6,7 @@ from dns.rdtypes.ANY.TXT import TXT
 from dns.rdtypes.IN.A import A
 from dns.rdtypes.IN.AAAA import AAAA
 from dns.rrset import RRset
+from dns.message import QueryMessage
 
 from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
 
@@ -69,8 +70,8 @@ class MockDnsObjectCreator:
         return dns.resolver.Answer(qname=dns_record_name, rdtype=rdatatype, rdclass=dns.rdataclass.IN, response=good_response)
 
     @staticmethod
-    def create_dns_query_message_with_question(record_name, record_name_prefix, record_type: DnsRecordType) -> dns.message.QueryMessage:
-        query_message = dns.message.QueryMessage()
+    def create_dns_query_message_with_question(record_name, record_name_prefix, record_type: DnsRecordType) -> QueryMessage:
+        query_message = QueryMessage()
         query_message.flags = Flag.QR | Flag.RD | Flag.RA
         if (record_name_prefix is not None) and (record_name_prefix != ''):
             dns_record_name = dns.name.from_text(f"{record_name_prefix}.{record_name}")
