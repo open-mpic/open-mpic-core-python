@@ -25,13 +25,14 @@ class TestMpicCaaRequest:
             MpicCaaRequest.model_validate_json(json.dumps(request.model_dump()))
         assert 'domain_or_ip_target' in str(validation_error.value)
 
-    def mpic_caa_request__should_require_valid_certificate_type(self):
+    @pytest.mark.parametrize('certificate_type', [None, 'invalid'])
+    def mpic_caa_request__should_require_valid_certificate_type(self, certificate_type):
         request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
-        request.caa_check_parameters.certificate_type = 'invalid'
+        request.caa_check_parameters.certificate_type = certificate_type
         with pytest.raises(pydantic.ValidationError) as validation_error:
             MpicCaaRequest.model_validate_json(json.dumps(request.model_dump(warnings=False)))
         assert 'certificate_type' in str(validation_error.value)
-        assert 'invalid' in str(validation_error.value)
+        assert 'tls-server' in str(validation_error.value)  # should say input should be 'tls-server' or 's-mime'
 
     def mpic_caa_request__should_have_check_type_set_to_caa(self):
         request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
