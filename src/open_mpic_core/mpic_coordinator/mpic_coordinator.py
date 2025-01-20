@@ -102,7 +102,7 @@ class MpicCoordinator:
             if len(perspectives_to_use) > 2:
                 valid_perspectives = [perspective for perspective in perspectives_to_use if validity_per_perspective[perspective.code]]
                 rir_count = len(set(perspective.rir for perspective in valid_perspectives))
-                is_valid_result &= rir_count >= 2
+                is_valid_result = rir_count >= 2 and is_valid_result
 
             if is_valid_result or attempts == max_attempts:
                 response = MpicResponseBuilder.build_response(mpic_request, perspective_count, quorum_count, attempts,
