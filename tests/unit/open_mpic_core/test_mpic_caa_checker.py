@@ -1,6 +1,3 @@
-import logging
-from io import StringIO
-
 import dns
 import pytest
 
@@ -14,7 +11,6 @@ from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
 from open_mpic_core.common_domain.validation_error import MpicValidationError
 from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
 from open_mpic_core.mpic_caa_checker.mpic_caa_checker import MpicCaaChecker
-from open_mpic_core.common_util.trace_level_logger import TRACE_LEVEL
 
 from unit.test_util.mock_dns_object_creator import MockDnsObjectCreator
 

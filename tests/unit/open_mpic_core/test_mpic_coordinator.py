@@ -1,15 +1,7 @@
-import logging
-from multiprocessing.process import parent_process
-
 import pytest
 
-from io import StringIO
 from itertools import cycle
 from unittest.mock import AsyncMock
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor, ConsoleSpanExporter
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from open_mpic_core.common_domain.check_response import CaaCheckResponse, CaaCheckResponseDetails
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
@@ -20,8 +12,6 @@ from open_mpic_core.mpic_coordinator.domain.remote_perspective import RemotePers
 from open_mpic_core.mpic_coordinator.domain.mpic_request_validation_error import MpicRequestValidationError
 from open_mpic_core.mpic_coordinator.domain.mpic_response import MpicResponse
 from open_mpic_core.mpic_coordinator.mpic_coordinator import MpicCoordinator, MpicCoordinatorConfiguration
-from open_mpic_core.common_util.trace_level_logger import TRACE_LEVEL
-
 
 from unit.test_util.valid_mpic_request_creator import ValidMpicRequestCreator
 

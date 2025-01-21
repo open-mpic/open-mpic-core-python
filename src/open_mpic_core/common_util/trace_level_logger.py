@@ -1,6 +1,4 @@
 import logging
-import time
-from contextlib import asynccontextmanager
 
 TRACE_LEVEL = 5
 logging.addLevelName(TRACE_LEVEL, 'TRACE')

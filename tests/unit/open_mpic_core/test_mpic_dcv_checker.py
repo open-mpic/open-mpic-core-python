@@ -1,7 +1,5 @@
 import asyncio
 import base64
-import logging
-from io import StringIO
 from typing import List
 
 import dns
@@ -19,7 +17,6 @@ from open_mpic_core.common_domain.check_request import DcvCheckRequest
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
 from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
 from open_mpic_core.common_domain.validation_error import MpicValidationError
-from open_mpic_core.common_util.trace_level_logger import TRACE_LEVEL
 from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import MpicDcvChecker
 
 from unit.test_util.mock_dns_object_creator import MockDnsObjectCreator
