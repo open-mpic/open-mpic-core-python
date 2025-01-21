@@ -212,7 +212,6 @@ class TestMpicCaaChecker:
                                       caa_check_parameters=CaaCheckParameters(
                                           certificate_type=CertificateType.TLS_SERVER, caa_domains=['ca111.com']))
         await caa_checker.check_caa(caa_request)
-        # Get the log output and assert
         spans = tracer_in_memory_exporter.get_finished_spans()
         assert len(spans) == 1
         assert 'CAA lookup' in spans[0].name
