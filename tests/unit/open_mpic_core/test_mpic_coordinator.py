@@ -1,9 +1,15 @@
 import logging
+from multiprocessing.process import parent_process
+
+import pytest
+
 from io import StringIO
 from itertools import cycle
 from unittest.mock import AsyncMock
-
-import pytest
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor, ConsoleSpanExporter
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from open_mpic_core.common_domain.check_response import CaaCheckResponse, CaaCheckResponseDetails
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
@@ -16,30 +22,12 @@ from open_mpic_core.mpic_coordinator.domain.mpic_response import MpicResponse
 from open_mpic_core.mpic_coordinator.mpic_coordinator import MpicCoordinator, MpicCoordinatorConfiguration
 from open_mpic_core.common_util.trace_level_logger import TRACE_LEVEL
 
+
 from unit.test_util.valid_mpic_request_creator import ValidMpicRequestCreator
 
 
 # noinspection PyMethodMayBeStatic
 class TestMpicCoordinator:
-    @pytest.fixture(autouse=True)
-    def setup_logging(self):
-        # Clear existing handlers
-        root = logging.getLogger()
-        for handler in root.handlers[:]:
-            root.removeHandler(handler)
-
-        # noinspection PyAttributeOutsideInit
-        self.log_output = StringIO()  # to be able to inspect what gets logged
-        handler = logging.StreamHandler(self.log_output)
-        handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-
-        # Configure fresh logging
-        logging.basicConfig(
-            level=TRACE_LEVEL,
-            handlers=[handler]
-        )
-        yield
-
     def constructor__should_treat_max_attempts_as_optional_and_default_to_none(self):
         mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
         mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_configuration)
@@ -58,17 +46,12 @@ class TestMpicCoordinator:
         assert mpic_coordinator.hash_secret == mpic_coordinator_configuration.hash_secret
         assert mpic_coordinator.call_remote_perspective_function == call_remote_perspective
 
-    def constructor__should_set_log_level_if_provided(self):
+    def mpic_coordinator__should_be_able_to_log_at_trace_level(self, logging_output):
         mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
-        mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_configuration, logging.ERROR)
-        assert mpic_coordinator.logger.level == logging.ERROR
-
-    def mpic_coordinator__should_be_able_to_log_at_trace_level(self):
-        mpic_coordinator_configuration = self.create_mpic_coordinator_configuration()
-        mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_configuration, TRACE_LEVEL)
+        mpic_coordinator = MpicCoordinator(self.create_successful_remote_caa_check_response, mpic_coordinator_configuration)
         test_message = "This is a trace log message."
         mpic_coordinator.logger.trace(test_message)
-        log_contents = self.log_output.getvalue()
+        log_contents = logging_output.getvalue()
         assert all(text in log_contents for text in [test_message, "TRACE", mpic_coordinator.logger.name])
 
     def create_cohorts_of_randomly_selected_perspectives__should_throw_error_given_requested_count_exceeds_total_perspectives(self):
@@ -131,7 +114,7 @@ class TestMpicCoordinator:
         assert all(call.check_request.dcv_check_parameters.validation_details.validation_method == DcvValidationMethod.DNS_CHANGE for call in call_list)
         assert all(call.check_request.dcv_check_parameters.validation_details.dns_name_prefix == 'test' for call in call_list)
 
-    async def coordinate_mpic__should_invoke_async_call_remote_perspective_function_with_correct_parameters(self):
+    async def coordinate_mpic__should_invoke_the_async_call_remote_perspective_function_with_correct_parameters(self):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters(quorum_count=2, perspective_count=2,
                                                                                    max_attempts=2)
@@ -402,19 +385,26 @@ class TestMpicCoordinator:
         mpic_response = await mpic_coordinator.coordinate_mpic(mpic_request)
         assert mpic_response.domain_or_ip_target == 'test_domain_or_ip_target'
 
-    async def coordinate_mpic__should_be_able_to_trace_timing_of_remote_perspective_calls(self):
+    async def coordinate_mpic__should_be_able_to_trace_timing_of_remote_perspective_calls(self, tracer_in_memory_exporter):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
         mocked_call_remote_perspective_function = AsyncMock()
         mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
             self.create_successful_remote_caa_check_response
         )
-        # note the TRACE_LEVEL here
-        mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config, TRACE_LEVEL)
+        mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config)
         await mpic_coordinator.coordinate_mpic(mpic_request)
-        # Get the log output and assert
-        log_contents = self.log_output.getvalue()
-        assert all(text in log_contents for text in ['seconds', 'TRACE', mpic_coordinator.logger.name])
+        # assert that OpenTelemetry tracing works
+        spans = tracer_in_memory_exporter.get_finished_spans()
+        assert len(spans) == 7  # 1 parent + 6 perspectives
+        *child_spans, parent_span = spans  # unpack list -- parent span is the last one finished
+        assert parent_span.name == "MPIC round-trip communication with 6 perspectives"
+        parent_span_id = parent_span.context.span_id
+        parent_trace_id = parent_span.context.trace_id
+        for span in child_spans:
+            assert span.parent.span_id == parent_span_id
+            assert span.name.startswith("MPIC round-trip communication with perspective")
+            assert span.context.trace_id == parent_trace_id
 
     @staticmethod
     def create_mpic_coordinator_configuration() -> MpicCoordinatorConfiguration:

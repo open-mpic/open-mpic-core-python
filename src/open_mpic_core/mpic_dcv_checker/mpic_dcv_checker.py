@@ -1,12 +1,11 @@
-import ipaddress
 import time
-import idna
-
 import dns.asyncresolver
 import requests
 import re
 import aiohttp
 import base64
+
+from opentelemetry import trace
 
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
 from open_mpic_core.common_domain.check_response import DcvCheckResponse
@@ -17,8 +16,6 @@ from open_mpic_core.common_domain.validation_error import MpicValidationError
 from open_mpic_core.common_util.domain_encoder import DomainEncoder
 from open_mpic_core.common_util.trace_level_logger import get_logger
 
-logger = get_logger(__name__)
-
 
 # noinspection PyUnusedLocal
 class MpicDcvChecker:
@@ -27,14 +24,13 @@ class MpicDcvChecker:
     CONTACT_EMAIL_TAG = 'contactemail'
     CONTACT_PHONE_TAG = 'contactphone'
 
-    def __init__(self, perspective_code: str, verify_ssl: bool = False, log_level: int = None):
+    def __init__(self, perspective_code: str, verify_ssl: bool = False):
         self.perspective_code = perspective_code
         self.verify_ssl = verify_ssl
         self._async_http_client = None
 
-        self.logger = logger.getChild(self.__class__.__name__)
-        if log_level is not None:
-            self.logger.setLevel(log_level)
+        self.logger = get_logger(__name__)
+        self.tracer = trace.get_tracer(__name__)
 
     async def initialize(self):
         """Initialize the async HTTP client.
@@ -100,8 +96,7 @@ class MpicDcvChecker:
         dcv_check_response = self.create_empty_check_response(validation_method)
 
         try:
-            # noinspection PyUnresolvedReferences
-            async with self.logger.trace_timing(f"DNS lookup for target {name_to_resolve}"):
+            with self.tracer.start_as_current_span(f"DNS lookup for target {name_to_resolve}"):
                 lookup = await MpicDcvChecker.perform_dns_resolution(name_to_resolve, validation_method, dns_record_type)
             MpicDcvChecker.evaluate_dns_lookup_response(dcv_check_response, lookup, validation_method, dns_record_type,
                                                         expected_dns_record_content, exact_match)
@@ -151,8 +146,7 @@ class MpicDcvChecker:
             dcv_check_response = self.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
         try:
             # TODO timeouts? circuit breaker? failsafe? look into it...
-            # noinspection PyUnresolvedReferences
-            async with self.logger.trace_timing(f"HTTP lookup for target {token_url}"):
+            with self.tracer.start_as_current_span(f"HTTP lookup for target {token_url}"):
                 async with self._async_http_client.get(url=token_url, headers=http_headers) as response:
                     await MpicDcvChecker.evaluate_http_lookup_response(request, dcv_check_response, response, token_url,
                                                                        expected_response_content)

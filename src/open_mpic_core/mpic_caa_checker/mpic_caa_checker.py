@@ -4,11 +4,11 @@ import dns.resolver
 import dns.asyncresolver
 from dns.name import Name
 from dns.rrset import RRset
+from opentelemetry import trace
 
 from open_mpic_core.common_domain.check_request import CaaCheckRequest
 from open_mpic_core.common_domain.check_response import CaaCheckResponse, CaaCheckResponseDetails
 from open_mpic_core.common_domain.validation_error import MpicValidationError
-from open_mpic_core.common_domain.enum.certificate_type import CertificateType
 from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
 from open_mpic_core.common_util.domain_encoder import DomainEncoder
 from open_mpic_core.common_util.trace_level_logger import get_logger
@@ -20,21 +20,17 @@ CONTACTEMAIL_TAG: Final[str] = 'contactemail'
 CONTACTPHONE_TAG: Final[str] = 'contactphone'
 
 
-logger = get_logger(__name__)
-
-
 class MpicCaaLookupException(Exception):  # This is a python exception type used for raise statements.
     pass
 
 
 class MpicCaaChecker:
-    def __init__(self, default_caa_domain_list: list[str], perspective_code: str, log_level: int = None):
+    def __init__(self, default_caa_domain_list: list[str], perspective_code: str):
         self.default_caa_domain_list = default_caa_domain_list
         self.perspective_code = perspective_code
 
-        self.logger = logger.getChild(self.__class__.__name__)
-        if log_level is not None:
-            self.logger.setLevel(log_level)
+        self.logger = get_logger(__name__)
+        self.tracer = trace.get_tracer(__name__)
 
     @staticmethod
     def does_value_list_permit_issuance(value_list: list, caa_domains):
@@ -133,8 +129,7 @@ class MpicCaaChecker:
         caa_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(caa_request.domain_or_ip_target)
 
         try:
-            # noinspection PyUnresolvedReferences
-            async with self.logger.trace_timing(f"CAA lookup for target {caa_request.domain_or_ip_target}"):
+            with self.tracer.start_as_current_span(f"CAA lookup for target {caa_request.domain_or_ip_target}"):
                 rrset, domain = await MpicCaaChecker.find_caa_records_and_domain(caa_request)
             caa_found = rrset is not None
         except MpicCaaLookupException:

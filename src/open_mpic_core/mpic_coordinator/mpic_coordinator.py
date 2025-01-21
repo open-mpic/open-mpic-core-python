@@ -1,9 +1,10 @@
 import asyncio
 import json
-from itertools import cycle
-
 import time
 import hashlib
+
+from itertools import cycle
+from opentelemetry import trace
 
 from open_mpic_core.common_domain.check_response import CaaCheckResponse, CaaCheckResponseDetails, DcvCheckResponse, \
     CheckResponse
@@ -25,9 +26,6 @@ from open_mpic_core.mpic_coordinator.mpic_response_builder import MpicResponseBu
 from open_mpic_core.common_util.trace_level_logger import get_logger
 
 
-logger = get_logger(__name__)
-
-
 class MpicCoordinatorConfiguration:
     def __init__(self, target_perspectives, default_perspective_count, global_max_attempts, hash_secret):
         self.target_perspectives = target_perspectives
@@ -37,13 +35,12 @@ class MpicCoordinatorConfiguration:
 
 
 class MpicCoordinator:
-    def __init__(self, call_remote_perspective_function, mpic_coordinator_configuration: MpicCoordinatorConfiguration, log_level: int = None):
+    def __init__(self, call_remote_perspective_function, mpic_coordinator_configuration: MpicCoordinatorConfiguration):
         """
         :param call_remote_perspective_function: a "dumb" transport for serialized data to a remote perspective and a serialized
                response from the remote perspective. MPIC Coordinator is tasked with ensuring the data from this function is sane
                and handling the serialization/deserialization of the data. This function may raise an exception if something goes wrong.
         :param mpic_coordinator_configuration: environment-specific configuration for the coordinator.
-        :param log_level: optional parameter for logging. For now really just used for TRACE logging.
         """
         self.target_perspectives = mpic_coordinator_configuration.target_perspectives
         self.default_perspective_count = mpic_coordinator_configuration.default_perspective_count
@@ -51,9 +48,8 @@ class MpicCoordinator:
         self.hash_secret = mpic_coordinator_configuration.hash_secret
         self.call_remote_perspective_function = call_remote_perspective_function
 
-        self.logger = logger.getChild(self.__class__.__name__)
-        if log_level is not None:
-            self.logger.setLevel(log_level)
+        self.logger = get_logger(__name__)
+        self.tracer = trace.get_tracer(__name__)
 
     async def coordinate_mpic(self, mpic_request: MpicRequest) -> MpicResponse:
         # noinspection PyUnresolvedReferences
@@ -166,8 +162,7 @@ class MpicCoordinator:
         or that we'll wrap the sync function using asyncio.to_thread() if needed.
         """
         try:
-            # noinspection PyUnresolvedReferences
-            async with self.logger.trace_timing(f"MPIC round-trip communication with perspective {call_config.perspective.code}"):
+            with self.tracer.start_as_current_span(f"MPIC round-trip communication with perspective {call_config.perspective.code}"):
                 response = await call_remote_perspective_function(call_config.perspective, call_config.check_type, call_config.check_request)
         except Exception as exc:
             raise RemoteCheckException(
@@ -218,8 +213,7 @@ class MpicCoordinator:
             self.call_remote_perspective(self.call_remote_perspective_function, call_config) for call_config in async_calls_to_issue
         ]
 
-        # noinspection PyUnresolvedReferences
-        async with self.logger.trace_timing(f"MPIC round-trip communication with {len(perspectives_to_use)} perspectives"):
+        with self.tracer.start_as_current_span(f"MPIC round-trip communication with {len(perspectives_to_use)} perspectives"):
             responses = await asyncio.gather(*tasks, return_exceptions=True)
 
         for response in responses:

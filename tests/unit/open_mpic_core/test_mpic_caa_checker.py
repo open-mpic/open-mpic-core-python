@@ -34,38 +34,15 @@ class TestMpicCaaChecker:
                 class_scoped_monkeypatch.setenv(k, v)
             yield class_scoped_monkeypatch  # restore the environment afterward
 
-    @pytest.fixture(autouse=True)
-    def setup_logging(self):
-        # Clear existing handlers
-        root = logging.getLogger()
-        for handler in root.handlers[:]:
-            root.removeHandler(handler)
-
-        # noinspection PyAttributeOutsideInit
-        self.log_output = StringIO()  # to be able to inspect what gets logged
-        handler = logging.StreamHandler(self.log_output)
-        handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-
-        # Configure fresh logging
-        logging.basicConfig(
-            level=TRACE_LEVEL,
-            handlers=[handler]
-        )
-        yield
-
     @staticmethod
-    def create_configured_caa_checker(log_level=None):
-        return MpicCaaChecker(["ca1.com", "ca2.net", "ca3.org"], 'us-east-4', log_level)
+    def create_configured_caa_checker():
+        return MpicCaaChecker(["ca1.com", "ca2.net", "ca3.org"], 'us-east-4')
 
-    def constructor__should_set_log_level_if_provided(self):
-        caa_checker = TestMpicCaaChecker.create_configured_caa_checker(logging.ERROR)
-        assert caa_checker.logger.level == logging.ERROR
-
-    def mpic_caa_checker__should_be_able_to_log_at_trace_level(self):
-        caa_checker = TestMpicCaaChecker.create_configured_caa_checker(TRACE_LEVEL)
+    def mpic_caa_checker__should_be_able_to_log_at_trace_level(self, logging_output):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
         test_message = "This is a trace log message."
         caa_checker.logger.trace(test_message)
-        log_contents = self.log_output.getvalue()
+        log_contents = logging_output.getvalue()
         assert all(text in log_contents for text in [test_message, "TRACE", caa_checker.logger.name])
 
     # integration test of a sort -- only mocking dns methods rather than remaining class methods
@@ -232,16 +209,17 @@ class TestMpicCaaChecker:
         assert caa_response.check_passed is True
         assert caa_response.details.records_seen == [f'0 issue "ca1.com"', f'0 {property_tag} "{property_value}"']
 
-    async def check_caa__should_be_able_to_trace_timing_of_caa_lookup(self, mocker):
-        caa_checker = TestMpicCaaChecker.create_configured_caa_checker(TRACE_LEVEL)  # note the TRACE_LEVEL here
+    async def check_caa__should_be_able_to_trace_timing_of_caa_lookup(self, tracer_in_memory_exporter, mocker):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
         self.patch_resolver_with_answer_or_exception(mocker, dns.resolver.NoAnswer())
         caa_request = CaaCheckRequest(domain_or_ip_target='example.com',
                                       caa_check_parameters=CaaCheckParameters(
                                           certificate_type=CertificateType.TLS_SERVER, caa_domains=['ca111.com']))
         await caa_checker.check_caa(caa_request)
         # Get the log output and assert
-        log_contents = self.log_output.getvalue()
-        assert all(text in log_contents for text in ['seconds', 'TRACE', caa_checker.logger.name])
+        spans = tracer_in_memory_exporter.get_finished_spans()
+        assert len(spans) == 1
+        assert 'CAA lookup' in spans[0].name
 
     @pytest.mark.parametrize('value_list, caa_domains', [
         (['ca111.org'], ['ca111.org']),
