@@ -8,7 +8,6 @@ from dns.rrset import RRset
 from open_mpic_core.common_domain.check_request import CaaCheckRequest
 from open_mpic_core.common_domain.check_response import CaaCheckResponse, CaaCheckResponseDetails
 from open_mpic_core.common_domain.validation_error import MpicValidationError
-from open_mpic_core.common_domain.enum.certificate_type import CertificateType
 from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
 from open_mpic_core.common_util.domain_encoder import DomainEncoder
 from open_mpic_core.common_util.trace_level_logger import get_logger

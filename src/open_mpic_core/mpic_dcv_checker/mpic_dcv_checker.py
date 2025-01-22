@@ -1,6 +1,4 @@
-import ipaddress
 import time
-import idna
 
 import dns.asyncresolver
 import requests
@@ -8,6 +6,7 @@ import re
 import aiohttp
 import base64
 
+from aiohttp.web import HTTPException
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
 from open_mpic_core.common_domain.check_response import DcvCheckResponse
 from open_mpic_core.common_domain.check_response_details import RedirectResponse, DcvCheckResponseDetailsBuilder
@@ -154,7 +153,7 @@ class MpicDcvChecker:
                 async with self._async_http_client.get(url=token_url, headers=http_headers) as response:
                     await MpicDcvChecker.evaluate_http_lookup_response(request, dcv_check_response, response, token_url,
                                                                        expected_response_content)
-        except aiohttp.web.HTTPException as e:
+        except HTTPException as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
         return dcv_check_response
