@@ -36,11 +36,9 @@ class MpicDcvChecker:
         if log_level is not None:
             self.logger.setLevel(log_level)
 
-    async def initialize(self):
+    async def initialize_async_http_client(self):
         """Initialize the async HTTP client.
-
-        Will need to call this as part of lazy initialization in wrapping code.
-        For example, FastAPI's lifespan (https://fastapi.tiangolo.com/advanced/events/)
+        Needs to be called before the first HTTP based validation check.
         :return:
         """
         connector = aiohttp.TCPConnector(ssl=self.verify_ssl)  # flag to verify TLS certificates; defaults to False
@@ -133,7 +131,7 @@ class MpicDcvChecker:
 
     async def perform_http_based_validation(self, request) -> DcvCheckResponse:
         if self._async_http_client is None:
-            raise RuntimeError("Checker not initialized - call initialize() first")
+            await self.initialize_async_http_client()
 
         validation_method = request.dcv_check_parameters.validation_details.validation_method
         domain_or_ip_target = request.domain_or_ip_target

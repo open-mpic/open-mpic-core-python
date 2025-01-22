@@ -30,10 +30,8 @@ from unit.test_util.valid_check_creator import ValidCheckCreator
 class TestMpicDcvChecker:
     # noinspection PyAttributeOutsideInit
     @pytest.fixture(autouse=True)
-    async def setup_dcv_checker(self) -> MpicDcvChecker:
+    def setup_dcv_checker(self) -> MpicDcvChecker:
         self.dcv_checker = MpicDcvChecker('us-east-4')
-        await self.dcv_checker.initialize()
-        # dcv_checker._async_http_client = AsyncMock()
         yield self.dcv_checker
 
     @pytest.fixture(autouse=True)
@@ -124,7 +122,7 @@ class TestMpicDcvChecker:
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.ACME_HTTP_01, DcvValidationMethod.ACME_DNS_01])
     async def check_dcv__should_be_able_to_trace_timing_of_http_and_dns_lookups(self, validation_method, mocker):
         tracing_dcv_checker = MpicDcvChecker('us-east-4', log_level=TRACE_LEVEL)
-        await tracing_dcv_checker.initialize()
+        await tracing_dcv_checker.initialize_async_http_client()
 
         if validation_method == DcvValidationMethod.ACME_HTTP_01:
             dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
@@ -136,14 +134,6 @@ class TestMpicDcvChecker:
         await tracing_dcv_checker.check_dcv(dcv_request)
         log_contents = self.log_output.getvalue()
         assert all(text in log_contents for text in ['seconds', 'TRACE', tracing_dcv_checker.logger.name])
-
-    async def http_based_dcv_checks__should_raise_runtime_error_if_http_client_not_initialized(self):
-        # noinspection PyAttributeOutsideInit
-        self.dcv_checker = MpicDcvChecker('us-east-4')  # not calling .initialize()
-        dcv_request = ValidCheckCreator.create_valid_http_check_request()
-        with pytest.raises(RuntimeError) as runtime_error:
-            await self.dcv_checker.check_dcv(dcv_request)
-        assert str(runtime_error.value) == 'Checker not initialized - call initialize() first'
 
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01])
     async def http_based_dcv_checks__should_return_check_success_given_token_file_found_with_expected_content(self, validation_method, mocker):
@@ -573,8 +563,8 @@ class TestMpicDcvChecker:
         not_found_response = TestMpicDcvChecker.create_mock_http_response(404, 'Not Found', {'reason': 'Not Found'})
 
         # noinspection PyProtectedMember
-        return mocker.patch.object(
-            dcv_checker._async_http_client, 'get',
+        return mocker.patch(
+            'aiohttp.ClientSession.get',
             side_effect=lambda *args, **kwargs: AsyncMock(
                 __aenter__=AsyncMock(
                     return_value=success_response if kwargs.get('url') == expected_url else not_found_response
@@ -586,9 +576,8 @@ class TestMpicDcvChecker:
         responses_iter = iter(responses)
 
         # noinspection PyProtectedMember
-        return mocker.patch.object(
-            dcv_checker._async_http_client,
-            'get',
+        return mocker.patch(
+            'aiohttp.ClientSession.get',
             side_effect=lambda *args, **kwargs: AsyncMock(
                 __aenter__=AsyncMock(return_value=next(responses_iter)),
                 __aexit__=AsyncMock()
@@ -597,15 +586,15 @@ class TestMpicDcvChecker:
 
     def mock_request_agnostic_http_response(self, dcv_checker: MpicDcvChecker, mock_response: ClientResponse, mocker):
         # noinspection PyProtectedMember
-        return mocker.patch.object(
-            dcv_checker._async_http_client, 'get',
+        return mocker.patch(
+            'aiohttp.ClientSession.get',
             side_effect=lambda *args, **kwargs: AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
         )
 
     def mock_http_exception_response(self, dcv_checker: MpicDcvChecker, mocker):
         # noinspection PyProtectedMember
-        return mocker.patch.object(
-            dcv_checker._async_http_client, 'get',
+        return mocker.patch(
+            'aiohttp.ClientSession.get',
             side_effect=lambda *args, **kwargs: self.raise_(HTTPException(reason='Test Exception'))
         )
 
