@@ -28,10 +28,12 @@ class MpicDcvChecker:
     CONTACT_EMAIL_TAG = 'contactemail'
     CONTACT_PHONE_TAG = 'contactphone'
 
-    def __init__(self, perspective_code: str, verify_ssl: bool = False, log_level: int = None):
+    def __init__(self, perspective_code: str, reuse_http_client: bool = False, verify_ssl: bool = False, log_level: int = None):
         self.perspective_code = perspective_code
         self.verify_ssl = verify_ssl
+        self._reuse_http_client = reuse_http_client
         self._async_http_client = None
+        self._http_client_loop = None  # track which loop the http client was created on
 
         self.logger = logger.getChild(self.__class__.__name__)
         if log_level is not None:
@@ -39,25 +41,30 @@ class MpicDcvChecker:
 
     async def get_async_http_client(self):
         """Get or create client ensuring it's on the current event loop"""
-        need_new_client = False
-        # noinspection PyProtectedMember
-        if self._async_http_client is None or self._async_http_client.closed:
-            self.logger.debug("Creating new async HTTP client because there isn't an active one")
-            need_new_client = True
-        elif self._async_http_client._loop is not asyncio.get_running_loop():
-            self.logger.debug("Creating new async HTTP client due to a mismatch in running event loops")
-            need_new_client = True
 
-        if need_new_client:
-            if self._async_http_client and not self._async_http_client.closed:
-                await self._async_http_client.close()
+        if self._reuse_http_client:  # implementations such as FastAPI may want this for efficiency
+            current_loop = asyncio.get_running_loop()
+            reason_for_new_client = None
+            # noinspection PyProtectedMember
+            if self._async_http_client is None or self._async_http_client.closed:
+                reason_for_new_client = "Creating new async HTTP client because there isn't an active one"
+            elif self._http_client_loop is not current_loop:
+                reason_for_new_client = "Creating new async HTTP client due to a mismatch in running event loops"
 
+            if reason_for_new_client is not None:
+                self.logger.debug(reason_for_new_client)
+                if self._async_http_client and not self._async_http_client.closed:
+                    await self._async_http_client.close()
+
+                connector = aiohttp.TCPConnector(ssl=self.verify_ssl)
+                self._async_http_client = aiohttp.ClientSession(
+                    connector=connector, timeout=aiohttp.ClientTimeout(total=30)
+                )
+                self._http_client_loop = current_loop
+            return self._async_http_client
+        else:  # implementations such as AWS Lambda will need a new client for each invocation
             connector = aiohttp.TCPConnector(ssl=self.verify_ssl)
-            self._async_http_client = aiohttp.ClientSession(
-                connector=connector,
-                timeout=aiohttp.ClientTimeout(total=30)
-            )
-        return self._async_http_client
+            return aiohttp.ClientSession(connector=connector, timeout=aiohttp.ClientTimeout(total=30))
 
     async def initialize_async_http_client(self):
         """Initialize the async HTTP client.
@@ -173,7 +180,7 @@ class MpicDcvChecker:
             # TODO timeouts? circuit breaker? failsafe? look into it...
             # noinspection PyUnresolvedReferences
             async with self.logger.trace_timing(f"HTTP lookup for target {token_url}"):
-                async with self._async_http_client.get(url=token_url, headers=http_headers) as response:
+                async with async_http_client.get(url=token_url, headers=http_headers) as response:
                     await MpicDcvChecker.evaluate_http_lookup_response(request, dcv_check_response, response, token_url,
                                                                        expected_response_content)
         except (ClientError, HTTPException) as e:

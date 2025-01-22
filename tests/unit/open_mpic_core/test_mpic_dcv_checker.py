@@ -65,6 +65,22 @@ class TestMpicDcvChecker:
         log_contents = self.log_output.getvalue()
         assert all(text in log_contents for text in [test_message, "TRACE", dcv_checker.logger.name])
 
+    @pytest.mark.parametrize('reuse_http_client', [True, False])
+    async def mpic_dcv_checker__should_optionally_reuse_http_client(self, reuse_http_client):
+        dcv_checker = MpicDcvChecker('us-east-4', reuse_http_client=reuse_http_client, log_level=TRACE_LEVEL)
+        client_1 = await dcv_checker.get_async_http_client()
+        client_2 = await dcv_checker.get_async_http_client()
+        try:
+            assert not client_1.closed
+            assert not client_2.closed
+            assert (client_1 is client_2) == reuse_http_client
+        finally:
+            if not reuse_http_client:
+                await client_1.close()
+                await client_2.close()
+            else:
+                await dcv_checker.shutdown()
+
     # TODO should we implement FOLLOWING of CNAME records for other challenges such as TXT?
     # integration test of a sort -- only mocking dns methods rather than remaining class methods
     @pytest.mark.parametrize('validation_method, record_type', [(DcvValidationMethod.WEBSITE_CHANGE_V2, None),
@@ -123,7 +139,6 @@ class TestMpicDcvChecker:
     @pytest.mark.parametrize('validation_method', [DcvValidationMethod.ACME_HTTP_01, DcvValidationMethod.ACME_DNS_01])
     async def check_dcv__should_be_able_to_trace_timing_of_http_and_dns_lookups(self, validation_method, mocker):
         tracing_dcv_checker = MpicDcvChecker('us-east-4', log_level=TRACE_LEVEL)
-        await tracing_dcv_checker.initialize_async_http_client()
 
         if validation_method == DcvValidationMethod.ACME_HTTP_01:
             dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
