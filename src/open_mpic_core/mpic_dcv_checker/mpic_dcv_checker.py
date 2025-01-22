@@ -153,8 +153,7 @@ class MpicDcvChecker:
         return lookup
 
     async def perform_http_based_validation(self, request) -> DcvCheckResponse:
-        if self._async_http_client is None:
-            await self.initialize_async_http_client()
+        async_http_client = await self.get_async_http_client()
 
         validation_method = request.dcv_check_parameters.validation_details.validation_method
         domain_or_ip_target = request.domain_or_ip_target
