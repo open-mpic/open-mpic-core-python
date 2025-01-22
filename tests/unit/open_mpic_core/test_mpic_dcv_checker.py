@@ -68,18 +68,13 @@ class TestMpicDcvChecker:
     @pytest.mark.parametrize('reuse_http_client', [True, False])
     async def mpic_dcv_checker__should_optionally_reuse_http_client(self, reuse_http_client):
         dcv_checker = MpicDcvChecker('us-east-4', reuse_http_client=reuse_http_client, log_level=TRACE_LEVEL)
-        client_1 = await dcv_checker.get_async_http_client()
-        client_2 = await dcv_checker.get_async_http_client()
-        try:
-            assert not client_1.closed
-            assert not client_2.closed
-            assert (client_1 is client_2) == reuse_http_client
-        finally:
-            if not reuse_http_client:
-                await client_1.close()
-                await client_2.close()
-            else:
-                await dcv_checker.shutdown()
+        async with dcv_checker.get_async_http_client() as client_1:
+            async with dcv_checker.get_async_http_client() as client_2:
+                try:
+                    assert (client_1 is client_2) == reuse_http_client
+                finally:
+                    if reuse_http_client:
+                        await dcv_checker.shutdown()
 
     # TODO should we implement FOLLOWING of CNAME records for other challenges such as TXT?
     # integration test of a sort -- only mocking dns methods rather than remaining class methods

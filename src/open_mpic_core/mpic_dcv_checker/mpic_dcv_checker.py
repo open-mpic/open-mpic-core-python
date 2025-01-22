@@ -1,5 +1,6 @@
 import asyncio
 import time
+from contextlib import asynccontextmanager
 
 import dns.asyncresolver
 import requests
@@ -39,11 +40,11 @@ class MpicDcvChecker:
         if log_level is not None:
             self.logger.setLevel(log_level)
 
+    @asynccontextmanager
     async def get_async_http_client(self):
-        """Get or create client ensuring it's on the current event loop"""
+        current_loop = asyncio.get_running_loop()
 
         if self._reuse_http_client:  # implementations such as FastAPI may want this for efficiency
-            current_loop = asyncio.get_running_loop()
             reason_for_new_client = None
             # noinspection PyProtectedMember
             if self._async_http_client is None or self._async_http_client.closed:
@@ -61,10 +62,15 @@ class MpicDcvChecker:
                     connector=connector, timeout=aiohttp.ClientTimeout(total=30)
                 )
                 self._http_client_loop = current_loop
-            return self._async_http_client
+            yield self._async_http_client
         else:  # implementations such as AWS Lambda will need a new client for each invocation
             connector = aiohttp.TCPConnector(ssl=self.verify_ssl)
-            return aiohttp.ClientSession(connector=connector, timeout=aiohttp.ClientTimeout(total=30))
+            client = aiohttp.ClientSession(connector=connector, timeout=aiohttp.ClientTimeout(total=30))
+            try:
+                yield client
+            finally:
+                if not client.closed:
+                    await client.close()
 
     async def initialize_async_http_client(self):
         """Initialize the async HTTP client.
@@ -160,8 +166,6 @@ class MpicDcvChecker:
         return lookup
 
     async def perform_http_based_validation(self, request) -> DcvCheckResponse:
-        async_http_client = await self.get_async_http_client()
-
         validation_method = request.dcv_check_parameters.validation_details.validation_method
         domain_or_ip_target = request.domain_or_ip_target
         http_headers = request.dcv_check_parameters.validation_details.http_headers
@@ -177,12 +181,12 @@ class MpicDcvChecker:
             token_url = f"http://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
             dcv_check_response = self.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
         try:
-            # TODO timeouts? circuit breaker? failsafe? look into it...
-            # noinspection PyUnresolvedReferences
-            async with self.logger.trace_timing(f"HTTP lookup for target {token_url}"):
-                async with async_http_client.get(url=token_url, headers=http_headers) as response:
-                    await MpicDcvChecker.evaluate_http_lookup_response(request, dcv_check_response, response, token_url,
-                                                                       expected_response_content)
+            async with self.get_async_http_client() as async_http_client:
+                # noinspection PyUnresolvedReferences
+                async with self.logger.trace_timing(f"HTTP lookup for target {token_url}"):
+                    async with async_http_client.get(url=token_url, headers=http_headers) as response:
+                        await MpicDcvChecker.evaluate_http_lookup_response(request, dcv_check_response, response, token_url,
+                                                                           expected_response_content)
         except (ClientError, HTTPException) as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
