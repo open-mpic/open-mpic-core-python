@@ -1,6 +1,6 @@
-import ipaddress
+import asyncio
 import time
-import idna
+from contextlib import asynccontextmanager
 
 import dns.asyncresolver
 import requests
@@ -8,6 +8,8 @@ import re
 import aiohttp
 import base64
 
+from aiohttp import ClientError
+from aiohttp.web import HTTPException
 from open_mpic_core.common_domain.check_request import DcvCheckRequest
 from open_mpic_core.common_domain.check_response import DcvCheckResponse
 from open_mpic_core.common_domain.check_response_details import RedirectResponse, DcvCheckResponseDetailsBuilder
@@ -27,20 +29,52 @@ class MpicDcvChecker:
     CONTACT_EMAIL_TAG = 'contactemail'
     CONTACT_PHONE_TAG = 'contactphone'
 
-    def __init__(self, perspective_code: str, verify_ssl: bool = False, log_level: int = None):
+    def __init__(self, perspective_code: str, reuse_http_client: bool = False, verify_ssl: bool = False, log_level: int = None):
         self.perspective_code = perspective_code
         self.verify_ssl = verify_ssl
+        self._reuse_http_client = reuse_http_client
         self._async_http_client = None
+        self._http_client_loop = None  # track which loop the http client was created on
 
         self.logger = logger.getChild(self.__class__.__name__)
         if log_level is not None:
             self.logger.setLevel(log_level)
 
-    async def initialize(self):
-        """Initialize the async HTTP client.
+    @asynccontextmanager
+    async def get_async_http_client(self):
+        current_loop = asyncio.get_running_loop()
 
-        Will need to call this as part of lazy initialization in wrapping code.
-        For example, FastAPI's lifespan (https://fastapi.tiangolo.com/advanced/events/)
+        if self._reuse_http_client:  # implementations such as FastAPI may want this for efficiency
+            reason_for_new_client = None
+            # noinspection PyProtectedMember
+            if self._async_http_client is None or self._async_http_client.closed:
+                reason_for_new_client = "Creating new async HTTP client because there isn't an active one"
+            elif self._http_client_loop is not current_loop:
+                reason_for_new_client = "Creating new async HTTP client due to a mismatch in running event loops"
+
+            if reason_for_new_client is not None:
+                self.logger.debug(reason_for_new_client)
+                if self._async_http_client and not self._async_http_client.closed:
+                    await self._async_http_client.close()
+
+                connector = aiohttp.TCPConnector(ssl=self.verify_ssl)
+                self._async_http_client = aiohttp.ClientSession(
+                    connector=connector, timeout=aiohttp.ClientTimeout(total=30)
+                )
+                self._http_client_loop = current_loop
+            yield self._async_http_client
+        else:  # implementations such as AWS Lambda will need a new client for each invocation
+            connector = aiohttp.TCPConnector(ssl=self.verify_ssl)
+            client = aiohttp.ClientSession(connector=connector, timeout=aiohttp.ClientTimeout(total=30))
+            try:
+                yield client
+            finally:
+                if not client.closed:
+                    await client.close()
+
+    async def initialize_async_http_client(self):
+        """Initialize the async HTTP client.
+        Needs to be called before the first HTTP based validation check.
         :return:
         """
         connector = aiohttp.TCPConnector(ssl=self.verify_ssl)  # flag to verify TLS certificates; defaults to False
@@ -132,9 +166,6 @@ class MpicDcvChecker:
         return lookup
 
     async def perform_http_based_validation(self, request) -> DcvCheckResponse:
-        if self._async_http_client is None:
-            raise RuntimeError("Checker not initialized - call initialize() first")
-
         validation_method = request.dcv_check_parameters.validation_details.validation_method
         domain_or_ip_target = request.domain_or_ip_target
         http_headers = request.dcv_check_parameters.validation_details.http_headers
@@ -150,13 +181,13 @@ class MpicDcvChecker:
             token_url = f"http://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
             dcv_check_response = self.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
         try:
-            # TODO timeouts? circuit breaker? failsafe? look into it...
-            # noinspection PyUnresolvedReferences
-            async with self.logger.trace_timing(f"HTTP lookup for target {token_url}"):
-                async with self._async_http_client.get(url=token_url, headers=http_headers) as response:
-                    await MpicDcvChecker.evaluate_http_lookup_response(request, dcv_check_response, response, token_url,
-                                                                       expected_response_content)
-        except aiohttp.web.HTTPException as e:
+            async with self.get_async_http_client() as async_http_client:
+                # noinspection PyUnresolvedReferences
+                async with self.logger.trace_timing(f"HTTP lookup for target {token_url}"):
+                    async with async_http_client.get(url=token_url, headers=http_headers) as response:
+                        await MpicDcvChecker.evaluate_http_lookup_response(request, dcv_check_response, response, token_url,
+                                                                           expected_response_content)
+        except (ClientError, HTTPException) as e:
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
         return dcv_check_response
