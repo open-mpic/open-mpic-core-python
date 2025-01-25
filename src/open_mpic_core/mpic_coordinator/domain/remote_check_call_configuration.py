@@ -1,6 +1,4 @@
-from open_mpic_core.common_domain.check_request import CheckRequest
-from open_mpic_core.common_domain.enum.check_type import CheckType
-from open_mpic_core.mpic_coordinator.domain.remote_perspective import RemotePerspective
+from open_mpic_core import CheckRequest, CheckType, RemotePerspective
 
 
 class RemoteCheckCallConfiguration:

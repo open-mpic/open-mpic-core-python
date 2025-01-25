@@ -6,7 +6,7 @@ from open_mpic_core.common_domain.enum.certificate_type import CertificateType
 from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
 from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
 from open_mpic_core.common_domain.enum.url_scheme import UrlScheme
-from open_mpic_core.mpic_coordinator.domain.mpic_request import BaseMpicRequest
+from open_mpic_core.mpic_coordinator.domain.mpic_request import MpicRequest
 from open_mpic_core.common_domain.enum.check_type import CheckType
 from open_mpic_core.mpic_coordinator.domain.mpic_request import MpicCaaRequest
 from open_mpic_core.mpic_coordinator.domain.mpic_request import MpicDcvRequest
@@ -33,7 +33,7 @@ class ValidMpicRequestCreator:
         )
 
     @staticmethod
-    def create_valid_mpic_request(check_type, validation_method=DcvValidationMethod.DNS_CHANGE) -> BaseMpicRequest:
+    def create_valid_mpic_request(check_type, validation_method=DcvValidationMethod.DNS_CHANGE) -> MpicRequest:
         match check_type:
             case CheckType.CAA:
                 return ValidMpicRequestCreator.create_valid_caa_mpic_request()
