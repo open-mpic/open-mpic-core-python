@@ -1,6 +1,6 @@
 from typing import Union, Literal
 
-from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
+from open_mpic_core import DcvValidationMethod
 from pydantic import BaseModel
 
 
@@ -25,11 +25,13 @@ class DcvHttpCheckResponseDetails(BaseModel):
 
 
 class DcvDnsCheckResponseDetails(BaseModel):
-    validation_method: Literal[DcvValidationMethod.DNS_CHANGE,
-                               DcvValidationMethod.IP_LOOKUP,
-                               DcvValidationMethod.CONTACT_EMAIL,
-                               DcvValidationMethod.CONTACT_PHONE,
-                               DcvValidationMethod.ACME_DNS_01]
+    validation_method: Literal[
+        DcvValidationMethod.DNS_CHANGE,
+        DcvValidationMethod.IP_LOOKUP,
+        DcvValidationMethod.CONTACT_EMAIL,
+        DcvValidationMethod.CONTACT_PHONE,
+        DcvValidationMethod.ACME_DNS_01,
+    ]
     records_seen: list[str] | None = None  # list of records found in DNS query; not base64 encoded
     response_code: int | None = None  # DNS response code
     ad_flag: bool | None = None  # was AD flag set in DNS response
@@ -43,11 +45,13 @@ DcvCheckResponseDetails = Union[DcvHttpCheckResponseDetails, DcvDnsCheckResponse
 class DcvCheckResponseDetailsBuilder:
     @staticmethod
     def build_response_details(validation_method: DcvValidationMethod) -> DcvCheckResponseDetails:
-        types = {DcvValidationMethod.WEBSITE_CHANGE_V2: DcvHttpCheckResponseDetails,
-                 DcvValidationMethod.DNS_CHANGE: DcvDnsCheckResponseDetails,
-                 DcvValidationMethod.ACME_HTTP_01: DcvHttpCheckResponseDetails,
-                 DcvValidationMethod.ACME_DNS_01: DcvDnsCheckResponseDetails,
-                 DcvValidationMethod.CONTACT_PHONE: DcvDnsCheckResponseDetails,
-                 DcvValidationMethod.CONTACT_EMAIL: DcvDnsCheckResponseDetails,
-                 DcvValidationMethod.IP_LOOKUP: DcvDnsCheckResponseDetails}
+        types = {
+            DcvValidationMethod.WEBSITE_CHANGE_V2: DcvHttpCheckResponseDetails,
+            DcvValidationMethod.DNS_CHANGE: DcvDnsCheckResponseDetails,
+            DcvValidationMethod.ACME_HTTP_01: DcvHttpCheckResponseDetails,
+            DcvValidationMethod.ACME_DNS_01: DcvDnsCheckResponseDetails,
+            DcvValidationMethod.CONTACT_PHONE: DcvDnsCheckResponseDetails,
+            DcvValidationMethod.CONTACT_EMAIL: DcvDnsCheckResponseDetails,
+            DcvValidationMethod.IP_LOOKUP: DcvDnsCheckResponseDetails,
+        }
         return types[validation_method](validation_method=validation_method)

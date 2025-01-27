@@ -27,7 +27,8 @@ dependencies = [
   "requests>=2.32.3",
   "dnspython==2.6.1",
   "pydantic==2.8.2",
-  "aiohttp==3.11.11"
+  "aiohttp==3.11.11",
+  "black==24.8.0",
 ]
 
 [project.optional-dependencies]
@@ -122,6 +123,9 @@ exclude_lines = [
   "if __name__ == .__main__.:",
   "if TYPE_CHECKING:",
 ]
+
+[tool.black]
+line-length = 120
 
 # what is this for?
 [tool.hatch.envs.types]

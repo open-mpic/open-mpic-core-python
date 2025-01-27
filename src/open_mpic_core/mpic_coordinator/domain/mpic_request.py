@@ -1,11 +1,10 @@
 from abc import ABC
 from typing import Literal, Union
-
-from open_mpic_core.common_domain.enum.check_type import CheckType
 from pydantic import BaseModel
 
-from open_mpic_core.mpic_coordinator.domain.mpic_orchestration_parameters import MpicRequestOrchestrationParameters
-from open_mpic_core.common_domain.check_parameters import CaaCheckParameters, DcvCheckParameters
+from open_mpic_core import CheckType
+
+from open_mpic_core import MpicRequestOrchestrationParameters, CaaCheckParameters, DcvCheckParameters
 
 
 class BaseMpicRequest(BaseModel, ABC):

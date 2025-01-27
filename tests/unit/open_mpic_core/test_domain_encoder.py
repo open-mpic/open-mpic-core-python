@@ -1,6 +1,6 @@
 import pytest
 
-from open_mpic_core.common_util.domain_encoder import DomainEncoder
+from open_mpic_core import DomainEncoder
 
 
 class TestDomainEncoder:

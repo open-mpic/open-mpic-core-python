@@ -3,10 +3,7 @@ from typing import Literal, Union, Any
 
 from pydantic import BaseModel
 
-from open_mpic_core.common_domain.enum.certificate_type import CertificateType
-from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidationMethod
-from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
-from open_mpic_core.common_domain.enum.url_scheme import UrlScheme
+from open_mpic_core import CertificateType, DnsRecordType, DcvValidationMethod, UrlScheme
 
 
 class CaaCheckParameters(BaseModel):
@@ -48,7 +45,7 @@ class DcvDnsChangeValidationDetails(DcvGeneralDnsValidationDetails):
 class DcvContactEmailTxtValidationDetails(DcvGeneralDnsValidationDetails):
     validation_method: Literal[DcvValidationMethod.CONTACT_EMAIL] = DcvValidationMethod.CONTACT_EMAIL
     dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
-    dns_name_prefix: Literal['_validation-contactemail'] = '_validation-contactemail'
+    dns_name_prefix: Literal["_validation-contactemail"] = "_validation-contactemail"
 
 
 class DcvContactEmailCaaValidationDetails(DcvGeneralDnsValidationDetails):
@@ -59,7 +56,7 @@ class DcvContactEmailCaaValidationDetails(DcvGeneralDnsValidationDetails):
 class DcvContactPhoneTxtValidationDetails(DcvGeneralDnsValidationDetails):
     validation_method: Literal[DcvValidationMethod.CONTACT_PHONE] = DcvValidationMethod.CONTACT_PHONE
     dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
-    dns_name_prefix: Literal['_validation-contactphone'] = '_validation-contactphone'
+    dns_name_prefix: Literal["_validation-contactphone"] = "_validation-contactphone"
 
 
 class DcvContactPhoneCaaValidationDetails(DcvGeneralDnsValidationDetails):
@@ -83,7 +80,7 @@ class DcvAcmeDns01ValidationDetails(DcvValidationDetails):
     validation_method: Literal[DcvValidationMethod.ACME_DNS_01] = DcvValidationMethod.ACME_DNS_01
     key_authorization: str
     dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
-    dns_name_prefix: Literal['_acme-challenge'] = '_acme-challenge'
+    dns_name_prefix: Literal["_acme-challenge"] = "_acme-challenge"
 
 
 class DcvCheckParameters(BaseModel):
@@ -96,5 +93,5 @@ class DcvCheckParameters(BaseModel):
         DcvContactEmailCaaValidationDetails,
         DcvContactPhoneTxtValidationDetails,
         DcvContactPhoneCaaValidationDetails,
-        DcvIpLookupValidationDetails
+        DcvIpLookupValidationDetails,
     ]

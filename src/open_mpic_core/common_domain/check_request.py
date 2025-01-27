@@ -3,7 +3,7 @@ from typing import Union
 
 from pydantic import BaseModel
 
-from open_mpic_core.common_domain.check_parameters import CaaCheckParameters, DcvCheckParameters
+from open_mpic_core import CaaCheckParameters, DcvCheckParameters
 
 
 class BaseCheckRequest(BaseModel, ABC):

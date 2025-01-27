@@ -5,18 +5,16 @@ import dns.asyncresolver
 from dns.name import Name
 from dns.rrset import RRset
 
-from open_mpic_core.common_domain.check_request import CaaCheckRequest
-from open_mpic_core.common_domain.check_response import CaaCheckResponse, CaaCheckResponseDetails
-from open_mpic_core.common_domain.validation_error import MpicValidationError
-from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
-from open_mpic_core.common_util.domain_encoder import DomainEncoder
-from open_mpic_core.common_util.trace_level_logger import get_logger
+from open_mpic_core import CaaCheckRequest, CaaCheckResponse, CaaCheckResponseDetails
+from open_mpic_core import MpicValidationError, ErrorMessages
+from open_mpic_core import DomainEncoder
+from open_mpic_core import get_logger
 
-ISSUE_TAG: Final[str] = 'issue'
-ISSUEWILD_TAG: Final[str] = 'issuewild'
+ISSUE_TAG: Final[str] = "issue"
+ISSUEWILD_TAG: Final[str] = "issuewild"
 # to accommodate email and phone based DCV that gets contact info from CAA records
-CONTACTEMAIL_TAG: Final[str] = 'contactemail'
-CONTACTPHONE_TAG: Final[str] = 'contactphone'
+CONTACTEMAIL_TAG: Final[str] = "contactemail"
+CONTACTPHONE_TAG: Final[str] = "contactphone"
 
 
 logger = get_logger(__name__)
@@ -38,7 +36,7 @@ class MpicCaaChecker:
     @staticmethod
     def does_value_list_permit_issuance(value_list: list, caa_domains):
         for value in value_list:
-            # We currently do not have any parsing for CAA extensions, so we will never accept a value with an extension.
+            # We currently do not have any parsing for CAA extensions, so we'll never accept a value with an extension.
             if ";" in value:
                 continue
             # One of the CAA records in this set was an exact match on a CAA domain
@@ -74,15 +72,16 @@ class MpicCaaChecker:
 
         # Note: a record with critical flag and 'issue' tag will be considered valid for issuance
         for resource_record in rrset:
-            tag = resource_record.tag.decode('utf-8')
+            tag = resource_record.tag.decode("utf-8")
             tag_lower = tag.lower()
-            val = resource_record.value.decode('utf-8')
+            val = resource_record.value.decode("utf-8")
             if tag_lower == ISSUE_TAG:
                 issue_tags.append(val)
             elif tag_lower == ISSUEWILD_TAG:
                 issue_wild_tags.append(val)
-            elif (tag_lower != CONTACTEMAIL_TAG and tag_lower != CONTACTPHONE_TAG and
-                  resource_record.flags & 0b10000000):  # bitwise-and to check if flags are 128 (the critical flag)
+            elif (
+                tag_lower != CONTACTEMAIL_TAG and tag_lower != CONTACTPHONE_TAG and resource_record.flags & 0b10000000
+            ):  # bitwise-and to check if flags are 128 (the critical flag)
                 has_unknown_critical_flags = True
 
         if has_unknown_critical_flags:
@@ -122,10 +121,8 @@ class MpicCaaChecker:
             perspective_code=self.perspective_code,
             check_passed=False,
             errors=None,
-            details=CaaCheckResponseDetails(
-                caa_record_present=None
-            ),
-            timestamp_ns=None
+            details=CaaCheckResponseDetails(caa_record_present=None),
+            timestamp_ns=None,
         )
 
         # encode domain if needed
@@ -140,7 +137,11 @@ class MpicCaaChecker:
             caa_lookup_error = True
 
         if caa_lookup_error:
-            caa_check_response.errors = [MpicValidationError(error_type=ErrorMessages.CAA_LOOKUP_ERROR.key, error_message=ErrorMessages.CAA_LOOKUP_ERROR.message)]
+            caa_check_response.errors = [
+                MpicValidationError(
+                    error_type=ErrorMessages.CAA_LOOKUP_ERROR.key, error_message=ErrorMessages.CAA_LOOKUP_ERROR.message
+                )
+            ]
             caa_check_response.details.found_at = None
             caa_check_response.details.records_seen = None
         elif not caa_found:  # if domain has no CAA records: valid for issuance
