@@ -1,6 +1,5 @@
-from open_mpic_core import MpicRequest
-from open_mpic_core import MpicRequestValidationMessages
-from open_mpic_core import MpicRequestValidationIssue
+from open_mpic_core import CheckType, MpicRequest, DcvValidationMethod
+from open_mpic_core import MpicRequestValidationMessages, MpicRequestValidationIssue
 
 
 class MpicRequestValidator:
@@ -31,8 +30,19 @@ class MpicRequestValidator:
                     requested_perspective_count, quorum_count, request_validation_issues
                 )
 
-            # if mpic_request.check_type == CheckType.DCV and mpic_request.dcv_check_parameters.validation_details.challenge_value is not None:
-            #     MpicRequestValidator.validate_challenge_value(mpic_request, request_validation_issues)
+        if mpic_request.check_type == CheckType.DCV:
+            validation_details = mpic_request.dcv_check_parameters.validation_details
+            if (
+                validation_details.validation_method == DcvValidationMethod.WEBSITE_CHANGE_V2
+                and validation_details.challenge_value == ""
+                and (validation_details.match_regex is None or validation_details.match_regex == "")
+            ):
+                request_validation_issues.append(
+                    MpicRequestValidationIssue(
+                        MpicRequestValidationMessages.EMPTY_CHALLENGE_VALUE,
+                        validation_details.challenge_value,
+                    )
+                )
 
         # returns true if no validation issues found, false otherwise; includes list of validation issues found
         return len(request_validation_issues) == 0, request_validation_issues

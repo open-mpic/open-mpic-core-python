@@ -57,7 +57,6 @@ class TestMpicRequestValidator:
         invalid_perspective_count_issue = next(issue for issue in validation_issues if issue.issue_type == issue_type)
         assert str(perspective_count) in invalid_perspective_count_issue.message
 
-    # TODO should there be a more permissive validation (in diagnostic mode?) for quorum count?
     @pytest.mark.parametrize("quorum_count", [1, -1, 0, 10, "abc", sys.maxsize + 1])
     def is_request_valid__should_be_false_with_message_given_invalid_quorum_count(self, quorum_count):
         request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
@@ -69,23 +68,24 @@ class TestMpicRequestValidator:
         invalid_quorum_count_issue = next(issue for issue in validation_issues if issue.issue_type == issue_type)
         assert str(quorum_count) in invalid_quorum_count_issue.message
 
-    # @pytest.mark.parametrize('challenge_value, match_regex, expected_is_request_valid, error_message', [
-    #     ('', '', False, MpicRequestValidationMessages.EMPTY_CHALLENGE_VALUE),
-    #     ('', '.*', True, None),
-    #     ('abc', '.*', True, None),
-    #     ('abc', '', True, None),
-    # ])
-    # def is_request_valid__should_be_false_and_message_given_empty_challenge_value_unless_match_regex_set(
-    #         self, challenge_value, match_regex, expected_is_request_valid, error_message
-    # ):
-    #     request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(DcvValidationMethod.WEBSITE_CHANGE_V2)
-    #     request.dcv_check_parameters.validation_details.challenge_value = challenge_value
-    #     # request.dcv_check_parameters.validation_details.match_regex = match_regex
-    #     is_request_valid, validation_issues = MpicRequestValidator.is_request_valid(request, self.known_perspectives)
-    #     assert is_request_valid is expected_is_request_valid
-    #     if error_message is not None:
-    #         assert error_message.key in [issue.issue_type for issue in validation_issues]
-    #         assert error_message.message in [issue.message for issue in validation_issues]
+    @pytest.mark.parametrize('challenge_value, match_regex, expected_is_request_valid, error_message', [
+        ('', '', False, MpicRequestValidationMessages.EMPTY_CHALLENGE_VALUE),
+        ('', '.*', True, None),
+        ('abc', '.*', True, None),
+        ('abc', '', True, None),
+    ])
+    def is_request_valid__should_be_false_and_message_given_empty_challenge_value_unless_match_regex_set(
+            self, challenge_value, match_regex, expected_is_request_valid, error_message
+    ):
+        request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(DcvValidationMethod.WEBSITE_CHANGE_V2)
+        request.orchestration_parameters = None  # to avoid accidental logic issues
+        request.dcv_check_parameters.validation_details.challenge_value = challenge_value
+        request.dcv_check_parameters.validation_details.match_regex = match_regex
+        is_request_valid, validation_issues = MpicRequestValidator.is_request_valid(request, self.known_perspectives)
+        assert is_request_valid is expected_is_request_valid
+        if error_message is not None:
+            assert error_message.key in [issue.issue_type for issue in validation_issues]
+            assert error_message.message in [issue.message for issue in validation_issues]
 
 
 if __name__ == "__main__":

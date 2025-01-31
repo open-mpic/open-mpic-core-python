@@ -72,7 +72,7 @@ class TestMpicCoordinator:
         log_contents = self.log_output.getvalue()
         assert all(text in log_contents for text in [test_message, "TRACE", mpic_coordinator.logger.name])
 
-    def create_perspective_cohorts__should_throw_error_given_requested_count_exceeds_total(self):
+    def shuffle_and_group_perspectives__should_throw_error_given_requested_count_exceeds_total(self):
         coordinator_config = self.create_mpic_coordinator_configuration()
         target_perspectives = coordinator_config.target_perspectives
         excessive_count = len(target_perspectives) + 1
@@ -80,13 +80,22 @@ class TestMpicCoordinator:
         with pytest.raises(ValueError):
             mpic_coordinator.shuffle_and_group_perspectives(target_perspectives, excessive_count, "test_target")
 
-    def create_cohorts_of_randomly_selected_perspectives__should_return_list_of_cohorts_of_requested_size(self):
+    def shuffle_and_group_perspectives__should_return_list_of_cohorts_of_requested_size(self):
         coordinator_config = self.create_mpic_coordinator_configuration()
         target_perspectives = coordinator_config.target_perspectives
         cohort_size = len(target_perspectives) // 2
         mpic_coordinator = MpicCoordinator(self.create_passing_caa_check_response, coordinator_config)
         cohorts = mpic_coordinator.shuffle_and_group_perspectives(target_perspectives, cohort_size, "test_target")
         assert len(cohorts) == 2
+
+    @pytest.mark.parametrize("domain", ["bücher.example.de", "café.com"])
+    async def shuffle_and_group_perspectives__should_handle_domains_with_non_ascii_chars(self, domain):
+        coordinator_config = self.create_mpic_coordinator_configuration()
+        target_perspectives = coordinator_config.target_perspectives
+        mpic_coordinator = MpicCoordinator(self.create_passing_caa_check_response, coordinator_config)
+        cohort_size = len(target_perspectives)
+        # will fail with an error if it can't handle the domain successfully
+        mpic_coordinator.shuffle_and_group_perspectives(target_perspectives, cohort_size, domain)
 
     @pytest.mark.parametrize("requested_perspective_count, expected_quorum_size", [(4, 3), (5, 4), (6, 4)])
     def determine_required_quorum_count__should_dynamically_set_required_quorum_count_given_no_quorum_specified(
