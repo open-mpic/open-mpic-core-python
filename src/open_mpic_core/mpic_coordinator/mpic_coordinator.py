@@ -139,7 +139,7 @@ class MpicCoordinator:
                 f"Count ({cohort_size}) must be <= the number of available perspectives ({len(target_perspectives)})"
             )
 
-        random_seed = hashlib.sha256((self.hash_secret + domain_or_ip_target.lower()).encode("ASCII")).digest()
+        random_seed = hashlib.sha256((self.hash_secret + domain_or_ip_target.lower()).encode("utf-8")).digest()
         perspectives_per_rir = CohortCreator.shuffle_available_perspectives_per_rir(
             target_perspectives, random_seed
         )
