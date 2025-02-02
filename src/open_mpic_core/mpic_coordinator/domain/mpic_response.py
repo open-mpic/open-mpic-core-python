@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from open_mpic_core.common_domain.enum.check_type import CheckType
 from pydantic import BaseModel, Field
 
-from open_mpic_core.common_domain.check_response import CaaCheckResponseWithPerspectiveCode, DcvCheckResponse, DcvCheckResponseWithPerspectiveCode
+from open_mpic_core.common_domain.check_response import CaaCheckResponseWithPerspectiveCode, DcvCheckResponseWithPerspectiveCode
 from open_mpic_core.mpic_coordinator.domain.mpic_orchestration_parameters import MpicEffectiveOrchestrationParameters
 from open_mpic_core.mpic_coordinator.domain.mpic_orchestration_parameters import MpicRequestOrchestrationParameters
 from open_mpic_core.common_domain.check_parameters import CaaCheckParameters, DcvCheckParameters
