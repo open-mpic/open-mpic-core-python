@@ -29,7 +29,7 @@ CheckResponse = Union[CaaCheckResponse, DcvCheckResponse]
 class CaaCheckResponseWithPerspectiveCode(CaaCheckResponse):
     perspective: str
 
-class DcvCheckResponseWithPerspectiveCode(CaaCheckResponse):
+class DcvCheckResponseWithPerspectiveCode(DcvCheckResponse):
     perspective: str
 
 CheckResponseWithPerspectiveCode = Union[CaaCheckResponseWithPerspectiveCode, DcvCheckResponseWithPerspectiveCode]
