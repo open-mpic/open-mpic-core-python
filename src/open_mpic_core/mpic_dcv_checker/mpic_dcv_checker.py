@@ -30,7 +30,6 @@ class MpicDcvChecker:
     def __init__(
         self, reuse_http_client: bool = False, verify_ssl: bool = False, log_level: int = None
     ):
-        self.perspective_code = perspective_code
         self.verify_ssl = verify_ssl
         self._reuse_http_client = reuse_http_client
         self._async_http_client = None

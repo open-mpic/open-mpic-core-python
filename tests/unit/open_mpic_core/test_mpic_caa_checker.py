@@ -51,7 +51,7 @@ class TestMpicCaaChecker:
 
     @staticmethod
     def create_configured_caa_checker(log_level=None):
-        return MpicCaaChecker(["ca1.com", "ca2.net", "ca3.org"], "us-east-4", log_level)
+        return MpicCaaChecker(["ca1.com", "ca2.net", "ca3.org"], log_level)
 
     def constructor__should_set_log_level_if_provided(self):
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker(logging.ERROR)

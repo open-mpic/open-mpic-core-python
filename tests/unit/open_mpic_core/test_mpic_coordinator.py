@@ -306,7 +306,7 @@ class TestMpicCoordinator:
         mpic_coordinator = MpicCoordinator(succeed_after_two_attempts, mpic_coordinator_config)
         first_response: MpicResponse = await mpic_coordinator.coordinate_mpic(first_request)
         first_cohort = first_response.perspectives
-        first_cohort_sorted = sorted(first_cohort, key=lambda check_response: check_response.perspective_code)
+        first_cohort_sorted = sorted(first_cohort, key=lambda check_response: check_response.perspective)
 
         second_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         second_request.orchestration_parameters = MpicRequestOrchestrationParameters(
@@ -321,11 +321,11 @@ class TestMpicCoordinator:
         mpic_coordinator = MpicCoordinator(succeed_after_five_attempts, mpic_coordinator_config)
         second_response: MpicResponse = await mpic_coordinator.coordinate_mpic(second_request)
         second_cohort = second_response.perspectives
-        second_cohort_sorted = sorted(second_cohort, key=lambda check_response: check_response.perspective_code)
+        second_cohort_sorted = sorted(second_cohort, key=lambda check_response: check_response.perspective)
 
         # assert that perspectives in first cohort and in second cohort are the same perspectives
         for i in range(len(first_cohort_sorted)):
-            assert first_cohort_sorted[i].perspective_code == second_cohort_sorted[i].perspective_code
+            assert first_cohort_sorted[i].perspective == second_cohort_sorted[i].perspective
 
     async def coordinate_mpic__should_cap_attempts_at_max_attempts_if_configured(self):
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()

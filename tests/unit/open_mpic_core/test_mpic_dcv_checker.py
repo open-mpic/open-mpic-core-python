@@ -34,7 +34,7 @@ class TestMpicDcvChecker:
     # noinspection PyAttributeOutsideInit
     @pytest.fixture(autouse=True)
     def setup_dcv_checker(self) -> MpicDcvChecker:
-        self.dcv_checker = MpicDcvChecker("us-east-4")
+        self.dcv_checker = MpicDcvChecker()
         yield self.dcv_checker
 
     @pytest.fixture(autouse=True)
@@ -54,11 +54,11 @@ class TestMpicDcvChecker:
         yield
 
     def constructor__should_set_log_level_if_provided(self):
-        dcv_checker = MpicDcvChecker("us-east-4", log_level=logging.ERROR)
+        dcv_checker = MpicDcvChecker(log_level=logging.ERROR)
         assert dcv_checker.logger.level == logging.ERROR
 
     def mpic_dcv_checker__should_be_able_to_log_at_trace_level(self):
-        dcv_checker = MpicDcvChecker("us-east-4", log_level=TRACE_LEVEL)
+        dcv_checker = MpicDcvChecker(log_level=TRACE_LEVEL)
         test_message = "This is a trace log message."
         dcv_checker.logger.trace(test_message)
         log_contents = self.log_output.getvalue()
@@ -66,7 +66,7 @@ class TestMpicDcvChecker:
 
     @pytest.mark.parametrize("reuse_http_client", [True, False])
     async def mpic_dcv_checker__should_optionally_reuse_http_client(self, reuse_http_client):
-        dcv_checker = MpicDcvChecker("us-east-4", reuse_http_client=reuse_http_client, log_level=TRACE_LEVEL)
+        dcv_checker = MpicDcvChecker(reuse_http_client=reuse_http_client, log_level=TRACE_LEVEL)
         async with dcv_checker.get_async_http_client() as client_1:
             async with dcv_checker.get_async_http_client() as client_2:
                 try:
