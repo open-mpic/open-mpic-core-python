@@ -2,7 +2,7 @@ import asyncio
 import base64
 import logging
 from io import StringIO
-from typing import Generator, List
+from typing import List
 
 import dns
 import pytest

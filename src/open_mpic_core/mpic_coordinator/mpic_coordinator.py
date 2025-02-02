@@ -2,6 +2,7 @@ import asyncio
 import json
 from itertools import cycle
 
+import pprint
 import time
 import hashlib
 
@@ -12,6 +13,7 @@ from open_mpic_core.common_domain.check_response import (
     DcvCheckResponse,
     CheckResponse,
     DcvCheckResponseWithPerspectiveCode,
+    CheckResponseWithPerspectiveCode,
     add_perspective_code_to_check_response,
 )
 from open_mpic_core.common_domain.check_request import CaaCheckRequest, DcvCheckRequest
@@ -121,6 +123,9 @@ class MpicCoordinator:
 
             # if cohort size is larger than 2, then at least two RIRs must be represented in the SUCCESSFUL perspectives
             if len(perspectives_to_use) > 2:
+                pprint.pp(perspectives_to_use)
+                pprint.pp(validity_per_perspective)
+                
                 valid_perspectives = [
                     perspective for perspective in perspectives_to_use if validity_per_perspective[perspective.code]
                 ]
@@ -264,7 +269,7 @@ class MpicCoordinator:
     # Issues the async calls to the remote perspectives and collects the responses.
     async def issue_async_calls_and_collect_responses(
         self, perspectives_to_use, async_calls_to_issue
-    ) -> tuple[list, dict]:
+    ) -> tuple[list[CheckResponseWithPerspectiveCode], dict]:
         perspective_responses = []
         validity_per_perspective = {perspective.code: False for perspective in perspectives_to_use}
 
