@@ -181,6 +181,7 @@ class MpicCoordinator:
             response_with_code = DcvCheckResponseWithPerspectiveCode(perspective_code = call_config.perspective, **response.__dict__)
         else:
             raise Exception("Invalid check response type.")
+        print("returning from remote perspective")
         return response_with_code, call_config
 
     @staticmethod
