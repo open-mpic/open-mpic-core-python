@@ -58,6 +58,9 @@ class MpicCoordinator:
             self.logger.setLevel(log_level)
 
     async def coordinate_mpic(self, mpic_request: MpicRequest) -> MpicResponse:
+        
+        self.logger.info(f"Coordinating MPIC request with trace ID {mpic_request.trace_identifier}")
+        
         # noinspection PyUnresolvedReferences
         self.logger.trace(f"Coordinating MPIC request with trace ID {mpic_request.trace_identifier}")
         is_request_valid, validation_issues = MpicRequestValidator.is_request_valid(mpic_request, self.target_perspectives)
@@ -167,6 +170,7 @@ class MpicCoordinator:
         This assumes the wrapper will provide an async version of call_remote_perspective_function,
         or that we'll wrap the sync function using asyncio.to_thread() if needed.
         """
+        logger.info('!!!!!!!!!!!!!entering call remote perspective')
         try:
             # noinspection PyUnresolvedReferences
             async with self.logger.trace_timing(f"MPIC round-trip communication with perspective {call_config.perspective.code}"):
