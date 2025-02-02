@@ -5,8 +5,8 @@ from itertools import cycle
 import time
 import hashlib
 
-from open_mpic_core.common_domain.check_response import CaaCheckResponse, CaaCheckResponseDetails, DcvCheckResponse, \
-    CheckResponse
+from open_mpic_core.common_domain.check_response import CaaCheckResponse, CaaCheckResponseDetails, CaaCheckResponseWithPerspectiveCode, DcvCheckResponse, \
+    CheckResponse, DcvCheckResponseWithPerspectiveCode
 from open_mpic_core.common_domain.check_request import CaaCheckRequest, DcvCheckRequest
 from open_mpic_core.common_domain.check_response_details import DcvCheckResponseDetailsBuilder
 from open_mpic_core.common_domain.validation_error import MpicValidationError
@@ -159,7 +159,7 @@ class MpicCoordinator:
 
     async def call_remote_perspective(
             self, call_remote_perspective_function, call_config: RemoteCheckCallConfiguration
-    ) -> (CheckResponse, RemoteCheckCallConfiguration):
+    ) -> tuple[CaaCheckResponseWithPerspectiveCode, RemoteCheckCallConfiguration]:
         """
         Async wrapper around the perspective call function.
         This assumes the wrapper will provide an async version of call_remote_perspective_function,
@@ -174,8 +174,14 @@ class MpicCoordinator:
                 f"Check failed for perspective {call_config.perspective.code}",
                 call_config=call_config,
             ) from exc
-
-        return response, call_config
+        
+        if isinstance(response, CaaCheckResponse):
+            response_with_code = CaaCheckResponseWithPerspectiveCode(perspective_code = call_config.perspective, **response.__dict__)
+        elif isinstance(response, DcvCheckResponse):
+            response_with_code = DcvCheckResponseWithPerspectiveCode(perspective_code = call_config.perspective, **response.__dict__)
+        else:
+            raise Exception("Invalid check response type.")
+        return response_with_code, call_config
 
     @staticmethod
     def build_error_response_from_remote_check_exception(remote_check_exception: RemoteCheckException) -> CheckResponse:

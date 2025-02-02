@@ -28,7 +28,6 @@ class MpicDcvChecker:
     CONTACT_PHONE_TAG = 'contactphone'
 
     def __init__(self, perspective_code: str, verify_ssl: bool = False, log_level: int = None):
-        self.perspective_code = perspective_code
         self.verify_ssl = verify_ssl
         self._async_http_client = None
 
@@ -163,7 +162,6 @@ class MpicDcvChecker:
 
     def create_empty_check_response(self, validation_method: DcvValidationMethod) -> DcvCheckResponse:
         return DcvCheckResponse(
-            perspective_code=self.perspective_code,
             check_passed=False,
             timestamp_ns=None,
             errors=None,
