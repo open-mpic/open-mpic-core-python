@@ -233,7 +233,7 @@ class MpicCoordinator:
         match check_type:
             case CheckType.CAA:
                 check_error_response = CaaCheckResponseWithPerspectiveCode(
-                    perspective_code=perspective.code,
+                    perspective=perspective.code,
                     check_passed=False,
                     errors=[
                         MpicValidationError(
@@ -248,7 +248,7 @@ class MpicCoordinator:
                 dcv_check_request: DcvCheckRequest = remote_check_exception.call_config.check_request
                 validation_method = dcv_check_request.dcv_check_parameters.validation_details.validation_method
                 check_error_response = DcvCheckResponseWithPerspectiveCode(
-                    perspective_code=perspective.code,
+                    perspective=perspective.code,
                     check_passed=False,
                     errors=[
                         MpicValidationError(

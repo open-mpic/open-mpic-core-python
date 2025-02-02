@@ -36,6 +36,6 @@ CheckResponseWithPerspectiveCode = Union[CaaCheckResponseWithPerspectiveCode, Dc
 
 def add_perspective_code_to_check_response(check_response: CheckResponse, perspective_code: str) -> CheckResponseWithPerspectiveCode:
     if check_response.check_type == CheckType.CAA:
-        return CaaCheckResponseWithPerspectiveCode(perspective_code=perspective_code, **check_response.__dict__)
+        return CaaCheckResponseWithPerspectiveCode(perspective=perspective_code, **check_response.__dict__)
     elif check_response.check_type == CheckType.DCV:
-        return DcvCheckResponseWithPerspectiveCode(perspective_code=perspective_code, **check_response.__dict__)
+        return DcvCheckResponseWithPerspectiveCode(perspective=perspective_code, **check_response.__dict__)
