@@ -28,7 +28,7 @@ class MpicCaaLookupException(Exception):  # This is a python exception type used
 
 
 class MpicCaaChecker:
-    def __init__(self, default_caa_domain_list: list[str], perspective_code: str, log_level: int = None):
+    def __init__(self, default_caa_domain_list: list[str], log_level: int = None):
         self.default_caa_domain_list = default_caa_domain_list
 
         self.logger = logger.getChild(self.__class__.__name__)

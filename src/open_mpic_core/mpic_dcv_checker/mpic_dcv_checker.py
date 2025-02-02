@@ -27,7 +27,7 @@ class MpicDcvChecker:
     CONTACT_EMAIL_TAG = 'contactemail'
     CONTACT_PHONE_TAG = 'contactphone'
 
-    def __init__(self, perspective_code: str, verify_ssl: bool = False, log_level: int = None):
+    def __init__(self, verify_ssl: bool = False, log_level: int = None):
         self.verify_ssl = verify_ssl
         self._async_http_client = None
 
