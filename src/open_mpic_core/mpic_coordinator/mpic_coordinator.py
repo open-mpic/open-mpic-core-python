@@ -240,6 +240,9 @@ class MpicCoordinator:
             # check for exception (return_exceptions=True above will return exceptions as responses)
             # every Exception should be rethrown as RemoteCheckException
             # (trying to handle other Exceptions should be unreachable code)
+            if isinstance(response, Exception):
+                logger.error(str(response))
+            
             if isinstance(response, Exception) and isinstance(response, RemoteCheckException):
                 check_error_response = MpicCoordinator.build_error_response_from_remote_check_exception(response)
                 perspective_code = response.call_config.perspective.code
