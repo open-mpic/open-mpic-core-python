@@ -182,9 +182,9 @@ class MpicCoordinator:
             ) from exc
         response_with_code = None
         if response.check_type == CheckType.CAA:
-            response_with_code = CaaCheckResponseWithPerspectiveCode(perspective_code = call_config.perspective, **response.__dict__)
+            response_with_code = CaaCheckResponseWithPerspectiveCode(perspective_code = call_config.perspective.code, **response.__dict__)
         elif response.check_type == CheckType.DCV:
-            response_with_code = DcvCheckResponseWithPerspectiveCode(perspective_code = call_config.perspective, **response.__dict__)
+            response_with_code = DcvCheckResponseWithPerspectiveCode(perspective_code = call_config.perspective.code, **response.__dict__)
         else:
             logger.info('!!!!!!!!!!!!!error from call remote perspective before invalid response type')
             raise Exception("Invalid check response type.")
