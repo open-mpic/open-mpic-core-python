@@ -45,6 +45,8 @@ class MpicCoordinator:
         :param mpic_coordinator_configuration: environment-specific configuration for the coordinator.
         :param log_level: optional parameter for logging. For now really just used for TRACE logging.
         """
+        
+        logger.info('!!!!init')
         self.target_perspectives = mpic_coordinator_configuration.target_perspectives
         self.default_perspective_count = mpic_coordinator_configuration.default_perspective_count
         self.global_max_attempts = mpic_coordinator_configuration.global_max_attempts
@@ -181,7 +183,7 @@ class MpicCoordinator:
             response_with_code = DcvCheckResponseWithPerspectiveCode(perspective_code = call_config.perspective, **response.__dict__)
         else:
             raise Exception("Invalid check response type.")
-        print("returning from remote perspective")
+        logger.info('!!!!!!!!!!!!!returning from call remote perspective')
         return response_with_code, call_config
 
     @staticmethod
