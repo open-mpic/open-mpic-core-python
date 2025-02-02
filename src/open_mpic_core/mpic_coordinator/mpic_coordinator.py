@@ -57,8 +57,6 @@ class MpicCoordinator:
         :param mpic_coordinator_configuration: environment-specific configuration for the coordinator.
         :param log_level: optional parameter for logging. For now really just used for TRACE logging.
         """
-
-        logger.info("!!!!init")
         self.target_perspectives = mpic_coordinator_configuration.target_perspectives
         self.default_perspective_count = mpic_coordinator_configuration.default_perspective_count
         self.global_max_attempts = mpic_coordinator_configuration.global_max_attempts
@@ -204,7 +202,6 @@ class MpicCoordinator:
         This assumes the wrapper will provide an async version of call_remote_perspective_function,
         or that we'll wrap the sync function using asyncio.to_thread() if needed.
         """
-        logger.info("!!!!!!!!!!!!!entering call remote perspective")
         try:
             # noinspection PyUnresolvedReferences
             async with self.logger.trace_timing(
@@ -219,7 +216,6 @@ class MpicCoordinator:
                 call_config=call_config,
             ) from exc
         response_with_code = add_perspective_code_to_check_response(response, call_config.perspective.code)
-        logger.info("!!!!!!!!!!!!!returning from call remote perspective")
         return response_with_code, call_config
 
     @staticmethod
@@ -284,16 +280,20 @@ class MpicCoordinator:
             # check for exception (return_exceptions=True above will return exceptions as responses)
             # every Exception should be rethrown as RemoteCheckException
             # (trying to handle other Exceptions should be unreachable code)
-            if isinstance(response, Exception):
-                # Log an error if we see one.
-                logger.error(str(response))
 
             if isinstance(response, Exception) and isinstance(response, RemoteCheckException):
+                logger.warning(str(response))
                 check_error_response = MpicCoordinator.build_error_response_from_remote_check_exception(response)
                 perspective_code = response.call_config.perspective.code
                 validity_per_perspective[perspective_code] |= False
                 perspective_responses.append(check_error_response)
                 continue
+            
+            if isinstance(response, Exception):
+                # Log an error if we see one.
+                logger.error(str(response))
+                # This is an unknown error case. There was an error but it was not a RemoteCheckException. Raise exception up.
+                raise response
 
             # Now we know it's a valid (CheckResponse, RemoteCheckCallConfiguration) tuple
             check_response, call_config = response
