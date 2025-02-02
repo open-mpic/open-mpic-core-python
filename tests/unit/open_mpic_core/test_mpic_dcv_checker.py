@@ -2,7 +2,7 @@ import asyncio
 import base64
 import logging
 from io import StringIO
-from typing import List
+from typing import Generator, List
 
 import dns
 import pytest
@@ -33,7 +33,7 @@ from unit.test_util.valid_check_creator import ValidCheckCreator
 class TestMpicDcvChecker:
     # noinspection PyAttributeOutsideInit
     @pytest.fixture(autouse=True)
-    def setup_dcv_checker(self) -> MpicDcvChecker:
+    def setup_dcv_checker(self):
         self.dcv_checker = MpicDcvChecker()
         yield self.dcv_checker
 
