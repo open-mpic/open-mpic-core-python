@@ -8,7 +8,7 @@ from dns.rdtypes.IN.AAAA import AAAA
 from dns.rrset import RRset
 from dns.message import QueryMessage
 
-from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
+from open_mpic_core import DnsRecordType
 
 
 class MockDnsObjectCreator:

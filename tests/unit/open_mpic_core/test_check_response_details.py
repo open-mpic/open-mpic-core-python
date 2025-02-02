@@ -1,6 +1,6 @@
 import pytest
 
-from open_mpic_core.common_domain.check_response_details import DcvDnsCheckResponseDetails, DcvHttpCheckResponseDetails
+from open_mpic_core import DcvDnsCheckResponseDetails, DcvHttpCheckResponseDetails
 
 
 class TestCheckResponseDetails:

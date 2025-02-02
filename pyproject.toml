@@ -27,7 +27,8 @@ dependencies = [
   "requests>=2.32.3",
   "dnspython==2.6.1",
   "pydantic==2.8.2",
-  "aiohttp==3.11.11"
+  "aiohttp==3.11.11",
+  "black==24.8.0",
 ]
 
 [project.optional-dependencies]
@@ -55,7 +56,7 @@ build.targets.wheel.packages = ["src/open_mpic_core"]
 "./tests/unit/test_util" = "open_mpic_core_test/test_util"  # include tests in the wheel to facilitate integration testing in wrapper projects
 
 [tool.api]
-spec_version = "2.7.0"
+spec_version = "2.8.0"
 spec_repository = "https://github.com/open-mpic/open-mpic-specification"
 
 [tool.hatch.envs.default]
@@ -122,6 +123,9 @@ exclude_lines = [
   "if __name__ == .__main__.:",
   "if TYPE_CHECKING:",
 ]
+
+[tool.black]
+line-length = 120
 
 # what is this for?
 [tool.hatch.envs.types]

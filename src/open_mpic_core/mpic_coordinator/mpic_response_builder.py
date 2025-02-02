@@ -9,9 +9,7 @@ class MpicResponseBuilder:
     def build_response(request: BaseMpicRequest, perspective_count: int, quorum_count: int, attempts: int,
                        perspective_responses: List[CheckResponseWithPerspectiveCode], is_result_valid: bool, previous_attempt_results) -> MpicResponse:
         actual_orchestration_parameters = MpicEffectiveOrchestrationParameters(
-            perspective_count=perspective_count,
-            quorum_count=quorum_count,
-            attempt_count=attempts
+            perspective_count=perspective_count, quorum_count=quorum_count, attempt_count=attempts
         )
 
         if type(request) is MpicDcvRequest:  # type() instead of isinstance() because of inheritance
@@ -23,7 +21,7 @@ class MpicResponseBuilder:
                 caa_check_parameters=request.caa_check_parameters,
             )
 
-        response.domain_or_ip_target=request.domain_or_ip_target
+        response.domain_or_ip_target = request.domain_or_ip_target
         response.request_orchestration_parameters = request.orchestration_parameters
         response.actual_orchestration_parameters = actual_orchestration_parameters
         response.is_valid = is_result_valid

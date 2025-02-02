@@ -1,13 +1,14 @@
-from itertools import cycle, chain
 import random
+from itertools import cycle, chain
 
-from open_mpic_core.mpic_coordinator.domain.remote_perspective import RemotePerspective
+from open_mpic_core import RemotePerspective
 
 
 class CohortCreator:
     @staticmethod
-    def build_randomly_shuffled_available_perspectives_per_rir(remote_perspectives: list[RemotePerspective],
-                                                               random_seed: bytes) -> dict[str, list[RemotePerspective]]:
+    def shuffle_available_perspectives_per_rir(
+        remote_perspectives: list[RemotePerspective], random_seed: bytes
+    ) -> dict[str, list[RemotePerspective]]:
         # first sort all perspectives deterministically
         remote_perspectives.sort(key=lambda remote_perspective: remote_perspective.code)
         local_random = random.Random(random_seed)
@@ -59,8 +60,9 @@ class CohortCreator:
 
                 # if all out of perspectives for this rir, or already added this rir (looped back around)
                 # then move on to the next rir
-                if (len(perspectives_per_rir[current_rir]) == 0 or
-                        current_rir in [perspective.rir for perspective in cohort]):
+                if len(perspectives_per_rir[current_rir]) == 0 or current_rir in [
+                    perspective.rir for perspective in cohort
+                ]:
                     break  # break out of cohort loop to get next rir
 
                 cohort.append(perspectives_per_rir[current_rir].pop(0))
@@ -86,7 +88,8 @@ class CohortCreator:
             cohort = cohorts_with_two_rirs[0]  # get the (next) cohort
             # while the cohort isn't at its required size and there are still enough potential perspectives to add
             while len(cohort) < cohort_size and cohort_size - len(cohort) <= len(
-                    list(chain.from_iterable(perspectives_per_rir.values()))):
+                list(chain.from_iterable(perspectives_per_rir.values()))
+            ):
                 # get the next rir
                 current_rir = next(rirs_cycle)
 

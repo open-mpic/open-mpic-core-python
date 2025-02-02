@@ -1,4 +1,4 @@
-from open_mpic_core.mpic_coordinator.domain.remote_check_call_configuration import RemoteCheckCallConfiguration
+from open_mpic_core import RemoteCheckCallConfiguration
 
 
 class RemoteCheckException(Exception):

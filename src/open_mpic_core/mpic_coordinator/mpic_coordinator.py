@@ -32,6 +32,7 @@ from open_mpic_core.mpic_coordinator.mpic_response_builder import MpicResponseBu
 from open_mpic_core.common_util.trace_level_logger import get_logger
 
 
+
 logger = get_logger(__name__)
 
 
@@ -51,9 +52,10 @@ class MpicCoordinator:
         log_level: int = None,
     ):
         """
-        :param call_remote_perspective_function: a "dumb" transport for serialized data to a remote perspective and a serialized
-               response from the remote perspective. MPIC Coordinator is tasked with ensuring the data from this function is sane
-               and handling the serialization/deserialization of the data. This function may raise an exception if something goes wrong.
+        :param call_remote_perspective_function: a "dumb" transport for serialized data to a remote perspective and
+               a serialized response from the remote perspective. MPIC Coordinator is tasked with ensuring the data
+               from this function is sane and handling the serialization/deserialization of the data. This function
+               may raise an exception if something goes wrong.
         :param mpic_coordinator_configuration: environment-specific configuration for the coordinator.
         :param log_level: optional parameter for logging. For now really just used for TRACE logging.
         """
@@ -89,7 +91,7 @@ class MpicCoordinator:
         if orchestration_parameters is not None and orchestration_parameters.perspective_count is not None:
             perspective_count = orchestration_parameters.perspective_count
 
-        perspective_cohorts = self.create_cohorts_of_randomly_selected_perspectives(
+        perspective_cohorts = self.shuffle_and_group_perspectives(
             self.target_perspectives, perspective_count, mpic_request.domain_or_ip_target
         )
 
@@ -145,16 +147,17 @@ class MpicCoordinator:
                 previous_attempt_results.append(perspective_responses)
                 attempts += 1
 
-    # Returns a random subset of perspectives with a goal of maximum RIR diversity to increase diversity.
+    # Returns randomized grouping(s) of perspectives with a goal of maximum RIR diversity.
     # If more than 2 perspectives are needed (count), it will enforce a minimum of 2 RIRs per cohort.
-    def create_cohorts_of_randomly_selected_perspectives(self, target_perspectives, cohort_size, domain_or_ip_target):
+    def shuffle_and_group_perspectives(self, target_perspectives, cohort_size, domain_or_ip_target):
         if cohort_size > len(target_perspectives):
             raise ValueError(
                 f"Count ({cohort_size}) must be <= the number of available perspectives ({len(target_perspectives)})"
             )
 
-        random_seed = hashlib.sha256((self.hash_secret + domain_or_ip_target.lower()).encode("ASCII")).digest()
-        perspectives_per_rir = CohortCreator.build_randomly_shuffled_available_perspectives_per_rir(
+
+        random_seed = hashlib.sha256((self.hash_secret + domain_or_ip_target.lower()).encode("utf-8")).digest()
+        perspectives_per_rir = CohortCreator.shuffle_available_perspectives_per_rir(
             target_perspectives, random_seed
         )
         cohorts = CohortCreator.create_perspective_cohorts(perspectives_per_rir, cohort_size)

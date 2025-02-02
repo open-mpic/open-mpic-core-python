@@ -1,9 +1,10 @@
 import pytest
 
-from open_mpic_core.common_util.domain_encoder import DomainEncoder
+from open_mpic_core import DomainEncoder
 
 
 class TestDomainEncoder:
+    @staticmethod
     @pytest.mark.parametrize("input_domain, expected_output", [
         ("café.example.com", "xn--caf-dma.example.com"),
         ("bücher.example.de", "xn--bcher-kva.example.de"),
@@ -13,6 +14,11 @@ class TestDomainEncoder:
         ("*.example.com", "*.example.com"),
         ("*.café.example.com", "*.xn--caf-dma.example.com"),
     ])
-    def prepare_domain_for_lookup__should_convert_nonascii_domain_to_punycode(self, input_domain, expected_output):
+    def prepare_domain_for_lookup__should_convert_nonascii_domain_to_punycode(input_domain, expected_output):
         result = DomainEncoder.prepare_target_for_lookup(input_domain)
         assert result == expected_output
+
+    @staticmethod
+    def prepare_domain_for_lookup__should_raise_value_error_if_idna_error_encountered():
+        with pytest.raises(ValueError):
+            DomainEncoder.prepare_target_for_lookup("*example.com")
