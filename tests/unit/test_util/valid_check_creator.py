@@ -77,7 +77,6 @@ class ValidCheckCreator:
             domain_or_ip_target="example.com",
             dcv_check_parameters=DcvCheckParameters(validation_details=validation_details),
         )
-        check_request.dcv_check_parameters.validation_details.require_exact_match = True
         return check_request
 
     @staticmethod

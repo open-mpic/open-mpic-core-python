@@ -129,6 +129,8 @@ class MpicDcvChecker:
             expected_dns_record_content = validation_details.key_authorization
         else:
             expected_dns_record_content = validation_details.challenge_value
+        
+        if validation_method == DcvValidationMethod.DNS_CHANGE:
             exact_match = validation_details.require_exact_match
 
         dcv_check_response = self.create_empty_check_response(validation_method)
