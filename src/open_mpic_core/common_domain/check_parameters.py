@@ -32,7 +32,6 @@ class DcvWebsiteChangeValidationDetails(DcvValidationDetails):
 
 class DcvGeneralDnsValidationDetails(DcvValidationDetails, ABC):
     challenge_value: str
-    require_exact_match: bool = False
     dns_name_prefix: str
     dns_record_type: DnsRecordType
 
@@ -40,6 +39,7 @@ class DcvGeneralDnsValidationDetails(DcvValidationDetails, ABC):
 class DcvDnsChangeValidationDetails(DcvGeneralDnsValidationDetails):
     validation_method: Literal[DcvValidationMethod.DNS_CHANGE] = DcvValidationMethod.DNS_CHANGE
     dns_record_type: DnsRecordType = Union[DnsRecordType.CNAME, DnsRecordType.TXT, DnsRecordType.CAA]
+    require_exact_match: bool = False
 
 
 class DcvContactEmailTxtValidationDetails(DcvGeneralDnsValidationDetails):
