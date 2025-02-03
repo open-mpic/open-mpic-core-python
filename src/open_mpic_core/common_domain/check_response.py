@@ -5,7 +5,6 @@ from pydantic import BaseModel
 
 
 class BaseCheckResponse(BaseModel):
-    perspective_code: str
     check_passed: bool = False
     errors: list[MpicValidationError] | None = None
     timestamp_ns: int | None = None
@@ -23,3 +22,18 @@ class DcvCheckResponse(BaseCheckResponse):
 
 
 CheckResponse = Union[CaaCheckResponse, DcvCheckResponse]
+
+
+class CaaCheckResponseWithPerspectiveCode(CaaCheckResponse):
+    perspective: str
+
+class DcvCheckResponseWithPerspectiveCode(DcvCheckResponse):
+    perspective: str
+
+CheckResponseWithPerspectiveCode = Union[CaaCheckResponseWithPerspectiveCode, DcvCheckResponseWithPerspectiveCode]
+
+def add_perspective_code_to_check_response(check_response: CheckResponse, perspective_code: str) -> CheckResponseWithPerspectiveCode:
+    if check_response.check_type == CheckType.CAA:
+        return CaaCheckResponseWithPerspectiveCode(perspective=perspective_code, **check_response.__dict__)
+    elif check_response.check_type == CheckType.DCV:
+        return DcvCheckResponseWithPerspectiveCode(perspective=perspective_code, **check_response.__dict__)

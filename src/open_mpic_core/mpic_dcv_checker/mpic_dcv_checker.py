@@ -28,9 +28,8 @@ class MpicDcvChecker:
     CONTACT_PHONE_TAG = "contactphone"
 
     def __init__(
-        self, perspective_code: str, reuse_http_client: bool = False, verify_ssl: bool = False, log_level: int = None
+        self, reuse_http_client: bool = False, verify_ssl: bool = False, log_level: int = None
     ):
-        self.perspective_code = perspective_code
         self.verify_ssl = verify_ssl
         self._reuse_http_client = reuse_http_client
         self._async_http_client = None
@@ -200,7 +199,6 @@ class MpicDcvChecker:
 
     def create_empty_check_response(self, validation_method: DcvValidationMethod) -> DcvCheckResponse:
         return DcvCheckResponse(
-            perspective_code=self.perspective_code,
             check_passed=False,
             timestamp_ns=None,
             errors=None,
@@ -283,8 +281,10 @@ class MpicDcvChecker:
                         else:
                             continue
                     else:
+                        # Todo: we should not rely on the to_text method of records to parse their value. Each record type should have its own branch and value should be read directly from the rdata.
                         record_data_as_string = record_data.to_text()
                     # only need to remove enclosing quotes if they're there, e.g., for a TXT record
+                    # Todo: This line could error if there is a literal quote in a record type that is not TXT.
                     if record_data_as_string[0] == '"' and record_data_as_string[-1] == '"':
                         record_data_as_string = record_data_as_string[1:-1]
                     records_as_strings.append(record_data_as_string)
@@ -300,6 +300,8 @@ class MpicDcvChecker:
             expected_dns_record_content = expected_dns_record_content.lower()
             records_as_strings = [record.lower() for record in records_as_strings]
 
+        # exact_match=True requires at least one record matches and will fail even if whitespace is different. 
+        # exact_match=False simply runs a contains check.
         if exact_match:
             dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
         else:
