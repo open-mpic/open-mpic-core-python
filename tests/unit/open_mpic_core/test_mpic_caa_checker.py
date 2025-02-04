@@ -214,11 +214,12 @@ class TestMpicCaaChecker:
         assert caa_response.details.caa_record_present == record_present
 
     async def check_caa__should_support_wildcard_domain(self, mocker):
-        record_name, expected_domain = "*.example.com", "*.example.com."
+        record_name, expected_domain = "foo.example.com", "foo.example.com."
         test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(record_name, 0, "issue", "ca1.com", mocker)
-        self.patch_resolver_to_expect_domain(mocker, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer)
+        # throwing base Exception to ensure correct domain in DNS lookup (asterisk is removed prior); previously a bug
+        self.patch_resolver_to_expect_domain(mocker, expected_domain, test_dns_query_answer, Exception)
         caa_request = CaaCheckRequest(
-            domain_or_ip_target="*.example.com",
+            domain_or_ip_target="*.foo.example.com",
             caa_check_parameters=CaaCheckParameters(certificate_type=CertificateType.TLS_SERVER, caa_domains=None),
         )
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
