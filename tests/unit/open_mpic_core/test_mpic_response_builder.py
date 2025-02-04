@@ -8,6 +8,7 @@ from open_mpic_core import (
     CheckType,
     DcvValidationMethod,
     MpicResponseBuilder,
+    PerspectiveResponse
 )
 
 from unit.test_util.valid_mpic_request_creator import ValidMpicRequestCreator
@@ -23,10 +24,12 @@ class TestMpicResponseBuilder:
                 perspective_status_map = {"p1": True, "p2": False, "p3": True, "p4": True, "p5": True, "p6": True}
                 responses = list(
                     map(
-                        lambda code: CaaCheckResponse(
+                        lambda code: PerspectiveResponse(
                             perspective_code=code,
-                            check_passed=perspective_status_map[code],
-                            details=CaaCheckResponseDetails(caa_record_present=(not perspective_status_map[code])),
+                            check_response=CaaCheckResponse(
+                                check_passed=perspective_status_map[code],
+                                details=CaaCheckResponseDetails(caa_record_present=(not perspective_status_map[code])),
+                            )
                         ),
                         perspective_status_map.keys(),
                     )
@@ -37,8 +40,11 @@ class TestMpicResponseBuilder:
                 perspective_status_map = {"p1": True, "p2": True, "p3": True, "p4": True, "p5": False, "p6": False}
                 responses = list(
                     map(
-                        lambda code: DcvCheckResponse(
-                            perspective_code=code, check_passed=perspective_status_map[code], details=response_details
+                        lambda code: PerspectiveResponse(
+                            perspective_code=code,
+                            check_response=DcvCheckResponse(
+                                check_passed=perspective_status_map[code], details=response_details
+                            )
                         ),
                         perspective_status_map.keys(),
                     )
@@ -68,7 +74,7 @@ class TestMpicResponseBuilder:
         assert mpic_response.is_valid == is_valid_result
         assert mpic_response.perspectives == perspective_responses
 
-    def build_response__should_include_validation_details_and_method_when_present_in_request_body(self):
+    def build_response__should_include_validation_parameters_and_method_when_present_in_request_body(self):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()
         persp_responses_per_check_type = self.create_perspective_responses_given_check_type(
             CheckType.DCV, DcvValidationMethod.DNS_CHANGE
@@ -76,10 +82,10 @@ class TestMpicResponseBuilder:
         mpic_response = MpicResponseBuilder.build_response(
             request, 6, 5, 1, persp_responses_per_check_type, False, None
         )
-        challenge_value = request.dcv_check_parameters.validation_details.challenge_value
-        assert challenge_value == mpic_response.dcv_check_parameters.validation_details.challenge_value
-        validation_method = request.dcv_check_parameters.validation_details.validation_method
-        assert validation_method == mpic_response.dcv_check_parameters.validation_details.validation_method
+        challenge_value = request.dcv_check_parameters.challenge_value
+        assert challenge_value == mpic_response.dcv_check_parameters.challenge_value
+        validation_method = request.dcv_check_parameters.validation_method
+        assert validation_method == mpic_response.dcv_check_parameters.validation_method
 
     def build_response__should_include_previous_attempt_results_when_present(self):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()

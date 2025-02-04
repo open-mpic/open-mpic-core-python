@@ -2,15 +2,9 @@ from abc import ABC
 from typing import Union, Literal
 from pydantic import BaseModel
 
-from open_mpic_core.common_domain.enum.check_type import CheckType
-from pydantic import BaseModel, Field
-
-from open_mpic_core.common_domain.check_response import CaaCheckResponseWithPerspectiveCode, DcvCheckResponseWithPerspectiveCode
-from open_mpic_core.mpic_coordinator.domain.mpic_orchestration_parameters import MpicEffectiveOrchestrationParameters
-from open_mpic_core.mpic_coordinator.domain.mpic_orchestration_parameters import MpicRequestOrchestrationParameters
-from open_mpic_core.common_domain.check_parameters import CaaCheckParameters, DcvCheckParameters
-from typing_extensions import Annotated
-
+from open_mpic_core import CheckType
+from open_mpic_core import MpicEffectiveOrchestrationParameters, MpicRequestOrchestrationParameters
+from open_mpic_core import CaaCheckParameters, DcvCheckParameters, PerspectiveResponse
 
 
 class BaseMpicResponse(BaseModel, ABC):
@@ -24,16 +18,16 @@ class BaseMpicResponse(BaseModel, ABC):
 
 class MpicCaaResponse(BaseMpicResponse):
     check_type: Literal[CheckType.CAA] = CheckType.CAA
-    perspectives: list[CaaCheckResponseWithPerspectiveCode] | None = None
+    perspectives: list[PerspectiveResponse] | None = None
     caa_check_parameters: CaaCheckParameters | None = None
-    previous_attempt_results: list[list[CaaCheckResponseWithPerspectiveCode]] | None = None
+    previous_attempt_results: list[list[PerspectiveResponse]] | None = None
 
 
 class MpicDcvResponse(BaseMpicResponse):
     check_type: Literal[CheckType.DCV] = CheckType.DCV
-    perspectives: list[DcvCheckResponseWithPerspectiveCode] | None = None
+    perspectives: list[PerspectiveResponse] | None = None
     dcv_check_parameters: DcvCheckParameters | None = None
-    previous_attempt_results: list[list[DcvCheckResponseWithPerspectiveCode]] | None = None
+    previous_attempt_results: list[list[PerspectiveResponse]] | None = None
 
 
 MpicResponse = Union[MpicCaaResponse, MpicDcvResponse]

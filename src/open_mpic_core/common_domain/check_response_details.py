@@ -16,7 +16,7 @@ class RedirectResponse(BaseModel):
 
 
 class DcvHttpCheckResponseDetails(BaseModel):
-    validation_method: Literal[DcvValidationMethod.WEBSITE_CHANGE_V2, DcvValidationMethod.ACME_HTTP_01]
+    validation_method: Literal[DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01]
     response_history: list[RedirectResponse] | None = None  # list of redirects followed to final page
     response_url: str | None = None
     response_status_code: int | None = None
@@ -27,7 +27,7 @@ class DcvHttpCheckResponseDetails(BaseModel):
 class DcvDnsCheckResponseDetails(BaseModel):
     validation_method: Literal[
         DcvValidationMethod.DNS_CHANGE,
-        DcvValidationMethod.IP_LOOKUP,
+        DcvValidationMethod.IP_ADDRESS,
         DcvValidationMethod.CONTACT_EMAIL,
         DcvValidationMethod.CONTACT_PHONE,
         DcvValidationMethod.ACME_DNS_01,
@@ -46,12 +46,12 @@ class DcvCheckResponseDetailsBuilder:
     @staticmethod
     def build_response_details(validation_method: DcvValidationMethod) -> DcvCheckResponseDetails:
         types = {
-            DcvValidationMethod.WEBSITE_CHANGE_V2: DcvHttpCheckResponseDetails,
+            DcvValidationMethod.WEBSITE_CHANGE: DcvHttpCheckResponseDetails,
             DcvValidationMethod.DNS_CHANGE: DcvDnsCheckResponseDetails,
             DcvValidationMethod.ACME_HTTP_01: DcvHttpCheckResponseDetails,
             DcvValidationMethod.ACME_DNS_01: DcvDnsCheckResponseDetails,
             DcvValidationMethod.CONTACT_PHONE: DcvDnsCheckResponseDetails,
             DcvValidationMethod.CONTACT_EMAIL: DcvDnsCheckResponseDetails,
-            DcvValidationMethod.IP_LOOKUP: DcvDnsCheckResponseDetails,
+            DcvValidationMethod.IP_ADDRESS: DcvDnsCheckResponseDetails,
         }
         return types[validation_method](validation_method=validation_method)

@@ -20,8 +20,8 @@ class DcvValidationDetails(BaseModel, ABC):
     # TXT: name=domain_name type=TXT <rdata:text> (freeform text)
 
 
-class DcvWebsiteChangeValidationDetails(DcvValidationDetails):
-    validation_method: Literal[DcvValidationMethod.WEBSITE_CHANGE_V2] = DcvValidationMethod.WEBSITE_CHANGE_V2
+class DcvWebsiteChangeValidationParameters(DcvValidationDetails):
+    validation_method: Literal[DcvValidationMethod.WEBSITE_CHANGE] = DcvValidationMethod.WEBSITE_CHANGE
     challenge_value: str
     http_token_path: str
     url_scheme: UrlScheme = UrlScheme.HTTP
@@ -37,61 +37,60 @@ class DcvGeneralDnsValidationDetails(DcvValidationDetails, ABC):
     dns_record_type: DnsRecordType
 
 
-class DcvDnsChangeValidationDetails(DcvGeneralDnsValidationDetails):
+class DcvDnsChangeValidationParameters(DcvGeneralDnsValidationDetails):
     validation_method: Literal[DcvValidationMethod.DNS_CHANGE] = DcvValidationMethod.DNS_CHANGE
     dns_record_type: DnsRecordType = Union[DnsRecordType.CNAME, DnsRecordType.TXT, DnsRecordType.CAA]
 
 
-class DcvContactEmailTxtValidationDetails(DcvGeneralDnsValidationDetails):
+class DcvContactEmailTxtValidationParameters(DcvGeneralDnsValidationDetails):
     validation_method: Literal[DcvValidationMethod.CONTACT_EMAIL] = DcvValidationMethod.CONTACT_EMAIL
     dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
     dns_name_prefix: Literal["_validation-contactemail"] = "_validation-contactemail"
 
 
-class DcvContactEmailCaaValidationDetails(DcvGeneralDnsValidationDetails):
+class DcvContactEmailCaaValidationParameters(DcvGeneralDnsValidationDetails):
     validation_method: Literal[DcvValidationMethod.CONTACT_EMAIL] = DcvValidationMethod.CONTACT_EMAIL
     dns_record_type: Literal[DnsRecordType.CAA] = DnsRecordType.CAA
 
 
-class DcvContactPhoneTxtValidationDetails(DcvGeneralDnsValidationDetails):
+class DcvContactPhoneTxtValidationParameters(DcvGeneralDnsValidationDetails):
     validation_method: Literal[DcvValidationMethod.CONTACT_PHONE] = DcvValidationMethod.CONTACT_PHONE
     dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
     dns_name_prefix: Literal["_validation-contactphone"] = "_validation-contactphone"
 
 
-class DcvContactPhoneCaaValidationDetails(DcvGeneralDnsValidationDetails):
+class DcvContactPhoneCaaValidationParameters(DcvGeneralDnsValidationDetails):
     validation_method: Literal[DcvValidationMethod.CONTACT_PHONE] = DcvValidationMethod.CONTACT_PHONE
     dns_record_type: Literal[DnsRecordType.CAA] = DnsRecordType.CAA
 
 
-class DcvIpLookupValidationDetails(DcvGeneralDnsValidationDetails):
-    validation_method: Literal[DcvValidationMethod.IP_LOOKUP] = DcvValidationMethod.IP_LOOKUP
+class DcvIpAddressValidationParameters(DcvGeneralDnsValidationDetails):
+    validation_method: Literal[DcvValidationMethod.IP_ADDRESS] = DcvValidationMethod.IP_ADDRESS
     dns_record_type: DnsRecordType = Union[DnsRecordType.A, DnsRecordType.AAAA]
 
 
-class DcvAcmeHttp01ValidationDetails(DcvValidationDetails):
+class DcvAcmeHttp01ValidationParameters(DcvValidationDetails):
     validation_method: Literal[DcvValidationMethod.ACME_HTTP_01] = DcvValidationMethod.ACME_HTTP_01
     token: str
     key_authorization: str
     http_headers: dict[str, Any] | None = None
 
 
-class DcvAcmeDns01ValidationDetails(DcvValidationDetails):
+class DcvAcmeDns01ValidationParameters(DcvValidationDetails):
     validation_method: Literal[DcvValidationMethod.ACME_DNS_01] = DcvValidationMethod.ACME_DNS_01
     key_authorization: str
     dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
     dns_name_prefix: Literal["_acme-challenge"] = "_acme-challenge"
 
 
-class DcvCheckParameters(BaseModel):
-    validation_details: Union[
-        DcvWebsiteChangeValidationDetails,
-        DcvDnsChangeValidationDetails,
-        DcvAcmeHttp01ValidationDetails,
-        DcvAcmeDns01ValidationDetails,
-        DcvContactEmailTxtValidationDetails,
-        DcvContactEmailCaaValidationDetails,
-        DcvContactPhoneTxtValidationDetails,
-        DcvContactPhoneCaaValidationDetails,
-        DcvIpLookupValidationDetails,
-    ]
+DcvCheckParameters = Union[
+    DcvWebsiteChangeValidationParameters,
+    DcvDnsChangeValidationParameters,
+    DcvAcmeHttp01ValidationParameters,
+    DcvAcmeDns01ValidationParameters,
+    DcvContactEmailTxtValidationParameters,
+    DcvContactEmailCaaValidationParameters,
+    DcvContactPhoneTxtValidationParameters,
+    DcvContactPhoneCaaValidationParameters,
+    DcvIpAddressValidationParameters,
+]

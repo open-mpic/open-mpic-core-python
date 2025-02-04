@@ -94,7 +94,7 @@ class MpicDcvChecker:
             self._async_http_client = None
 
     async def check_dcv(self, dcv_request: DcvCheckRequest) -> DcvCheckResponse:
-        validation_method = dcv_request.dcv_check_parameters.validation_details.validation_method
+        validation_method = dcv_request.dcv_check_parameters.validation_method
         # noinspection PyUnresolvedReferences
         self.logger.trace(f"Checking DCV for {dcv_request.domain_or_ip_target} with method {validation_method}")
 
@@ -103,7 +103,7 @@ class MpicDcvChecker:
 
         result = None
         match validation_method:
-            case DcvValidationMethod.WEBSITE_CHANGE_V2 | DcvValidationMethod.ACME_HTTP_01:
+            case DcvValidationMethod.WEBSITE_CHANGE | DcvValidationMethod.ACME_HTTP_01:
                 result = await self.perform_http_based_validation(dcv_request)
             case _:  # ACME_DNS_01 | DNS_CHANGE | IP_LOOKUP | CONTACT_EMAIL | CONTACT_PHONE
                 result = await self.perform_general_dns_validation(dcv_request)
@@ -113,10 +113,10 @@ class MpicDcvChecker:
         return result
 
     async def perform_general_dns_validation(self, request) -> DcvCheckResponse:
-        validation_details = request.dcv_check_parameters.validation_details
-        validation_method = validation_details.validation_method
-        dns_name_prefix = validation_details.dns_name_prefix
-        dns_record_type = validation_details.dns_record_type
+        check_parameters = request.dcv_check_parameters
+        validation_method = check_parameters.validation_method
+        dns_name_prefix = check_parameters.dns_name_prefix
+        dns_record_type = check_parameters.dns_record_type
         exact_match = True
 
         if dns_name_prefix is not None and len(dns_name_prefix) > 0:
@@ -125,12 +125,12 @@ class MpicDcvChecker:
             name_to_resolve = request.domain_or_ip_target
 
         if validation_method == DcvValidationMethod.ACME_DNS_01:
-            expected_dns_record_content = validation_details.key_authorization
+            expected_dns_record_content = check_parameters.key_authorization
         else:
-            expected_dns_record_content = validation_details.challenge_value
-            exact_match = validation_details.require_exact_match
+            expected_dns_record_content = check_parameters.challenge_value
+            exact_match = check_parameters.require_exact_match
 
-        dcv_check_response = self.create_empty_check_response(validation_method)
+        dcv_check_response = MpicDcvChecker.create_empty_check_response(validation_method)
 
         try:
             # noinspection PyUnresolvedReferences
@@ -168,22 +168,22 @@ class MpicDcvChecker:
         return lookup
 
     async def perform_http_based_validation(self, request) -> DcvCheckResponse:
-        validation_method = request.dcv_check_parameters.validation_details.validation_method
+        validation_method = request.dcv_check_parameters.validation_method
         domain_or_ip_target = request.domain_or_ip_target
-        http_headers = request.dcv_check_parameters.validation_details.http_headers
-        if validation_method == DcvValidationMethod.WEBSITE_CHANGE_V2:
-            expected_response_content = request.dcv_check_parameters.validation_details.challenge_value
-            url_scheme = request.dcv_check_parameters.validation_details.url_scheme
-            token_path = request.dcv_check_parameters.validation_details.http_token_path
+        http_headers = request.dcv_check_parameters.http_headers
+        if validation_method == DcvValidationMethod.WEBSITE_CHANGE:
+            expected_response_content = request.dcv_check_parameters.challenge_value
+            url_scheme = request.dcv_check_parameters.url_scheme
+            token_path = request.dcv_check_parameters.http_token_path
             token_url = f"{url_scheme}://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{token_path}"  # noqa E501 (http)
-            dcv_check_response = self.create_empty_check_response(DcvValidationMethod.WEBSITE_CHANGE_V2)
+            dcv_check_response = MpicDcvChecker.create_empty_check_response(DcvValidationMethod.WEBSITE_CHANGE)
         else:
-            expected_response_content = request.dcv_check_parameters.validation_details.key_authorization
-            token = request.dcv_check_parameters.validation_details.token
+            expected_response_content = request.dcv_check_parameters.key_authorization
+            token = request.dcv_check_parameters.token
             token_url = (
                 f"http://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
             )
-            dcv_check_response = self.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
+            dcv_check_response = MpicDcvChecker.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
         try:
             async with self.get_async_http_client() as async_http_client:
                 # noinspection PyUnresolvedReferences
@@ -197,7 +197,8 @@ class MpicDcvChecker:
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
         return dcv_check_response
 
-    def create_empty_check_response(self, validation_method: DcvValidationMethod) -> DcvCheckResponse:
+    @staticmethod
+    def create_empty_check_response(validation_method: DcvValidationMethod) -> DcvCheckResponse:
         return DcvCheckResponse(
             check_passed=False,
             timestamp_ns=None,
@@ -234,13 +235,13 @@ class MpicDcvChecker:
             response_text = await lookup_response.text()
             result = response_text.strip()
             expected_response_content = challenge_value
-            validation_method = dcv_check_request.dcv_check_parameters.validation_details.validation_method
+            validation_method = dcv_check_request.dcv_check_parameters.validation_method
             if validation_method == DcvValidationMethod.ACME_HTTP_01:
                 # need to match exactly for ACME HTTP-01
                 dcv_check_response.check_passed = expected_response_content == result
             else:
                 dcv_check_response.check_passed = expected_response_content in result
-                match_regex = dcv_check_request.dcv_check_parameters.validation_details.match_regex
+                match_regex = dcv_check_request.dcv_check_parameters.match_regex
                 if match_regex is not None and len(match_regex) > 0:
                     match = re.search(match_regex, result)
                     dcv_check_response.check_passed = dcv_check_response.check_passed and (match is not None)

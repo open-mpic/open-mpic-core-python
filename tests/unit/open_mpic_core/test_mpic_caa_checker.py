@@ -25,8 +25,6 @@ class TestMpicCaaChecker:
     def set_env_variables():
         envvars = {
             "default_caa_domains": "ca1.com|ca2.net|ca3.org",
-            "AWS_REGION": "us-east-4",
-            "rir_region": "arin",
         }
         with pytest.MonkeyPatch.context() as class_scoped_monkeypatch:
             for k, v in envvars.items():
@@ -419,9 +417,7 @@ class TestMpicCaaChecker:
 
     def is_result_as_expected(self, result, check_passed, check_response_details, errors=None):
         result.timestamp_ns = None  # ignore timestamp for comparison
-        expected_result = CaaCheckResponse(
-            perspective_code="us-east-4", check_passed=check_passed, details=check_response_details, errors=errors
-        )
+        expected_result = CaaCheckResponse(check_passed=check_passed, details=check_response_details, errors=errors)
         return result == expected_result  # Pydantic allows direct comparison with equality operator
 
     def patch_resolver_resolve_with_side_effect(self, mocker, side_effect):
