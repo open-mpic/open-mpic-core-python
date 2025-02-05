@@ -83,10 +83,10 @@ class TestMpicDcvChecker:
             (DcvValidationMethod.DNS_CHANGE, DnsRecordType.TXT),
             (DcvValidationMethod.DNS_CHANGE, DnsRecordType.CNAME),
             (DcvValidationMethod.DNS_CHANGE, DnsRecordType.CAA),
-            (DcvValidationMethod.CONTACT_EMAIL, DnsRecordType.TXT),
-            (DcvValidationMethod.CONTACT_EMAIL, DnsRecordType.CAA),
-            (DcvValidationMethod.CONTACT_PHONE, DnsRecordType.TXT),
-            (DcvValidationMethod.CONTACT_PHONE, DnsRecordType.CAA),
+            (DcvValidationMethod.CONTACT_EMAIL_TXT, None),
+            (DcvValidationMethod.CONTACT_EMAIL_CAA, None),
+            (DcvValidationMethod.CONTACT_PHONE_TXT, None),
+            (DcvValidationMethod.CONTACT_PHONE_CAA, None),
             (DcvValidationMethod.IP_ADDRESS, DnsRecordType.A),
             (DcvValidationMethod.IP_ADDRESS, DnsRecordType.AAAA),
             (DcvValidationMethod.ACME_HTTP_01, None),
@@ -96,18 +96,7 @@ class TestMpicDcvChecker:
     async def check_dcv__should_perform_appropriate_check_and_allow_issuance_given_target_record_found(
         self, validation_method, record_type, mocker
     ):
-        dcv_request = None
-        match validation_method:
-            case DcvValidationMethod.WEBSITE_CHANGE | DcvValidationMethod.ACME_HTTP_01:
-                dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
-            case DcvValidationMethod.DNS_CHANGE:
-                dcv_request = ValidCheckCreator.create_valid_dns_check_request(record_type)
-            case DcvValidationMethod.CONTACT_EMAIL | DcvValidationMethod.CONTACT_PHONE:
-                dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method, record_type)
-            case DcvValidationMethod.IP_ADDRESS:
-                dcv_request = ValidCheckCreator.create_valid_ip_lookup_check_request(record_type)
-            case DcvValidationMethod.ACME_DNS_01:
-                dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method)
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(validation_method, record_type)
         if (
             validation_method == DcvValidationMethod.WEBSITE_CHANGE
             or validation_method == DcvValidationMethod.ACME_HTTP_01
@@ -474,9 +463,7 @@ class TestMpicDcvChecker:
         )
 
     async def contact_email_txt_lookup__should_auto_insert_validation_prefix(self, mocker):
-        dcv_request = ValidCheckCreator.create_valid_contact_check_request(
-            DcvValidationMethod.CONTACT_EMAIL, DnsRecordType.TXT
-        )
+        dcv_request = ValidCheckCreator.create_valid_contact_check_request(DcvValidationMethod.CONTACT_EMAIL_TXT)
         mock_dns_resolver_resolve = self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
@@ -485,9 +472,7 @@ class TestMpicDcvChecker:
         )
 
     async def contact_phone_txt_lookup__should_auto_insert_validation_prefix(self, mocker):
-        dcv_request = ValidCheckCreator.create_valid_contact_check_request(
-            DcvValidationMethod.CONTACT_PHONE, DnsRecordType.TXT
-        )
+        dcv_request = ValidCheckCreator.create_valid_contact_check_request(DcvValidationMethod.CONTACT_PHONE_TXT)
         mock_dns_resolver_resolve = self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
@@ -498,16 +483,16 @@ class TestMpicDcvChecker:
     @pytest.mark.parametrize(
         "validation_method, tag, expected_result",
         [
-            (DcvValidationMethod.CONTACT_EMAIL, "issue", False),
-            (DcvValidationMethod.CONTACT_EMAIL, "contactemail", True),
-            (DcvValidationMethod.CONTACT_PHONE, "issue", False),
-            (DcvValidationMethod.CONTACT_PHONE, "contactphone", True),
+            (DcvValidationMethod.CONTACT_EMAIL_CAA, "issue", False),
+            (DcvValidationMethod.CONTACT_EMAIL_CAA, "contactemail", True),
+            (DcvValidationMethod.CONTACT_PHONE_CAA, "issue", False),
+            (DcvValidationMethod.CONTACT_PHONE_CAA, "contactphone", True),
         ],
     )
     async def contact_info_caa_lookup__should_fail_if_required_tag_not_found(
         self, validation_method, tag, expected_result, mocker
     ):
-        dcv_request = ValidCheckCreator.create_valid_contact_check_request(validation_method, DnsRecordType.CAA)
+        dcv_request = ValidCheckCreator.create_valid_contact_check_request(validation_method)
         check_parameters = dcv_request.dcv_check_parameters
         # should be contactemail, contactphone
         record_data = {"flags": 0, "tag": tag, "value": check_parameters.challenge_value}
@@ -519,12 +504,12 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is expected_result
 
     @pytest.mark.parametrize(
-        "validation_method", [DcvValidationMethod.CONTACT_EMAIL, DcvValidationMethod.CONTACT_PHONE]
+        "validation_method", [DcvValidationMethod.CONTACT_EMAIL_CAA, DcvValidationMethod.CONTACT_PHONE_CAA]
     )
     async def contact_info_caa_lookup__should_climb_domain_tree_to_find_records_and_include_domain_with_found_record_in_details(
         self, validation_method, mocker
     ):
-        dcv_request = ValidCheckCreator.create_valid_contact_check_request(validation_method, DnsRecordType.CAA)
+        dcv_request = ValidCheckCreator.create_valid_contact_check_request(validation_method)
         self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
         current_target = dcv_request.domain_or_ip_target
         dcv_request.domain_or_ip_target = f"sub2.sub1.{current_target}"
@@ -727,16 +712,12 @@ class TestMpicDcvChecker:
             expected_domain = dcv_request.domain_or_ip_target
 
         match dcv_request.dcv_check_parameters.validation_method:
-            case DcvValidationMethod.CONTACT_PHONE:
-                if dcv_request.dcv_check_parameters.dns_record_type == DnsRecordType.TXT:
-                    expected_domain = f"_validation-contactphone.{dcv_request.domain_or_ip_target}"
-                else:  # CAA -- using dns names instead of strings
-                    expected_domain = dns.name.from_text(expected_domain)
-            case DcvValidationMethod.CONTACT_EMAIL:
-                if dcv_request.dcv_check_parameters.dns_record_type == DnsRecordType.TXT:
-                    expected_domain = f"_validation-contactemail.{dcv_request.domain_or_ip_target}"
-                else:  # CAA -- using dns names instead of strings
-                    expected_domain = dns.name.from_text(expected_domain)
+            case DcvValidationMethod.CONTACT_PHONE_TXT:
+                expected_domain = f"_validation-contactphone.{dcv_request.domain_or_ip_target}"
+            case DcvValidationMethod.CONTACT_EMAIL_TXT:
+                expected_domain = f"_validation-contactemail.{dcv_request.domain_or_ip_target}"
+            case DcvValidationMethod.CONTACT_PHONE_CAA | DcvValidationMethod.CONTACT_EMAIL_CAA:
+                expected_domain = dns.name.from_text(expected_domain)  # CAA -- using dns names instead of strings
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
 
         # noinspection PyUnusedLocal
@@ -781,22 +762,21 @@ class TestMpicDcvChecker:
     def create_basic_dns_response_for_mock(self, dcv_request: DcvCheckRequest, mocker) -> dns.resolver.Answer:
         check_parameters = dcv_request.dcv_check_parameters
         match check_parameters.validation_method:
-            case DcvValidationMethod.DNS_CHANGE | DcvValidationMethod.IP_ADDRESS:
+            case (
+                DcvValidationMethod.DNS_CHANGE
+                | DcvValidationMethod.IP_ADDRESS
+                | DcvValidationMethod.CONTACT_PHONE_TXT
+                | DcvValidationMethod.CONTACT_EMAIL_TXT
+            ):
                 match check_parameters.dns_record_type:
                     case DnsRecordType.CNAME | DnsRecordType.TXT | DnsRecordType.A | DnsRecordType.AAAA:
                         record_data = {"value": check_parameters.challenge_value}
                     case _:  # CAA
                         record_data = {"flags": "", "tag": "issue", "value": check_parameters.challenge_value}
-            case DcvValidationMethod.CONTACT_EMAIL:
-                if check_parameters.dns_record_type == DnsRecordType.CAA:
-                    record_data = {"flags": "", "tag": "contactemail", "value": check_parameters.challenge_value}
-                else:
-                    record_data = {"value": check_parameters.challenge_value}
-            case DcvValidationMethod.CONTACT_PHONE:
-                if check_parameters.dns_record_type == DnsRecordType.CAA:
-                    record_data = {"flags": "", "tag": "contactphone", "value": check_parameters.challenge_value}
-                else:
-                    record_data = {"value": check_parameters.challenge_value}
+            case DcvValidationMethod.CONTACT_EMAIL_CAA:
+                record_data = {"flags": "", "tag": "contactemail", "value": check_parameters.challenge_value}
+            case DcvValidationMethod.CONTACT_PHONE_CAA:
+                record_data = {"flags": "", "tag": "contactphone", "value": check_parameters.challenge_value}
             case _:  # ACME_DNS_01
                 record_data = {"value": check_parameters.key_authorization}
         record_type = check_parameters.dns_record_type

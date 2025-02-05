@@ -51,14 +51,12 @@ class ValidMpicRequestCreator:
                 check_parameters = DcvAcmeHttp01ValidationParameters(token='test', key_authorization='test')
             case DcvValidationMethod.ACME_DNS_01:
                 check_parameters = DcvAcmeDns01ValidationParameters(key_authorization='test')
-            case DcvValidationMethod.CONTACT_PHONE:
-                if dns_record_type == DnsRecordType.CAA:
-                    check_parameters = DcvContactPhoneCaaValidationParameters(dns_name_prefix='test', challenge_value='test')
-                else:
-                    check_parameters = DcvContactPhoneTxtValidationParameters(challenge_value='test')
-            case DcvValidationMethod.CONTACT_EMAIL:
-                if dns_record_type == DnsRecordType.CAA:
-                    check_parameters = DcvContactEmailCaaValidationParameters(dns_name_prefix='test', challenge_value='test')
-                else:
-                    check_parameters = DcvContactEmailTxtValidationParameters(challenge_value='test')
+            case DcvValidationMethod.CONTACT_PHONE_CAA:
+                check_parameters = DcvContactPhoneCaaValidationParameters(dns_name_prefix='test', challenge_value='test')
+            case DcvValidationMethod.CONTACT_PHONE_TXT:
+                check_parameters = DcvContactPhoneTxtValidationParameters(challenge_value='test')
+            case DcvValidationMethod.CONTACT_EMAIL_CAA:
+                check_parameters = DcvContactEmailCaaValidationParameters(dns_name_prefix='test', challenge_value='test')
+            case DcvValidationMethod.CONTACT_EMAIL_TXT:
+                check_parameters = DcvContactEmailTxtValidationParameters(challenge_value='test')
         return check_parameters

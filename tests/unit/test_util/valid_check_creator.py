@@ -50,26 +50,20 @@ class ValidCheckCreator:
         return check_request
 
     @staticmethod
-    def create_valid_contact_check_request(
-        validation_method: DcvValidationMethod, record_type: DnsRecordType
-    ) -> DcvCheckRequest:
+    def create_valid_contact_check_request(validation_method: DcvValidationMethod) -> DcvCheckRequest:
         match validation_method:
-            case DcvValidationMethod.CONTACT_EMAIL:
-                if record_type == DnsRecordType.CAA:
-                    check_parameters = DcvContactEmailCaaValidationParameters(
-                        challenge_value="validate.me@example.com", dns_name_prefix=""
-                    )
-                else:  # DnsRecordType.TXT
-                    check_parameters = DcvContactEmailTxtValidationParameters(
-                        challenge_value=f"validate.me@example.com"
-                    )
-            case _:  # DcvValidationMethod.CONTACT_PHONE
-                if record_type == DnsRecordType.CAA:
-                    check_parameters = DcvContactPhoneCaaValidationParameters(
-                        challenge_value="555-555-5555", dns_name_prefix=""
-                    )
-                else:  # DnsRecordType.TXT
-                    check_parameters = DcvContactPhoneTxtValidationParameters(challenge_value="555-555-5555")
+            case DcvValidationMethod.CONTACT_EMAIL_CAA:
+                check_parameters = DcvContactEmailCaaValidationParameters(
+                    challenge_value="validate.me@example.com", dns_name_prefix=""
+                )
+            case DcvValidationMethod.CONTACT_EMAIL_TXT:
+                check_parameters = DcvContactEmailTxtValidationParameters(challenge_value=f"validate.me@example.com")
+            case DcvValidationMethod.CONTACT_PHONE_CAA:
+                check_parameters = DcvContactPhoneCaaValidationParameters(
+                    challenge_value="555-555-5555", dns_name_prefix=""
+                )
+            case _:  # CONTACT_PHONE_TXT
+                check_parameters = DcvContactPhoneTxtValidationParameters(challenge_value="555-555-5555")
         check_request = DcvCheckRequest(domain_or_ip_target="example.com", dcv_check_parameters=check_parameters)
         check_request.dcv_check_parameters.require_exact_match = True
         return check_request
@@ -113,5 +107,12 @@ class ValidCheckCreator:
                 return ValidCheckCreator.create_valid_acme_http_01_check_request()
             case DcvValidationMethod.ACME_DNS_01:
                 return ValidCheckCreator.create_valid_acme_dns_01_check_request()
-            case DcvValidationMethod.CONTACT_EMAIL | DcvValidationMethod.CONTACT_PHONE:
-                return ValidCheckCreator.create_valid_contact_check_request(validation_method, record_type)
+            case DcvValidationMethod.IP_ADDRESS:
+                return ValidCheckCreator.create_valid_ip_lookup_check_request(record_type)
+            case (
+                DcvValidationMethod.CONTACT_EMAIL_CAA
+                | DcvValidationMethod.CONTACT_EMAIL_TXT
+                | DcvValidationMethod.CONTACT_PHONE_CAA
+                | DcvValidationMethod.CONTACT_PHONE_TXT
+            ):
+                return ValidCheckCreator.create_valid_contact_check_request(validation_method)

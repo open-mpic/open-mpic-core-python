@@ -29,16 +29,16 @@ class TestMpicDcvRequest:
     def mpic_dcv_request__should_require_validation_method_in_check_parameters(self):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()
         request.dcv_check_parameters.validation_method = None
-        with pytest.raises(ValueError) as validation_error:  # ValueError because of custom validation
+        with pytest.raises(pydantic.ValidationError) as validation_error:
             MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
-        assert "validation method" in str(validation_error.value)
+        assert "validation_method" in str(validation_error.value)
 
     def mpic_dcv_request__should_require_valid_validation_method_in_check_parameters(self):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()
         request.dcv_check_parameters.validation_method = "invalid"
-        with pytest.raises(ValueError) as validation_error:  # ValueError because of custom validation
+        with pytest.raises(pydantic.ValidationError) as validation_error:
             MpicDcvRequest.model_validate_json(json.dumps(request.model_dump(warnings=False)))
-        assert "validation method" in str(validation_error.value)
+        assert "validation_method" in str(validation_error.value)
 
     def mpic_dcv_request__should_require_challenge_value_in_check_parameters(self):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()
@@ -108,8 +108,8 @@ class TestMpicDcvRequest:
     @pytest.mark.parametrize(
         "validation_method, expected_prefix",
         [
-            (DcvValidationMethod.CONTACT_EMAIL, "_validation-contactemail"),
-            (DcvValidationMethod.CONTACT_PHONE, "_validation-contactphone"),
+            (DcvValidationMethod.CONTACT_EMAIL_TXT, "_validation-contactemail"),
+            (DcvValidationMethod.CONTACT_PHONE_TXT, "_validation-contactphone"),
         ],
     )  # imperfect test because Pydantic seems to spit out a ton of errors trying to deserialize the JSON correctly
     def mpic_dcv_request__should_enforce_domain_prefix_for_contact_lookup_for_txt_records(

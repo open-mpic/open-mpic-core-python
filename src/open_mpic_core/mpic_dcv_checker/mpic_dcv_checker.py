@@ -135,9 +135,10 @@ class MpicDcvChecker:
 
     @staticmethod
     async def perform_dns_resolution(name_to_resolve, validation_method, dns_record_type) -> dns.resolver.Answer:
-        walk_domain_tree = (
-            validation_method in [DcvValidationMethod.CONTACT_EMAIL, DcvValidationMethod.CONTACT_PHONE]
-        ) and dns_record_type == DnsRecordType.CAA
+        walk_domain_tree = validation_method in [
+            DcvValidationMethod.CONTACT_EMAIL_CAA,
+            DcvValidationMethod.CONTACT_PHONE_CAA,
+        ]
 
         dns_rdata_type = dns.rdatatype.from_text(dns_record_type)
         lookup = None
@@ -256,23 +257,22 @@ class MpicDcvChecker:
         for response_answer in lookup_response.response.answer:
             if response_answer.rdtype == dns_rdata_type:
                 for record_data in response_answer:
-                    if validation_method == DcvValidationMethod.CONTACT_EMAIL and dns_record_type == DnsRecordType.CAA:
+                    if validation_method == DcvValidationMethod.CONTACT_EMAIL_CAA:
                         if record_data.tag.decode("utf-8").lower() == MpicDcvChecker.CONTACT_EMAIL_TAG:
                             record_data_as_string = record_data.value.decode("utf-8")
                         else:
                             continue
-                    elif (
-                        validation_method == DcvValidationMethod.CONTACT_PHONE and dns_record_type == DnsRecordType.CAA
-                    ):
+                    elif validation_method == DcvValidationMethod.CONTACT_PHONE_CAA:
                         if record_data.tag.decode("utf-8").lower() == MpicDcvChecker.CONTACT_PHONE_TAG:
                             record_data_as_string = record_data.value.decode("utf-8")
                         else:
                             continue
                     else:
-                        # Todo: we should not rely on the to_text method of records to parse their value. Each record type should have its own branch and value should be read directly from the rdata.
+                        # TODO: we should not rely on the to_text method of records to parse their value.
+                        #  Each record type should have its own branch and value should be read directly from the rdata.
                         record_data_as_string = record_data.to_text()
                     # only need to remove enclosing quotes if they're there, e.g., for a TXT record
-                    # Todo: This line could error if there is a literal quote in a record type that is not TXT.
+                    # TODO: This line could error if there is a literal quote in a record type that is not TXT.
                     if record_data_as_string[0] == '"' and record_data_as_string[-1] == '"':
                         record_data_as_string = record_data_as_string[1:-1]
                     records_as_strings.append(record_data_as_string)
