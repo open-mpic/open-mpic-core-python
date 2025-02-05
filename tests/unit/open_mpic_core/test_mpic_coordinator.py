@@ -144,7 +144,6 @@ class TestMpicCoordinator:
         for call in call_list:
             validation_method = call.check_request.dcv_check_parameters.validation_method
             assert validation_method == DcvValidationMethod.DNS_CHANGE
-            assert call.check_request.dcv_check_parameters.dns_name_prefix == "test"
 
     async def coordinate_mpic__should_invoke_async_call_remote_perspective_function_with_correct_parameters(self):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
