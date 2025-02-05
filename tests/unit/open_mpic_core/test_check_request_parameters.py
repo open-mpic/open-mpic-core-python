@@ -1,4 +1,5 @@
 import pytest
+from pydantic import TypeAdapter
 
 from open_mpic_core import (
     DcvAcmeHttp01ValidationParameters,
@@ -36,13 +37,16 @@ class TestCheckRequestDetails:
         ('{"validation_method": "contact-phone", "dns_name_prefix": "test-dnp", "dns_record_type": "CAA", "challenge_value": "test-cv"}',
          DcvContactPhoneCaaValidationParameters),
         ('{"validation_method": "ip-address", "dns_name_prefix": "test-dnp", "dns_record_type": "A", "challenge_value": "test-cv"}',
-         DcvIpAddressValidationParameters)
+         DcvIpAddressValidationParameters),
+        ('{"validation_method": "contact-email", "challenge_value": "abc"}',  # it defaults to TXT... wonder why...
+         DcvContactEmailTxtValidationParameters)
     ])
     # fmt: on
     def check_request_parameters__should_automatically_deserialize_into_correct_object_based_on_discriminator(
         self, parameters_as_json, expected_class
     ):
-        details_as_object: DcvCheckParameters = expected_class.model_validate_json(parameters_as_json)
+        type_adapter = TypeAdapter(DcvCheckParameters)  # have it automatically figure it out
+        details_as_object: DcvCheckParameters = type_adapter.validate_json(parameters_as_json)
         assert isinstance(details_as_object, expected_class)
 
 

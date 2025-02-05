@@ -33,7 +33,7 @@ class DcvWebsiteChangeValidationParameters(DcvValidationParameters):
 class DcvGeneralDnsValidationParameters(DcvValidationParameters, ABC):
     challenge_value: str
     require_exact_match: bool = False
-    dns_name_prefix: str
+    dns_name_prefix: str | None = None
     dns_record_type: DnsRecordType
 
 

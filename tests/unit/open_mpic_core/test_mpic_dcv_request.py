@@ -49,14 +49,6 @@ class TestMpicDcvRequest:
             MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
         assert "challenge_value" in str(validation_error.value)
 
-    def mpic_dcv_request__should_require_dns_name_prefix_for_dns_change_validation(self):
-        request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(DcvValidationMethod.DNS_CHANGE)
-        # noinspection PyTypeChecker
-        request.dcv_check_parameters.dns_name_prefix = None
-        with pytest.raises(pydantic.ValidationError) as validation_error:
-            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
-        assert "dns_name_prefix" in str(validation_error.value)
-
     def mpic_dcv_request__should_require_dns_record_type_for_dns_change_validation(self):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(DcvValidationMethod.DNS_CHANGE)
         # noinspection PyTypeChecker
