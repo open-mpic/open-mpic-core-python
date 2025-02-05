@@ -19,7 +19,7 @@ from open_mpic_core.common_domain.check_parameters import (
     DcvContactEmailTxtValidationParameters,
     DcvContactPhoneCaaValidationParameters,
     DcvIpAddressValidationParameters,
-    DcvValidationDetails,
+    DcvValidationParameters,
 )
 from open_mpic_core.common_domain.check_request import CheckRequest, CaaCheckRequest, DcvCheckRequest
 
