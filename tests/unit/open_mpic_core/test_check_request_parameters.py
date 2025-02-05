@@ -1,5 +1,5 @@
 import pytest
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 from open_mpic_core import (
     DcvAcmeHttp01ValidationParameters,
@@ -22,7 +22,7 @@ class TestCheckRequestDetails:
          DcvWebsiteChangeValidationParameters),
         ('{"validation_method": "dns-change", "dns_name_prefix": "test-dnp", "dns_record_type": "TXT", "challenge_value": "test-cv"}',
          DcvDnsChangeValidationParameters),
-        ('{"validation_method": "dns-change", "dns_name_prefix": "test-dnp", "dns_record_type": "CAA", "challenge_value": "test-cv"}',
+        ('{"validation_method": "dns-change", "dns_record_type": "CNAME", "challenge_value": "test-cv"}',
          DcvDnsChangeValidationParameters),
         ('{"validation_method": "acme-http-01", "token": "test-t", "key_authorization": "test-ka"}',
          DcvAcmeHttp01ValidationParameters),
@@ -30,7 +30,7 @@ class TestCheckRequestDetails:
          DcvAcmeDns01ValidationParameters),
         ('{"validation_method": "contact-email", "dns_record_type": "TXT", "challenge_value": "test-cv"}',
          DcvContactEmailTxtValidationParameters),
-        ('{"validation_method": "contact-email", "dns_name_prefix": "test-dnp", "dns_record_type": "CAA", "challenge_value": "test-cv"}',
+        ('{"validation_method": "contact-email", "dns_record_type": "CAA", "challenge_value": "test-cv"}',
          DcvContactEmailCaaValidationParameters),
         ('{"validation_method": "contact-phone", "dns_record_type": "TXT", "challenge_value": "test-cv"}',
          DcvContactPhoneTxtValidationParameters),
@@ -38,8 +38,6 @@ class TestCheckRequestDetails:
          DcvContactPhoneCaaValidationParameters),
         ('{"validation_method": "ip-address", "dns_name_prefix": "test-dnp", "dns_record_type": "A", "challenge_value": "test-cv"}',
          DcvIpAddressValidationParameters),
-        ('{"validation_method": "contact-email", "challenge_value": "abc"}',  # it defaults to TXT... wonder why...
-         DcvContactEmailTxtValidationParameters)
     ])
     # fmt: on
     def check_request_parameters__should_automatically_deserialize_into_correct_object_based_on_discriminator(
@@ -48,6 +46,26 @@ class TestCheckRequestDetails:
         type_adapter = TypeAdapter(DcvCheckParameters)  # have it automatically figure it out
         details_as_object: DcvCheckParameters = type_adapter.validate_json(parameters_as_json)
         assert isinstance(details_as_object, expected_class)
+
+    # fmt: off
+    @pytest.mark.parametrize("parameters_as_json, test_description", [
+        ('{"validation_method": "dns-change", "dns_record_type": "AAAA", "challenge_value": "test-cv"}',
+         "should fail validation when DNS record type is invalid like AAAA for DNS Change"),
+        ('{"validation_method": "contact-email", "challenge_value": "test-cv"}',
+         "should fail validation when DNS record type is missing for Contact Email"),
+        ('{"validation_method": "contact-phone", "dns_record_type": "CNAME", "challenge_value": "test-cv"}',
+         "should fail validation when DNS record type is invalid for Contact Phone"),
+        ('{"validation_method": "ip-address", "dns_record_type": "TXT", "challenge_value": "test-cv"}',
+         "should fail validation when DNS record type is invalid like TXT for IP Address"),
+    ])
+    # fmt: on
+    def check_request_parameters__should_fail_validation_when_serialized_object_is_malformed(
+        self, parameters_as_json, test_description
+    ):
+        type_adapter = TypeAdapter(DcvCheckParameters)
+        with pytest.raises(Exception) as validation_error:
+            type_adapter.validate_json(parameters_as_json)
+        assert isinstance(validation_error.value, ValueError)
 
 
 if __name__ == "__main__":

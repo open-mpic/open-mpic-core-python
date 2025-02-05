@@ -29,17 +29,16 @@ class TestMpicDcvRequest:
     def mpic_dcv_request__should_require_validation_method_in_check_parameters(self):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()
         request.dcv_check_parameters.validation_method = None
-        with pytest.raises(pydantic.ValidationError) as validation_error:
+        with pytest.raises(ValueError) as validation_error:  # ValueError because of custom validation
             MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
-        assert "validation_method" in str(validation_error.value)
+        assert "validation method" in str(validation_error.value)
 
     def mpic_dcv_request__should_require_valid_validation_method_in_check_parameters(self):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()
         request.dcv_check_parameters.validation_method = "invalid"
-        with pytest.raises(pydantic.ValidationError) as validation_error:
+        with pytest.raises(ValueError) as validation_error:  # ValueError because of custom validation
             MpicDcvRequest.model_validate_json(json.dumps(request.model_dump(warnings=False)))
-        assert "validation_method" in str(validation_error.value)
-        assert "invalid" in str(validation_error.value)
+        assert "validation method" in str(validation_error.value)
 
     def mpic_dcv_request__should_require_challenge_value_in_check_parameters(self):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()

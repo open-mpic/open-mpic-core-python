@@ -27,9 +27,7 @@ class MpicDcvChecker:
     CONTACT_EMAIL_TAG = "contactemail"
     CONTACT_PHONE_TAG = "contactphone"
 
-    def __init__(
-        self, reuse_http_client: bool = False, verify_ssl: bool = False, log_level: int = None
-    ):
+    def __init__(self, reuse_http_client: bool = False, verify_ssl: bool = False, log_level: int = None):
         self.verify_ssl = verify_ssl
         self._reuse_http_client = reuse_http_client
         self._async_http_client = None
@@ -70,17 +68,6 @@ class MpicDcvChecker:
             finally:
                 if not client.closed:
                     await client.close()
-
-    async def initialize_async_http_client(self):
-        """Initialize the async HTTP client.
-        Needs to be called before the first HTTP based validation check.
-        :return:
-        """
-        connector = aiohttp.TCPConnector(ssl=self.verify_ssl)  # flag to verify TLS certificates; defaults to False
-        self._async_http_client = aiohttp.ClientSession(
-            connector=connector,
-            timeout=aiohttp.ClientTimeout(total=30),  # Add reasonable timeouts
-        )
 
     async def shutdown(self):
         """Close the async HTTP client.
@@ -301,7 +288,7 @@ class MpicDcvChecker:
             expected_dns_record_content = expected_dns_record_content.lower()
             records_as_strings = [record.lower() for record in records_as_strings]
 
-        # exact_match=True requires at least one record matches and will fail even if whitespace is different. 
+        # exact_match=True requires at least one record matches and will fail even if whitespace is different.
         # exact_match=False simply runs a contains check.
         if exact_match:
             dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
