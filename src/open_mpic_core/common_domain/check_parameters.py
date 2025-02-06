@@ -1,9 +1,13 @@
 from abc import ABC
-from typing import Literal, Union, Any
+from typing import Literal, Union, Any, Set, Annotated
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator, Field
 
 from open_mpic_core import CertificateType, DnsRecordType, DcvValidationMethod, UrlScheme
+
+
+DNS_CHANGE_ALLOWED_RECORD_TYPES: Set[DnsRecordType] = {DnsRecordType.CNAME, DnsRecordType.TXT, DnsRecordType.CAA}
+IP_ADDRESS_ALLOWED_RECORD_TYPES: Set[DnsRecordType] = {DnsRecordType.A, DnsRecordType.AAAA}
 
 
 class CaaCheckParameters(BaseModel):
@@ -12,7 +16,7 @@ class CaaCheckParameters(BaseModel):
     # contact_info_query: bool | False = False  # to better accommodate email/phone based DCV using contact info in CAA
 
 
-class DcvValidationDetails(BaseModel, ABC):
+class DcvValidationParameters(BaseModel, ABC):
     validation_method: DcvValidationMethod
     # DNS records have 5 fields: name, ttl, class, type, rdata (which can be multipart itself)
     # A or AAAA: name=domain_name type=A <rdata:address> (ip address)
@@ -20,8 +24,8 @@ class DcvValidationDetails(BaseModel, ABC):
     # TXT: name=domain_name type=TXT <rdata:text> (freeform text)
 
 
-class DcvWebsiteChangeValidationDetails(DcvValidationDetails):
-    validation_method: Literal[DcvValidationMethod.WEBSITE_CHANGE_V2] = DcvValidationMethod.WEBSITE_CHANGE_V2
+class DcvWebsiteChangeValidationParameters(DcvValidationParameters):
+    validation_method: Literal[DcvValidationMethod.WEBSITE_CHANGE] = DcvValidationMethod.WEBSITE_CHANGE
     challenge_value: str
     http_token_path: str
     url_scheme: UrlScheme = UrlScheme.HTTP
@@ -30,68 +34,87 @@ class DcvWebsiteChangeValidationDetails(DcvValidationDetails):
     # TODO add optional flag to iterate up through the domain hierarchy
 
 
-class DcvGeneralDnsValidationDetails(DcvValidationDetails, ABC):
+class DcvGeneralDnsValidationParameters(DcvValidationParameters, ABC):
     challenge_value: str
     require_exact_match: bool = False
-    dns_name_prefix: str
+    dns_name_prefix: str | None = None
     dns_record_type: DnsRecordType
 
 
-class DcvDnsChangeValidationDetails(DcvGeneralDnsValidationDetails):
+class DcvDnsChangeValidationParameters(DcvGeneralDnsValidationParameters):
     validation_method: Literal[DcvValidationMethod.DNS_CHANGE] = DcvValidationMethod.DNS_CHANGE
-    dns_record_type: DnsRecordType = Union[DnsRecordType.CNAME, DnsRecordType.TXT, DnsRecordType.CAA]
+    # dns_record_type: DnsRecordType = Union[DnsRecordType.CNAME, DnsRecordType.TXT, DnsRecordType.CAA]
+    dns_record_type: DnsRecordType
+
+    # noinspection PyNestedDecorators
+    @field_validator("dns_record_type")
+    @classmethod
+    def validate_record_type(cls, v: DnsRecordType) -> DnsRecordType:
+        if v not in DNS_CHANGE_ALLOWED_RECORD_TYPES:
+            raise ValueError(f"Record type must be one of {DNS_CHANGE_ALLOWED_RECORD_TYPES}, got {v}")
+        return v
 
 
-class DcvContactEmailTxtValidationDetails(DcvGeneralDnsValidationDetails):
-    validation_method: Literal[DcvValidationMethod.CONTACT_EMAIL] = DcvValidationMethod.CONTACT_EMAIL
+class DcvContactEmailTxtValidationParameters(DcvGeneralDnsValidationParameters):
+    validation_method: Literal[DcvValidationMethod.CONTACT_EMAIL_TXT] = DcvValidationMethod.CONTACT_EMAIL_TXT
     dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
     dns_name_prefix: Literal["_validation-contactemail"] = "_validation-contactemail"
 
 
-class DcvContactEmailCaaValidationDetails(DcvGeneralDnsValidationDetails):
-    validation_method: Literal[DcvValidationMethod.CONTACT_EMAIL] = DcvValidationMethod.CONTACT_EMAIL
+class DcvContactEmailCaaValidationParameters(DcvGeneralDnsValidationParameters):
+    validation_method: Literal[DcvValidationMethod.CONTACT_EMAIL_CAA] = DcvValidationMethod.CONTACT_EMAIL_CAA
     dns_record_type: Literal[DnsRecordType.CAA] = DnsRecordType.CAA
 
 
-class DcvContactPhoneTxtValidationDetails(DcvGeneralDnsValidationDetails):
-    validation_method: Literal[DcvValidationMethod.CONTACT_PHONE] = DcvValidationMethod.CONTACT_PHONE
+class DcvContactPhoneTxtValidationParameters(DcvGeneralDnsValidationParameters):
+    validation_method: Literal[DcvValidationMethod.CONTACT_PHONE_TXT] = DcvValidationMethod.CONTACT_PHONE_TXT
     dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
     dns_name_prefix: Literal["_validation-contactphone"] = "_validation-contactphone"
 
 
-class DcvContactPhoneCaaValidationDetails(DcvGeneralDnsValidationDetails):
-    validation_method: Literal[DcvValidationMethod.CONTACT_PHONE] = DcvValidationMethod.CONTACT_PHONE
+class DcvContactPhoneCaaValidationParameters(DcvGeneralDnsValidationParameters):
+    validation_method: Literal[DcvValidationMethod.CONTACT_PHONE_CAA] = DcvValidationMethod.CONTACT_PHONE_CAA
     dns_record_type: Literal[DnsRecordType.CAA] = DnsRecordType.CAA
 
 
-class DcvIpLookupValidationDetails(DcvGeneralDnsValidationDetails):
-    validation_method: Literal[DcvValidationMethod.IP_LOOKUP] = DcvValidationMethod.IP_LOOKUP
-    dns_record_type: DnsRecordType = Union[DnsRecordType.A, DnsRecordType.AAAA]
+class DcvIpAddressValidationParameters(DcvGeneralDnsValidationParameters):
+    validation_method: Literal[DcvValidationMethod.IP_ADDRESS] = DcvValidationMethod.IP_ADDRESS
+    dns_record_type: DnsRecordType
+
+    # noinspection PyNestedDecorators
+    @field_validator("dns_record_type")
+    @classmethod
+    def validate_record_type(cls, v: DnsRecordType) -> DnsRecordType:
+        if v not in IP_ADDRESS_ALLOWED_RECORD_TYPES:
+            raise ValueError(f"Record type must be one of {IP_ADDRESS_ALLOWED_RECORD_TYPES}, got {v}")
+        return v
 
 
-class DcvAcmeHttp01ValidationDetails(DcvValidationDetails):
+class DcvAcmeHttp01ValidationParameters(DcvValidationParameters):
     validation_method: Literal[DcvValidationMethod.ACME_HTTP_01] = DcvValidationMethod.ACME_HTTP_01
     token: str
     key_authorization: str
     http_headers: dict[str, Any] | None = None
 
 
-class DcvAcmeDns01ValidationDetails(DcvValidationDetails):
+class DcvAcmeDns01ValidationParameters(DcvValidationParameters):
     validation_method: Literal[DcvValidationMethod.ACME_DNS_01] = DcvValidationMethod.ACME_DNS_01
     key_authorization: str
     dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
     dns_name_prefix: Literal["_acme-challenge"] = "_acme-challenge"
 
 
-class DcvCheckParameters(BaseModel):
-    validation_details: Union[
-        DcvWebsiteChangeValidationDetails,
-        DcvDnsChangeValidationDetails,
-        DcvAcmeHttp01ValidationDetails,
-        DcvAcmeDns01ValidationDetails,
-        DcvContactEmailTxtValidationDetails,
-        DcvContactEmailCaaValidationDetails,
-        DcvContactPhoneTxtValidationDetails,
-        DcvContactPhoneCaaValidationDetails,
-        DcvIpLookupValidationDetails,
-    ]
+DcvCheckParameters = Annotated[
+    Union[
+        DcvWebsiteChangeValidationParameters,
+        DcvDnsChangeValidationParameters,
+        DcvAcmeHttp01ValidationParameters,
+        DcvAcmeDns01ValidationParameters,
+        DcvContactEmailTxtValidationParameters,
+        DcvContactEmailCaaValidationParameters,
+        DcvContactPhoneTxtValidationParameters,
+        DcvContactPhoneCaaValidationParameters,
+        DcvIpAddressValidationParameters
+    ],
+    Field(discriminator="validation_method"),
+]

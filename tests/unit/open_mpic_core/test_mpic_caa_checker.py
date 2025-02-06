@@ -25,8 +25,6 @@ class TestMpicCaaChecker:
     def set_env_variables():
         envvars = {
             "default_caa_domains": "ca1.com|ca2.net|ca3.org",
-            "AWS_REGION": "us-east-4",
-            "rir_region": "arin",
         }
         with pytest.MonkeyPatch.context() as class_scoped_monkeypatch:
             for k, v in envvars.items():
@@ -51,7 +49,7 @@ class TestMpicCaaChecker:
 
     @staticmethod
     def create_configured_caa_checker(log_level=None):
-        return MpicCaaChecker(["ca1.com", "ca2.net", "ca3.org"], "us-east-4", log_level)
+        return MpicCaaChecker(["ca1.com", "ca2.net", "ca3.org"], log_level)
 
     def constructor__should_set_log_level_if_provided(self):
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker(logging.ERROR)
@@ -216,11 +214,12 @@ class TestMpicCaaChecker:
         assert caa_response.details.caa_record_present == record_present
 
     async def check_caa__should_support_wildcard_domain(self, mocker):
-        record_name, expected_domain = "*.example.com", "*.example.com."
+        record_name, expected_domain = "foo.example.com", "foo.example.com."
         test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(record_name, 0, "issue", "ca1.com", mocker)
-        self.patch_resolver_to_expect_domain(mocker, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer)
+        # throwing base Exception to ensure correct domain in DNS lookup (asterisk is removed prior); previously a bug
+        self.patch_resolver_to_expect_domain(mocker, expected_domain, test_dns_query_answer, Exception)
         caa_request = CaaCheckRequest(
-            domain_or_ip_target="*.example.com",
+            domain_or_ip_target="*.foo.example.com",
             caa_check_parameters=CaaCheckParameters(certificate_type=CertificateType.TLS_SERVER, caa_domains=None),
         )
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
@@ -419,9 +418,7 @@ class TestMpicCaaChecker:
 
     def is_result_as_expected(self, result, check_passed, check_response_details, errors=None):
         result.timestamp_ns = None  # ignore timestamp for comparison
-        expected_result = CaaCheckResponse(
-            perspective_code="us-east-4", check_passed=check_passed, details=check_response_details, errors=errors
-        )
+        expected_result = CaaCheckResponse(check_passed=check_passed, details=check_response_details, errors=errors)
         return result == expected_result  # Pydantic allows direct comparison with equality operator
 
     def patch_resolver_resolve_with_side_effect(self, mocker, side_effect):

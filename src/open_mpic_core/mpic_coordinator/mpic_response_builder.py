@@ -1,19 +1,14 @@
+from typing import List
 from open_mpic_core import MpicEffectiveOrchestrationParameters
 from open_mpic_core import MpicRequest, MpicDcvRequest
 from open_mpic_core import MpicCaaResponse, MpicDcvResponse, MpicResponse
+from open_mpic_core import PerspectiveResponse
 
 
 class MpicResponseBuilder:
     @staticmethod
-    def build_response(
-        request: MpicRequest,
-        perspective_count,
-        quorum_count,
-        attempts,
-        perspective_responses,
-        is_result_valid,
-        previous_attempt_results,
-    ) -> MpicResponse:
+    def build_response(request: MpicRequest, perspective_count: int, quorum_count: int, attempts: int,
+                       perspective_responses: List[PerspectiveResponse], is_result_valid: bool, previous_attempt_results) -> MpicResponse:
         actual_orchestration_parameters = MpicEffectiveOrchestrationParameters(
             perspective_count=perspective_count, quorum_count=quorum_count, attempt_count=attempts
         )
