@@ -296,7 +296,6 @@ class TestMpicCaaChecker:
         ("rejects parameter tag starting with hyphen", "ca111.org; -policy=ev"),
         ("rejects parameter tag ending with hyphen", "ca111.org; policy-=ev"),
         ("rejects parameter without equals sign", "ca111.org; policy"),
-        # ("rejects parameter without value", "ca111.org; policy="),
         ("rejects parameter value containing semicolon", "ca111.org; policy=ev;account=12;345"),
         ("rejects parameter value containing control characters", "ca111.org; policy=ev;account=\x00"),
         ("rejects parameter tag with illegal characters", "ca111.org; queensrÿche=ev"),
