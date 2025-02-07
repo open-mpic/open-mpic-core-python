@@ -216,7 +216,7 @@ class MpicCaaChecker:
                     value = tag_and_value[1].strip()
 
                     # validate tag format (tag = (ALPHA / DIGIT) *( *("-") (ALPHA / DIGIT)))
-                    tagged_match_regex = r"^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$"  # regex for tag format
+                    tagged_match_regex = r"^[a-zA-Z0-9]+(-*[a-zA-Z0-9]+)*$"
                     if not re.match(tagged_match_regex, tag):
                         raise ValueError(f"CAA tag contains disallowed character: {tag!r}")
 
@@ -229,10 +229,14 @@ class MpicCaaChecker:
         else:
             issuer_domain_name = caa_value.strip()
 
-        # validate domain name using dnspython
-        try:
-            dns.name.from_text(issuer_domain_name)
-        except dns.name.BadName:
-            raise ValueError(f"CAA issuer domain name is not a valid domain name: {issuer_domain_name!r}")
+        if not issuer_domain_name == "":  # empty domain name is valid for CAA
+            domain_labels = issuer_domain_name.split(".")
+
+            # validate label format (label = (ALPHA / DIGIT) *( *("-") (ALPHA / DIGIT)))
+            domain_label_match_regex = r"^[a-zA-Z0-9]+(-*[a-zA-Z0-9]+)*$"
+            is_valid = all(re.match(domain_label_match_regex, label) for label in domain_labels)
+
+            if not is_valid:
+                raise ValueError(f"CAA issuer domain name is not a valid domain name: {issuer_domain_name!r}")
 
         return issuer_domain_name, parameters

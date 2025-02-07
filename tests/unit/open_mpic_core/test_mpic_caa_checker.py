@@ -286,7 +286,7 @@ class TestMpicCaaChecker:
     # fmt: off
     @pytest.mark.parametrize("test_description, caa_value", [
         ("rejects domain starting with dot", ".example.com"),
-        ("rejects domain ending with dot", "example.com."),
+        ("rejects domain ending with dot", "ca111.com."),
         ("rejects domain with consecutive dots", "example..com"),
         ("rejects domain with invalid characters", "ex@mple.com!"),
         ("rejects domain labels starting with hyphen", "sub.-example.com"),
@@ -318,7 +318,6 @@ class TestMpicCaaChecker:
         #    value = *(%x21-3A / %x3C-7E)
         with pytest.raises(ValueError) as error:
             MpicCaaChecker.extract_domain_and_parameters_from_caa_value(caa_value)
-            assert str(error.value) == "moo"  # ErrorMessages.CAA_VALUE_MALFORMED.message
 
     # fmt: off
     @pytest.mark.parametrize("test_description, caa_values", [
