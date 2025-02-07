@@ -278,7 +278,7 @@ class TestMpicCaaChecker:
     ])
     # fmt: on
     def extract_domain_and_parameters_from_caa_value__should_parse_domain_and_parameters_given_well_formed_value(
-            self, test_description, caa_value, expected_domain, expected_parameters
+        self, test_description, caa_value, expected_domain, expected_parameters
     ):
         domain, parameters = MpicCaaChecker.extract_domain_and_parameters_from_caa_value(caa_value)
         assert domain == expected_domain
@@ -308,7 +308,7 @@ class TestMpicCaaChecker:
     ])
     # fmt: on
     def extract_domain_and_parameters_from_caa_value__should_raise_error_given_malformed_value(
-            self, test_description, caa_value
+        self, test_description, caa_value
     ):
         # ABNF for CAA record value:
         #    issue-value = *WSP [issuer-domain-name *WSP] [";" *WSP [parameters *WSP]]
@@ -331,7 +331,7 @@ class TestMpicCaaChecker:
     ])
     # fmt: on
     def do_caa_values_permit_issuance__should_return_true_given_matching_well_formed_records(
-            self, test_description, caa_values
+        self, test_description, caa_values
     ):
         caa_domains = ["ca111.org", "ca333.net"]
         assert MpicCaaChecker.do_caa_values_permit_issuance(caa_values, caa_domains) is True
@@ -348,7 +348,7 @@ class TestMpicCaaChecker:
     ])
     # fmt: on
     def do_caa_values_permit_issuance__should_return_false_given_non_matching_well_formed_records(
-            self, test_description, rrset_values
+        self, test_description, rrset_values
     ):
         caa_domains = ["ca111.org"]
         assert MpicCaaChecker.do_caa_values_permit_issuance(rrset_values, caa_domains) is False
@@ -361,7 +361,7 @@ class TestMpicCaaChecker:
     ])
     # fmt: on
     def do_caa_values_permit_issuance__should_return_false_given_matching_but_malformed_records(
-            self, test_description, rrset_values
+        self, test_description, rrset_values
     ):
         caa_domains = ["ca111.org"]
         assert MpicCaaChecker.do_caa_values_permit_issuance(rrset_values, caa_domains) is False

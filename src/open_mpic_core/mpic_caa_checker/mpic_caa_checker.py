@@ -155,7 +155,7 @@ class MpicCaaChecker:
         issuance_permitted = False
         for value in value_list:
             try:
-                # we don't do anything with the parameters yet, but we will in the future
+                # we don't do anything with the parameters yet, but we will eventually
                 domain, parameters = MpicCaaChecker.extract_domain_and_parameters_from_caa_value(value)
                 if domain in caa_domains:  # if the value is in the list of valid CAA domains
                     issuance_permitted = True
@@ -166,7 +166,7 @@ class MpicCaaChecker:
         return issuance_permitted  # if nothing matched, we cannot issue
 
     @staticmethod
-    def extract_domain_and_parameters_from_caa_value(caa_value: str) -> tuple[str, Optional[dict[str,str]]]:
+    def extract_domain_and_parameters_from_caa_value(caa_value: str) -> tuple[str, Optional[dict[str, str]]]:
         # Split on semicolons since they're prohibited in parameter tag/value
         issuer_domain_name = ""
         parameters = {}
@@ -196,7 +196,7 @@ class MpicCaaChecker:
 
                     # validate value format (value = *(%x21-3A / %x3C-7E))
                     for character in value:
-                        if not (0x21 <= ord(character) <= 0x7e and character != ";"):
+                        if not (0x21 <= ord(character) <= 0x7E and character != ";"):
                             raise ValueError(f"CAA value contains disallowed character: {value!r}")
 
                     parameters[tag] = value
