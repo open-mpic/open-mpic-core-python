@@ -14,10 +14,11 @@ from open_mpic_core import get_logger
 
 ISSUE_TAG: Final[str] = "issue"
 ISSUEWILD_TAG: Final[str] = "issuewild"
+ISSUEMAIL_TAG: Final[str] = "issuemail"
+IODEF_TAG: Final[str] = "iodef"
 # to accommodate email and phone based DCV that gets contact info from CAA records
 CONTACTEMAIL_TAG: Final[str] = "contactemail"
 CONTACTPHONE_TAG: Final[str] = "contactphone"
-
 
 logger = get_logger(__name__)
 
@@ -117,7 +118,7 @@ class MpicCaaChecker:
         return caa_check_response
 
     @staticmethod
-    def is_valid_for_issuance(caa_domains, is_wc_domain, rrset, disallow_any_parameters: bool = False):
+    def is_valid_for_issuance(caa_domains, is_wc_domain, rrset) -> bool:
         issue_tags = []
         issue_wild_tags = []
         has_unknown_critical_flags = False
@@ -132,7 +133,8 @@ class MpicCaaChecker:
             elif tag_lower == ISSUEWILD_TAG:
                 issue_wild_tags.append(val)
             elif (
-                    tag_lower != CONTACTEMAIL_TAG and tag_lower != CONTACTPHONE_TAG and resource_record.flags & 0b10000000
+                not (tag_lower in [CONTACTEMAIL_TAG, CONTACTPHONE_TAG, ISSUEMAIL_TAG, IODEF_TAG])
+                and resource_record.flags & 0b10000000
             ):  # bitwise-and to check if flags are 128 (the critical flag)
                 has_unknown_critical_flags = True
 
@@ -140,56 +142,28 @@ class MpicCaaChecker:
             valid_for_issuance = False
         else:
             if is_wc_domain and len(issue_wild_tags) > 0:
-                valid_for_issuance = MpicCaaChecker.do_rr_values_permit_issuance(
-                    issue_wild_tags, caa_domains, disallow_any_parameters
-                )
+                valid_for_issuance = MpicCaaChecker.do_caa_values_permit_issuance(issue_wild_tags, caa_domains)
             elif len(issue_tags) > 0:
-                valid_for_issuance = MpicCaaChecker.do_rr_values_permit_issuance(
-                    issue_tags, caa_domains, disallow_any_parameters
-                )
+                valid_for_issuance = MpicCaaChecker.do_caa_values_permit_issuance(issue_tags, caa_domains)
             else:
                 # We had no unknown critical tags, and we found no issue tags. Issuance can proceed.
                 valid_for_issuance = True
         return valid_for_issuance
 
     @staticmethod
-    def do_rr_values_permit_issuance(value_list: list, caa_domains, disallow_any_parameters: bool = False):
+    def do_caa_values_permit_issuance(value_list: list, caa_domains):
+        issuance_permitted = False
         for value in value_list:
-            # if we don't allow parameters, check if anything follows the semicolon
-            if disallow_any_parameters and ";" in value and value.split(";")[1].strip() != "":
-                continue
+            try:
+                # we don't do anything with the parameters yet, but we will in the future
+                domain, parameters = MpicCaaChecker.extract_domain_and_parameters_from_caa_value(value)
+                if domain in caa_domains:  # if the value is in the list of valid CAA domains
+                    issuance_permitted = True
+                    break
+            except ValueError as ve:
+                logger.warning(f"Error parsing CAA value: {ve}")
 
-            # otherwise, if we do allow parameters, for now just ignore them all
-            # TODO check for well-formed parameters, for any required parameters, for "understood" parameters
-            if ";" in value:
-                value = value.split(";")[0]
-
-            value_no_whitespace = value.strip()
-            if value_no_whitespace in caa_domains:  # if the value is in the list of valid CAA domains
-                return True
-        return False  # if nothing matched, we cannot issue
-
-    @staticmethod
-    def is_caa_value_well_formed(value: str) -> bool:
-        is_well_formed = False
-        issuer_domain_part = ""
-        # Check if the value is well-formed according to the CAA specification
-        # https://tools.ietf.org/html/rfc8659#section-4.2
-        if ";" in value:
-            # If the value contains a semicolon, it must be followed by a parameter
-            # The parameter is optional, but if it is present, it must be well-formed
-            value_parts = value.split(";")
-            issuer_domain_part = value_parts[0].strip()
-            parameter_part = value_parts[1].strip()
-            # validate the parameter part
-            if parameter_part:
-                # The parameter must be a valid domain name
-                is_well_formed = DomainEncoder.is_domain_name(parameter_part)
-            else:
-                is_well_formed = True
-        else:
-            issuer_domain_part = value.strip()
-        return is_well_formed
+        return issuance_permitted  # if nothing matched, we cannot issue
 
     @staticmethod
     def extract_domain_and_parameters_from_caa_value(caa_value: str) -> tuple[str, Optional[dict[str,str]]]:

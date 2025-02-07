@@ -258,6 +258,7 @@ class TestMpicCaaChecker:
         assert all(text in log_contents for text in ["seconds", "TRACE", caa_checker.logger.name])
 
     # fmt: off
+    # noinspection PyUnusedLocal
     @pytest.mark.parametrize("test_description, caa_value, expected_domain, expected_parameters", [
         ("empty value (just whitespace)", "", "", {}),
         ("bare domain", "ca111.com", "ca111.com", {}),
@@ -284,6 +285,7 @@ class TestMpicCaaChecker:
         assert parameters == expected_parameters
 
     # fmt: off
+    # noinspection PyUnusedLocal
     @pytest.mark.parametrize("test_description, caa_value", [
         ("rejects domain starting with dot", ".example.com"),
         ("rejects domain ending with dot", "ca111.com."),
@@ -320,58 +322,49 @@ class TestMpicCaaChecker:
             MpicCaaChecker.extract_domain_and_parameters_from_caa_value(caa_value)
 
     # fmt: off
+    # noinspection PyUnusedLocal
     @pytest.mark.parametrize("test_description, caa_values", [
         ("single matching record and no parameters present", ["ca111.org"]),
         ("multiple records with one match and no parameters present", ["ca111.org", "ca222.com"]),
         ("record with whitespace", ["  ca111.org  "]),
-        ("matching record with parameters that should be ignored", ["ca111.org; policy=ev"]),
-        ("matching record with malformed parameters that should be ignored", ["ca111.org; policy==ev"]),
-        ("matching record with multiple parameters that should be ignored", ["ca111.org; policy=ev; account=12345"]),
+        ("matching record with parameters that should be ignored", ["ca111.org; policy=ev; account=12345"]),
     ])
     # fmt: on
-    def do_rr_values_permit_issuance__should_return_true_given_matching_records_and_permitting_all_parameters(
+    def do_caa_values_permit_issuance__should_return_true_given_matching_well_formed_records(
             self, test_description, caa_values
     ):
         caa_domains = ["ca111.org", "ca333.net"]
-        disallow_parameters = False
-        assert MpicCaaChecker.do_rr_values_permit_issuance(caa_values, caa_domains, disallow_parameters) is True
+        assert MpicCaaChecker.do_caa_values_permit_issuance(caa_values, caa_domains) is True
 
     # fmt: off
+    # noinspection PyUnusedLocal
     @pytest.mark.parametrize("test_description, rrset_values", [
+        ("empty record", [""]),
+        ("empty record with semicolon only", [";"]),
+        ("empty record with leading semicolon", [";policy=ev"]),
         ("single non-matching record and no parameters present", ["ca222.org"]),
         ("multiple records with no matches and no parameters present", ["ca333.net", "ca444.com"]),
-        ("empty record with leading semicolon", [";ca222.com"]),
         ("non-matching record with parameters that should be ignored", ["ca222.org; favorite-ca=ca111.org"]),
-        ("non-matching record with malformed parameters that should be ignored", ["ca222.org; policy==ev"]),
     ])
     # fmt: on
-    def do_rr_values_permit_issuance__should_return_false_given_non_matching_records_and_permitting_all_parameters(
+    def do_caa_values_permit_issuance__should_return_false_given_non_matching_well_formed_records(
             self, test_description, rrset_values
     ):
         caa_domains = ["ca111.org"]
-        disallow_parameters = False
-        assert MpicCaaChecker.do_rr_values_permit_issuance(rrset_values, caa_domains, disallow_parameters) is False
-
-    @pytest.mark.parametrize("disallow_parameters", [True, False])
-    def do_rr_values_permit_issuance__should_return_true_given_matching_record_and_empty_parameter_set(
-            self, disallow_parameters
-    ):
-        caa_domains = ["ca111.org"]
-        rrset_values = ["ca111.org;"]
-        assert MpicCaaChecker.do_rr_values_permit_issuance(rrset_values, caa_domains, disallow_parameters) is True
+        assert MpicCaaChecker.do_caa_values_permit_issuance(rrset_values, caa_domains) is False
 
     # fmt: off
+    # noinspection PyUnusedLocal
     @pytest.mark.parametrize("test_description, rrset_values", [
-        ("single matching record and one parameter present", ["ca111.org; policy=ev"]),
-        ("single matching record and multiple parameters present", ["ca111.org; policy=ev; account=12345"]),
+        ("matching record with empty parameter", ["ca111.org; policy"]),
+        ("matching record with illegal character in parameter", ["ca111.org; account=123föur5"]),
     ])
     # fmt: on
-    def do_rr_values_permit_issuance__should_return_false_given_matching_records_and_disallowing_any_parameters(
+    def do_caa_values_permit_issuance__should_return_false_given_matching_but_malformed_records(
             self, test_description, rrset_values
     ):
         caa_domains = ["ca111.org"]
-        disallow_parameters = True
-        assert MpicCaaChecker.do_rr_values_permit_issuance(rrset_values, caa_domains, disallow_parameters) is False
+        assert MpicCaaChecker.do_caa_values_permit_issuance(rrset_values, caa_domains) is False
 
     def is_valid_for_issuance__should_be_true_given_matching_issue_tag_for_non_wildcard_domain(self):
         records = [MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org")]
@@ -422,21 +415,28 @@ class TestMpicCaaChecker:
         result = MpicCaaChecker.is_valid_for_issuance(caa_domains=["ca1.org"], is_wc_domain=False, rrset=test_rrset)
         assert result is True
 
-    @pytest.mark.parametrize("known_tag", ["issue", "issuewild"])  # TODO what about issuemail, and iodef? (they fail)
+    @pytest.mark.parametrize("known_tag", ["issue", "issuewild", "iodef", "issuemail", "contactemail", "contactphone"])
     def is_valid_for_issuance__should_be_true_given_critical_flag_and_known_tag(self, known_tag):
         records = [MockDnsObjectCreator.create_caa_record(128, known_tag, "ca1.org")]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
         result = MpicCaaChecker.is_valid_for_issuance(caa_domains=["ca1.org"], is_wc_domain=False, rrset=test_rrset)
         assert result is True
 
-    def is_valid_for_issuance__should_be_false_given_only_non_matching_issue_tags(self):
-        records = [
-            MockDnsObjectCreator.create_caa_record(0, "issue", "ca5.org"),
-            MockDnsObjectCreator.create_caa_record(0, "issue", "ca6.org"),
-        ]
+    @pytest.mark.parametrize("tag_value", [";", "ca5.org", ";policy=ev"])
+    def is_valid_for_issuance__should_be_false_given_non_matching_or_restrictive_issue_tags(self, tag_value):
+        records = [MockDnsObjectCreator.create_caa_record(0, "issue", tag_value)]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
         result = MpicCaaChecker.is_valid_for_issuance(caa_domains=["ca1.org"], is_wc_domain=False, rrset=test_rrset)
         assert result is False
+
+    def is_valid_for_issuance__should_be_true_given_restrictive_tag_alongside_matching_tag(self):
+        records = [
+            MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org"),
+            MockDnsObjectCreator.create_caa_record(0, "issue", ";"),
+        ]
+        test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
+        result = MpicCaaChecker.is_valid_for_issuance(caa_domains=["ca1.org"], is_wc_domain=False, rrset=test_rrset)
+        assert result is True
 
     def is_valid_for_issuance__should_be_false_given_only_non_matching_issuewild_tags_for_wildcard_domain(self):
         records = [
