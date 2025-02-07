@@ -421,13 +421,6 @@ class TestMpicCaaChecker:
         result = MpicCaaChecker.is_valid_for_issuance(caa_domains=["ca1.org"], is_wc_domain=False, rrset=test_rrset)
         assert result is True
 
-    @pytest.mark.parametrize("tag_value", [";", "ca5.org", ";policy=ev"])
-    def is_valid_for_issuance__should_be_false_given_non_matching_or_restrictive_issue_tags(self, tag_value):
-        records = [MockDnsObjectCreator.create_caa_record(0, "issue", tag_value)]
-        test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
-        result = MpicCaaChecker.is_valid_for_issuance(caa_domains=["ca1.org"], is_wc_domain=False, rrset=test_rrset)
-        assert result is False
-
     def is_valid_for_issuance__should_be_true_given_restrictive_tag_alongside_matching_tag(self):
         records = [
             MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org"),
@@ -436,6 +429,13 @@ class TestMpicCaaChecker:
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
         result = MpicCaaChecker.is_valid_for_issuance(caa_domains=["ca1.org"], is_wc_domain=False, rrset=test_rrset)
         assert result is True
+
+    @pytest.mark.parametrize("tag_value", [";", "ca5.org", ";policy=ev"])
+    def is_valid_for_issuance__should_be_false_given_non_matching_or_restrictive_issue_tags(self, tag_value):
+        records = [MockDnsObjectCreator.create_caa_record(0, "issue", tag_value)]
+        test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
+        result = MpicCaaChecker.is_valid_for_issuance(caa_domains=["ca1.org"], is_wc_domain=False, rrset=test_rrset)
+        assert result is False
 
     def is_valid_for_issuance__should_be_false_given_only_non_matching_issuewild_tags_for_wildcard_domain(self):
         records = [
