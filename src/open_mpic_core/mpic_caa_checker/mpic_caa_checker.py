@@ -176,10 +176,7 @@ class MpicCaaChecker:
             issuer_domain_name = parts[0].strip()
             param_list = parts[1:]
 
-            # Handle case where semicolon follows domain but no parameters given
-            if len(param_list) == 1 and param_list[0].strip() == "":
-                pass  # do nothing...
-            else:
+            if not (len(param_list) == 1 and param_list[0].strip() == ""):  # if actual parameters follow the semicolon
                 for parameter in param_list:
                     # Split on first equals sign (allowed in value but not tag)
                     tag_and_value = parameter.split("=", 1)
