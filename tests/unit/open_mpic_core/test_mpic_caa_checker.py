@@ -257,37 +257,122 @@ class TestMpicCaaChecker:
         log_contents = self.log_output.getvalue()
         assert all(text in log_contents for text in ["seconds", "TRACE", caa_checker.logger.name])
 
-    @pytest.mark.parametrize(
-        "value_list, caa_domains",
-        [
-            (["ca111.org"], ["ca111.org"]),
-            (["ca111.org", "ca222.com"], ["ca222.com"]),
-            (["ca111.org", "ca222.com"], ["ca333.net", "ca111.org"]),
-        ],
-    )
-    def does_value_list_permit_issuance__should_return_true_given_one_value_found_in_caa_domains(
-        self, value_list, caa_domains
+    # fmt: off
+    @pytest.mark.parametrize("test_description, caa_value, expected_domain, expected_parameters", [
+        ("empty value (just whitespace)", "", "", {}),
+        ("bare domain", "ca111.com", "ca111.com", {}),
+        ("domain with leading/trailing whitespace", "  ca111.com  ", "ca111.com", {}),
+        ("domain with mixed case", "Ca111.com", "Ca111.com", {}),
+        ("domain with numeric labels", "1ca111.com", "1ca111.com", {}),
+        ("domain with hyphenated labels", "c-a-111.com", "c-a-111.com", {}),
+        ("domain with multiple labels", "sub.ca111.com", "sub.ca111.com", {}),
+        ("domain followed by semicolon with no parameters", "ca111.com;", "ca111.com", {}),
+        ("domain with single simple parameter", "ca111.com; policy=ev", "ca111.com", {"policy": "ev"}),
+        ("domain with multiple parameters", "ca111.com; policy=ev;account=12345", "ca111.com", {"policy": "ev", "account": "12345"}),
+        ("parameters with extra whitespace around separators", "ca111.com; policy = ev; account = 12345", "ca111.com", {"policy": "ev", "account": "12345"}),
+        ("parameter tags with multiple consecutive dashes", "ca111.com; validation---method=http-01", "ca111.com", {"validation---method": "http-01"}),
+        ("parameter values containing some special ASCII characters", "ca111.com; account=!@_[}#$z", "ca111.com", {"account": "!@_[}#$z"}),
+        ("parameters without values", "ca111.com; policy=; account=12345", "ca111.com", {"policy": "", "account": "12345"}),  # why???
+        ("parameters without domain", "; policy=ev", "", {"policy": "ev"}),
+    ])
+    # fmt: on
+    def extract_domain_and_parameters_from_caa_value__should_parse_domain_and_parameters_given_well_formed_value(
+            self, test_description, caa_value, expected_domain, expected_parameters
     ):
-        result = MpicCaaChecker.does_value_list_permit_issuance(value_list, caa_domains)
-        assert result is True
+        domain, parameters = MpicCaaChecker.extract_domain_and_parameters_from_caa_value(caa_value)
+        assert domain == expected_domain
+        assert parameters == expected_parameters
 
-    def does_value_list_permit_issuance__should_return_false_given_value_not_found_in_caa_domains(self):
-        value_list = ["ca222.org"]
-        caa_domains = ["ca111.com"]
-        result = MpicCaaChecker.does_value_list_permit_issuance(value_list, caa_domains)
-        assert result is False
+    # fmt: off
+    @pytest.mark.parametrize("test_description, caa_value", [
+        ("rejects domain starting with dot", ".example.com"),
+        ("rejects domain ending with dot", "example.com."),
+        ("rejects domain with consecutive dots", "example..com"),
+        ("rejects domain with invalid characters", "ex@mple.com!"),
+        ("rejects domain labels starting with hyphen", "sub.-example.com"),
+        ("rejects domain labels ending with hyphen", "example-.com"),
+        ("rejects parameter tag starting with hyphen", "ca111.org; -policy=ev"),
+        ("rejects parameter tag ending with hyphen", "ca111.org; policy-=ev"),
+        ("rejects parameter without equals sign", "ca111.org; policy"),
+        # ("rejects parameter without value", "ca111.org; policy="),
+        ("rejects parameter value containing semicolon", "ca111.org; policy=ev;account=12;345"),
+        ("rejects parameter value containing control characters", "ca111.org; policy=ev;account=\x00"),
+        ("rejects parameter tag with illegal characters", "ca111.org; queensrÿche=ev"),
+        ("rejects parameter value with illegal characters in value", "ca111.org; policy=mötleycrüe"),
+        ("rejects parameter tag containing space", "ca111.org; cool policy=ev"),
+        ("rejects parameter value containing space", "ca111.org; policy=ev cool"),
+        ("rejects trailing semicolon after parameter", "ca111.org; policy=ev;"),  # why???
+        ("rejects malformed parameter separators", "ca111.org; policy=ev;;account=12345"),
+    ])
+    # fmt: on
+    def extract_domain_and_parameters_from_caa_value__should_raise_error_given_malformed_value(
+            self, test_description, caa_value
+    ):
+        # ABNF for CAA record value:
+        #    issue-value = *WSP [issuer-domain-name *WSP] [";" *WSP [parameters *WSP]]
+        #    issuer-domain-name = label *("." label)
+        #    label = (ALPHA / DIGIT) *( *("-") (ALPHA / DIGIT))
+        #    parameters = (parameter *WSP ";" *WSP parameters) / parameter
+        #    parameter = tag *WSP "=" *WSP value
+        #    tag = (ALPHA / DIGIT) *( *("-") (ALPHA / DIGIT))
+        #    value = *(%x21-3A / %x3C-7E)
+        with pytest.raises(ValueError) as error:
+            MpicCaaChecker.extract_domain_and_parameters_from_caa_value(caa_value)
+            assert str(error.value) == "moo"  # ErrorMessages.CAA_VALUE_MALFORMED.message
 
-    def does_value_list_permit_issuance__should_return_false_given_only_values_with_extensions(self):
-        value_list = ['0 issue "ca111.com; policy=ev"']
-        caa_domains = ["ca111.com"]
-        result = MpicCaaChecker.does_value_list_permit_issuance(value_list, caa_domains)
-        assert result is False
+    # fmt: off
+    @pytest.mark.parametrize("test_description, caa_values", [
+        ("single matching record and no parameters present", ["ca111.org"]),
+        ("multiple records with one match and no parameters present", ["ca111.org", "ca222.com"]),
+        ("record with whitespace", ["  ca111.org  "]),
+        ("matching record with parameters that should be ignored", ["ca111.org; policy=ev"]),
+        ("matching record with malformed parameters that should be ignored", ["ca111.org; policy==ev"]),
+        ("matching record with multiple parameters that should be ignored", ["ca111.org; policy=ev; account=12345"]),
+    ])
+    # fmt: on
+    def do_rr_values_permit_issuance__should_return_true_given_matching_records_and_permitting_all_parameters(
+            self, test_description, caa_values
+    ):
+        caa_domains = ["ca111.org", "ca333.net"]
+        disallow_parameters = False
+        assert MpicCaaChecker.do_rr_values_permit_issuance(caa_values, caa_domains, disallow_parameters) is True
 
-    def does_value_list_permit_issuance__should_ignore_whitespace_around_values(self):
-        value_list = ["  ca111.com  "]
-        caa_domains = ["ca111.com"]
-        result = MpicCaaChecker.does_value_list_permit_issuance(value_list, caa_domains)
-        assert result is True
+    # fmt: off
+    @pytest.mark.parametrize("test_description, rrset_values", [
+        ("single non-matching record and no parameters present", ["ca222.org"]),
+        ("multiple records with no matches and no parameters present", ["ca333.net", "ca444.com"]),
+        ("empty record with leading semicolon", [";ca222.com"]),
+        ("non-matching record with parameters that should be ignored", ["ca222.org; favorite-ca=ca111.org"]),
+        ("non-matching record with malformed parameters that should be ignored", ["ca222.org; policy==ev"]),
+    ])
+    # fmt: on
+    def do_rr_values_permit_issuance__should_return_false_given_non_matching_records_and_permitting_all_parameters(
+            self, test_description, rrset_values
+    ):
+        caa_domains = ["ca111.org"]
+        disallow_parameters = False
+        assert MpicCaaChecker.do_rr_values_permit_issuance(rrset_values, caa_domains, disallow_parameters) is False
+
+    @pytest.mark.parametrize("disallow_parameters", [True, False])
+    def do_rr_values_permit_issuance__should_return_true_given_matching_record_and_empty_parameter_set(
+            self, disallow_parameters
+    ):
+        caa_domains = ["ca111.org"]
+        rrset_values = ["ca111.org;"]
+        assert MpicCaaChecker.do_rr_values_permit_issuance(rrset_values, caa_domains, disallow_parameters) is True
+
+    # fmt: off
+    @pytest.mark.parametrize("test_description, rrset_values", [
+        ("single matching record and one parameter present", ["ca111.org; policy=ev"]),
+        ("single matching record and multiple parameters present", ["ca111.org; policy=ev; account=12345"]),
+    ])
+    # fmt: on
+    def do_rr_values_permit_issuance__should_return_false_given_matching_records_and_disallowing_any_parameters(
+            self, test_description, rrset_values
+    ):
+        caa_domains = ["ca111.org"]
+        disallow_parameters = True
+        assert MpicCaaChecker.do_rr_values_permit_issuance(rrset_values, caa_domains, disallow_parameters) is False
 
     def is_valid_for_issuance__should_be_true_given_matching_issue_tag_for_non_wildcard_domain(self):
         records = [MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org")]
