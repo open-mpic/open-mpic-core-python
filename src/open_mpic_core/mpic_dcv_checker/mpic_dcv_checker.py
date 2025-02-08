@@ -269,10 +269,6 @@ class MpicDcvChecker:
                             continue
                     else:
                         record_data_as_string = MpicDcvChecker.extract_value_from_record(record_data)
-                    # only need to remove enclosing quotes if they're there, e.g., for a TXT record
-                    # TODO: This line could error if there is a literal quote in a record type that is not TXT.
-                    if record_data_as_string[0] == '"' and record_data_as_string[-1] == '"':
-                        record_data_as_string = record_data_as_string[1:-1]
                     records_as_strings.append(record_data_as_string)
 
         dcv_check_response.details.response_code = response_code
