@@ -412,7 +412,7 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
 
-    @pytest.mark.parametrize("record_type", [DnsRecordType.TXT, DnsRecordType.CNAME, DnsRecordType.CAA])
+    @pytest.mark.parametrize("record_type", [DnsRecordType.TXT, DnsRecordType.CAA])  # CNAME gets idna auto-converted
     async def dns_validation__should_handle_null_bytes_and_unicode_strings_in_record_values(self, record_type, mocker):
         dcv_request = ValidCheckCreator.create_valid_dns_check_request(record_type)
         # create string with null byte and utf-8 character
