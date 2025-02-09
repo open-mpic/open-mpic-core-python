@@ -268,13 +268,7 @@ class MpicDcvChecker:
                         else:
                             continue
                     else:
-                        # TODO: we should not rely on the to_text method of records to parse their value.
-                        #  Each record type should have its own branch and value should be read directly from the rdata.
-                        record_data_as_string = record_data.to_text()
-                    # only need to remove enclosing quotes if they're there, e.g., for a TXT record
-                    # TODO: This line could error if there is a literal quote in a record type that is not TXT.
-                    if record_data_as_string[0] == '"' and record_data_as_string[-1] == '"':
-                        record_data_as_string = record_data_as_string[1:-1]
+                        record_data_as_string = MpicDcvChecker.extract_value_from_record(record_data)
                     records_as_strings.append(record_data_as_string)
 
         dcv_check_response.details.response_code = response_code
@@ -297,3 +291,18 @@ class MpicDcvChecker:
                 expected_dns_record_content in record for record in records_as_strings
             )
         dcv_check_response.timestamp_ns = time.time_ns()
+
+    # noinspection PyUnresolvedReferences
+    @staticmethod
+    def extract_value_from_record(record: dns.rdata.Rdata) -> str:
+        record_value = None
+        match record.rdtype:
+            case dns.rdatatype.TXT:
+                record_value = b"".join(record.strings).decode("utf-8")  # TODO errors='strict' or replace (lenient)?
+            case dns.rdatatype.CAA:
+                record_value = record.value.decode("utf-8")
+            case dns.rdatatype.CNAME:
+                record_value = b".".join(record.target.labels).decode("utf-8")
+            case dns.rdatatype.A | dns.rdatatype.AAAA:
+                record_value = record.address
+        return record_value

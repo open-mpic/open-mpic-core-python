@@ -1,8 +1,10 @@
+import re
 import time
-from typing import Final
+from typing import Final, Optional
 import dns.resolver
 import dns.asyncresolver
 from dns.name import Name
+from dns.name import from_text
 from dns.rrset import RRset
 
 from open_mpic_core import CaaCheckRequest, CaaCheckResponse, CaaCheckResponseDetails
@@ -12,10 +14,11 @@ from open_mpic_core import get_logger
 
 ISSUE_TAG: Final[str] = "issue"
 ISSUEWILD_TAG: Final[str] = "issuewild"
+ISSUEMAIL_TAG: Final[str] = "issuemail"
+IODEF_TAG: Final[str] = "iodef"
 # to accommodate email and phone based DCV that gets contact info from CAA records
 CONTACTEMAIL_TAG: Final[str] = "contactemail"
 CONTACTPHONE_TAG: Final[str] = "contactphone"
-
 
 logger = get_logger(__name__)
 
@@ -31,19 +34,6 @@ class MpicCaaChecker:
         self.logger = logger.getChild(self.__class__.__name__)
         if log_level is not None:
             self.logger.setLevel(log_level)
-
-    @staticmethod
-    def does_value_list_permit_issuance(value_list: list, caa_domains):
-        for value in value_list:
-            # We currently do not have any parsing for CAA extensions, so we'll never accept a value with an extension.
-            if ";" in value:
-                continue
-            # One of the CAA records in this set was an exact match on a CAA domain
-            value_no_whitespace = value.strip()
-            if value_no_whitespace in caa_domains:
-                return True
-        # If nothing matched, we cannot issue.
-        return False
 
     @staticmethod
     async def find_caa_records_and_domain(caa_request) -> tuple[RRset, Name]:
@@ -62,38 +52,6 @@ class MpicCaaChecker:
                 raise MpicCaaLookupException from Exception(e)
 
         return rrset, domain
-
-    @staticmethod
-    def is_valid_for_issuance(caa_domains, is_wc_domain, rrset):
-        issue_tags = []
-        issue_wild_tags = []
-        has_unknown_critical_flags = False
-
-        # Note: a record with critical flag and 'issue' tag will be considered valid for issuance
-        for resource_record in rrset:
-            tag = resource_record.tag.decode("utf-8")
-            tag_lower = tag.lower()
-            val = resource_record.value.decode("utf-8")
-            if tag_lower == ISSUE_TAG:
-                issue_tags.append(val)
-            elif tag_lower == ISSUEWILD_TAG:
-                issue_wild_tags.append(val)
-            elif (
-                tag_lower != CONTACTEMAIL_TAG and tag_lower != CONTACTPHONE_TAG and resource_record.flags & 0b10000000
-            ):  # bitwise-and to check if flags are 128 (the critical flag)
-                has_unknown_critical_flags = True
-
-        if has_unknown_critical_flags:
-            valid_for_issuance = False
-        else:
-            if is_wc_domain and len(issue_wild_tags) > 0:
-                valid_for_issuance = MpicCaaChecker.does_value_list_permit_issuance(issue_wild_tags, caa_domains)
-            elif len(issue_tags) > 0:
-                valid_for_issuance = MpicCaaChecker.does_value_list_permit_issuance(issue_tags, caa_domains)
-            else:
-                # We had no unknown critical tags, and we found no issue tags. Issuance can proceed.
-                valid_for_issuance = True
-        return valid_for_issuance
 
     async def check_caa(self, caa_request: CaaCheckRequest) -> CaaCheckResponse:
         # noinspection PyUnresolvedReferences
@@ -158,3 +116,98 @@ class MpicCaaChecker:
         # noinspection PyUnresolvedReferences
         self.logger.trace(f"Completed CAA for {caa_request.domain_or_ip_target}")
         return caa_check_response
+
+    @staticmethod
+    def is_valid_for_issuance(caa_domains, is_wc_domain, rrset) -> bool:
+        issue_tags = []
+        issue_wild_tags = []
+        has_unknown_critical_flags = False
+
+        # Note: a record with critical flag and 'issue' tag will be considered valid for issuance
+        for resource_record in rrset:
+            tag = resource_record.tag.decode("utf-8")
+            tag_lower = tag.lower()
+            val = resource_record.value.decode("utf-8")
+            if tag_lower == ISSUE_TAG:
+                issue_tags.append(val)
+            elif tag_lower == ISSUEWILD_TAG:
+                issue_wild_tags.append(val)
+            elif (
+                not (tag_lower in [CONTACTEMAIL_TAG, CONTACTPHONE_TAG, ISSUEMAIL_TAG, IODEF_TAG])
+                and resource_record.flags & 0b10000000
+            ):  # bitwise-and to check if flags are 128 (the critical flag)
+                has_unknown_critical_flags = True
+
+        if has_unknown_critical_flags:
+            valid_for_issuance = False
+        else:
+            if is_wc_domain and len(issue_wild_tags) > 0:
+                valid_for_issuance = MpicCaaChecker.do_caa_values_permit_issuance(issue_wild_tags, caa_domains)
+            elif len(issue_tags) > 0:
+                valid_for_issuance = MpicCaaChecker.do_caa_values_permit_issuance(issue_tags, caa_domains)
+            else:
+                # We had no unknown critical tags, and we found no issue tags. Issuance can proceed.
+                valid_for_issuance = True
+        return valid_for_issuance
+
+    @staticmethod
+    def do_caa_values_permit_issuance(value_list: list, caa_domains):
+        issuance_permitted = False
+        for value in value_list:
+            try:
+                # we don't do anything with the parameters yet, but we will eventually
+                domain, parameters = MpicCaaChecker.extract_domain_and_parameters_from_caa_value(value)
+                if domain in caa_domains:  # if the value is in the list of valid CAA domains
+                    issuance_permitted = True
+                    break
+            except ValueError as ve:
+                logger.warning(f"Error parsing CAA value: {ve}")
+
+        return issuance_permitted  # if nothing matched, we cannot issue
+
+    @staticmethod
+    def extract_domain_and_parameters_from_caa_value(caa_value: str) -> tuple[str, Optional[dict[str, str]]]:
+        # Split on semicolons since they're prohibited in parameter tag/value
+        issuer_domain_name = ""
+        parameters = {}
+        if ";" in caa_value:
+            parts = caa_value.split(";")
+            # Extract and trim issuer domain name
+            issuer_domain_name = parts[0].strip()
+            param_list = parts[1:]
+
+            if not (len(param_list) == 1 and param_list[0].strip() == ""):  # if actual parameters follow the semicolon
+                for parameter in param_list:
+                    # Split on first equals sign (allowed in value but not tag)
+                    tag_and_value = parameter.split("=", 1)
+                    if len(tag_and_value) != 2:
+                        raise ValueError(f"CAA parameter not formatted as tag=value: {parameter!r}")
+
+                    tag = tag_and_value[0].strip()
+                    value = tag_and_value[1].strip()
+
+                    # validate tag format (tag = (ALPHA / DIGIT) *( *("-") (ALPHA / DIGIT)))
+                    tagged_match_regex = r"^[a-zA-Z0-9]+(-*[a-zA-Z0-9]+)*$"
+                    if not re.match(tagged_match_regex, tag):
+                        raise ValueError(f"CAA tag contains disallowed character: {tag!r}")
+
+                    # validate value format (value = *(%x21-3A / %x3C-7E))
+                    for character in value:
+                        if not (0x21 <= ord(character) <= 0x7E and character != ";"):
+                            raise ValueError(f"CAA value contains disallowed character: {value!r}")
+
+                    parameters[tag] = value
+        else:
+            issuer_domain_name = caa_value.strip()
+
+        if not issuer_domain_name == "":  # empty domain name is valid for CAA
+            domain_labels = issuer_domain_name.split(".")
+
+            # validate label format (label = (ALPHA / DIGIT) *( *("-") (ALPHA / DIGIT)))
+            domain_label_match_regex = r"^[a-zA-Z0-9]+(-*[a-zA-Z0-9]+)*$"
+            is_valid = all(re.match(domain_label_match_regex, label) for label in domain_labels)
+
+            if not is_valid:
+                raise ValueError(f"CAA issuer domain name is not a valid domain name: {issuer_domain_name!r}")
+
+        return issuer_domain_name, parameters
