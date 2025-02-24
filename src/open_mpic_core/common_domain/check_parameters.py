@@ -99,7 +99,7 @@ class DcvAcmeHttp01ValidationParameters(DcvValidationParameters):
 
 class DcvAcmeDns01ValidationParameters(DcvValidationParameters):
     validation_method: Literal[DcvValidationMethod.ACME_DNS_01] = DcvValidationMethod.ACME_DNS_01
-    key_authorization: str
+    key_authorization_hash: str
     dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
     dns_name_prefix: Literal["_acme-challenge"] = "_acme-challenge"
 
