@@ -4,7 +4,6 @@ from typing import Final, Optional
 import dns.resolver
 import dns.asyncresolver
 from dns.name import Name
-from dns.name import from_text
 from dns.rrset import RRset
 
 from open_mpic_core import CaaCheckRequest, CaaCheckResponse, CaaCheckResponseDetails
@@ -35,8 +34,7 @@ class MpicCaaChecker:
         if log_level is not None:
             self.logger.setLevel(log_level)
 
-    @staticmethod
-    async def find_caa_records_and_domain(caa_request) -> tuple[RRset, Name]:
+    async def find_caa_records_and_domain(self, caa_request) -> tuple[RRset, Name]:
         rrset = None
         domain = dns.name.from_text(caa_request.domain_or_ip_target)
 
@@ -49,6 +47,7 @@ class MpicCaaChecker:
                 domain = domain.parent()
             except Exception as e:
                 print(f"Exception during CAA lookup: {e}")
+                self.logger.error(f"Exception during CAA lookup: {e}")
                 raise MpicCaaLookupException from Exception(e)
 
         return rrset, domain
@@ -87,7 +86,7 @@ class MpicCaaChecker:
         try:
             # noinspection PyUnresolvedReferences
             async with self.logger.trace_timing(f"CAA lookup for target {caa_request.domain_or_ip_target}"):
-                rrset, domain = await MpicCaaChecker.find_caa_records_and_domain(caa_request)
+                rrset, domain = await self.find_caa_records_and_domain(caa_request)
             caa_found = rrset is not None
         except MpicCaaLookupException:
             caa_lookup_error = True

@@ -13,7 +13,8 @@ from open_mpic_core import (
     CaaCheckResponseDetails,
     MpicRequestOrchestrationParameters,
     RemotePerspective,
-    MpicRequestValidationError,
+    MpicRequestValidationException,
+    MpicRequestProcessingException,
     MpicResponse,
     MpicCoordinator,
     MpicCoordinatorConfiguration,
@@ -370,7 +371,7 @@ class TestMpicCoordinator:
             assert all(not perspective.check_response.check_passed for perspective in perspective_result_list)
 
     @pytest.mark.parametrize("check_type", [CheckType.CAA, CheckType.DCV])
-    async def coordinate_mpic__should_return_check_failure_message_given_remote_perspective_failure(self, check_type):
+    async def coordinate_mpic__should_allow_exceptions_in_failing_remotes_if_quorum_achieved_overall(self, check_type):
         mpic_request = None
         match check_type:
             case CheckType.CAA:
@@ -380,16 +381,18 @@ class TestMpicCoordinator:
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
 
         mocked_call_remote_perspective_function = AsyncMock()
-        mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
-            self.create_failing_remote_response_with_exception
+        # six total perspectives in the test setup; if 2 or fewer fail, it can be with an exception.
+        mocked_call_remote_perspective_function.side_effect = self.sequence_of(
+            (2, self.create_failing_remote_response_with_exception), (4, self.create_passing_caa_check_response)
         )
         mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config)
 
         mpic_response = await mpic_coordinator.coordinate_mpic(mpic_request)
-        assert mpic_response.is_valid is False
+        assert mpic_response.is_valid is True
         for perspective in mpic_response.perspectives:
-            assert perspective.check_response.check_passed is False
-            assert perspective.check_response.errors[0].error_type == ErrorMessages.COORDINATOR_COMMUNICATION_ERROR.key
+            if not perspective.check_response.check_passed:
+                perspective_error = perspective.check_response.errors[0]
+                assert perspective_error.error_type == ErrorMessages.COORDINATOR_REMOTE_CHECK_ERROR.key
 
     async def coordinate_mpic__should_raise_exception_given_logically_invalid_mpic_request(self):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
@@ -404,7 +407,7 @@ class TestMpicCoordinator:
             self.create_passing_caa_check_response
         )
         mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config)
-        with pytest.raises(MpicRequestValidationError):
+        with pytest.raises(MpicRequestValidationException):
             await mpic_coordinator.coordinate_mpic(mpic_request)
 
     async def coordinate_mpic__should_return_trace_identifier_if_included_in_request(self):
@@ -444,6 +447,17 @@ class TestMpicCoordinator:
         # Get the log output and assert
         log_contents = self.log_output.getvalue()
         assert all(text in log_contents for text in ["seconds", "TRACE", mpic_coordinator.logger.name])
+
+    async def coordinate_mpic__should_raise_error_if_final_attempt_had_too_many_remote_check_errors(self):
+        mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
+        mocked_call_perspective_function = AsyncMock()
+        mocked_call_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
+            self.create_failing_remote_response_with_exception
+        )
+        mpic_coordinator = MpicCoordinator(mocked_call_perspective_function, mpic_coordinator_config)
+        with pytest.raises(MpicRequestProcessingException):
+            await mpic_coordinator.coordinate_mpic(mpic_request)
 
     @staticmethod
     def create_mpic_coordinator_configuration() -> MpicCoordinatorConfiguration:

@@ -202,13 +202,13 @@ class TestMpicDcvChecker:
         errors = [MpicValidationError(error_type="404", error_message="Not Found")]
         assert dcv_response.errors == errors
 
-    @pytest.mark.parametrize(
-        "validation_method, exception, error_message",
-        [
+    # fmt: off
+    @pytest.mark.parametrize("validation_method, exception, error_message", [
             (DcvValidationMethod.WEBSITE_CHANGE, HTTPInternalServerError(reason="Test Exception"), "Test Exception"),
             (DcvValidationMethod.ACME_HTTP_01, ClientConnectionError(), ""),
-        ],
-    )
+            (DcvValidationMethod.WEBSITE_CHANGE, asyncio.TimeoutError(), "Connection timed out"),
+    ])
+    # fmt: on
     async def http_based_dcv_checks__should_return_check_failure_and_error_details_given_exception_raised(
         self, validation_method, exception, error_message, mocker
     ):
@@ -217,7 +217,9 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False
         errors = [MpicValidationError(error_type=exception.__class__.__name__, error_message=error_message)]
-        assert dcv_response.errors == errors
+        for error in errors:
+            assert error.error_type in dcv_response.errors[0].error_type
+            assert error.error_message in dcv_response.errors[0].error_message
 
     @pytest.mark.parametrize(
         "validation_method", [DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01]

@@ -27,11 +27,18 @@ class MpicDcvChecker:
     CONTACT_EMAIL_TAG = "contactemail"
     CONTACT_PHONE_TAG = "contactphone"
 
-    def __init__(self, reuse_http_client: bool = False, verify_ssl: bool = False, log_level: int = None):
+    def __init__(
+        self,
+        http_client_timeout: float = 30,
+        reuse_http_client: bool = False,
+        verify_ssl: bool = False,
+        log_level: int = None,
+    ):
         self.verify_ssl = verify_ssl
         self._reuse_http_client = reuse_http_client
         self._async_http_client = None
         self._http_client_loop = None  # track which loop the http client was created on
+        self._http_client_timeout = http_client_timeout
 
         self.logger = logger.getChild(self.__class__.__name__)
         if log_level is not None:
@@ -56,13 +63,15 @@ class MpicDcvChecker:
 
                 connector = aiohttp.TCPConnector(ssl=self.verify_ssl)
                 self._async_http_client = aiohttp.ClientSession(
-                    connector=connector, timeout=aiohttp.ClientTimeout(total=30)
+                    connector=connector, timeout=aiohttp.ClientTimeout(total=self._http_client_timeout)
                 )
                 self._http_client_loop = current_loop
             yield self._async_http_client
         else:  # implementations such as AWS Lambda will need a new client for each invocation
             connector = aiohttp.TCPConnector(ssl=self.verify_ssl)
-            client = aiohttp.ClientSession(connector=connector, timeout=aiohttp.ClientTimeout(total=30))
+            client = aiohttp.ClientSession(
+                connector=connector, timeout=aiohttp.ClientTimeout(total=self._http_client_timeout)
+            )
             try:
                 yield client
             finally:
@@ -83,7 +92,7 @@ class MpicDcvChecker:
     async def check_dcv(self, dcv_request: DcvCheckRequest) -> DcvCheckResponse:
         validation_method = dcv_request.dcv_check_parameters.validation_method
         # noinspection PyUnresolvedReferences
-        self.logger.trace(f"Checking DCV for {dcv_request.domain_or_ip_target} with method {validation_method}")
+        self.logger.trace(f"Checking DCV for {dcv_request.domain_or_ip_target} with method {validation_method}.")
 
         # encode domain if needed
         dcv_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(dcv_request.domain_or_ip_target)
@@ -99,7 +108,7 @@ class MpicDcvChecker:
         self.logger.trace(f"Completed DCV for {dcv_request.domain_or_ip_target} with method {validation_method}")
         return result
 
-    async def perform_general_dns_validation(self, request) -> DcvCheckResponse:
+    async def perform_general_dns_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:
         check_parameters = request.dcv_check_parameters
         validation_method = check_parameters.validation_method
         dns_name_prefix = check_parameters.dns_name_prefix
@@ -129,6 +138,7 @@ class MpicDcvChecker:
                 dcv_check_response, lookup, validation_method, dns_record_type, expected_dns_record_content, exact_match
             )
         except dns.exception.DNSException as e:
+            self.logger.error(f"DNS lookup error for {name_to_resolve}: {str(e)}.")
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)]
         return dcv_check_response
@@ -155,7 +165,7 @@ class MpicDcvChecker:
             lookup = await dns.asyncresolver.resolve(name_to_resolve, dns_rdata_type)
         return lookup
 
-    async def perform_http_based_validation(self, request) -> DcvCheckResponse:
+    async def perform_http_based_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:
         validation_method = request.dcv_check_parameters.validation_method
         domain_or_ip_target = request.domain_or_ip_target
         http_headers = request.dcv_check_parameters.http_headers
@@ -180,9 +190,16 @@ class MpicDcvChecker:
                         await MpicDcvChecker.evaluate_http_lookup_response(
                             request, dcv_check_response, response, token_url, expected_response_content
                         )
-        except (ClientError, HTTPException) as e:
+        except asyncio.TimeoutError as e:
+            dcv_check_response.timestamp_ns = time.time_ns()
+            self.logger.warning(f"Timeout connecting to {token_url}: {str(e)}")
+            message = f"Connection timed out while attempting to connect to {token_url}"
+            dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=message)]
+        except (ClientError, HTTPException, OSError) as e:
+            self.logger.error(f"Error connecting to {token_url}: {str(e)}.")
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
+
         return dcv_check_response
 
     @staticmethod
