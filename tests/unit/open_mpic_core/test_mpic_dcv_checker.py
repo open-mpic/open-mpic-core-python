@@ -545,7 +545,7 @@ class TestMpicDcvChecker:
         if validation_method == DcvValidationMethod.DNS_CHANGE:
             expected_value_1 = dcv_request.dcv_check_parameters.challenge_value
         else:
-            expected_value_1 = dcv_request.dcv_check_parameters.key_authorization
+            expected_value_1 = dcv_request.dcv_check_parameters.key_authorization_hash
         assert dcv_response.timestamp_ns is not None
         expected_records = [expected_value_1, "whatever2", "whatever3"]
         assert dcv_response.details.records_seen == expected_records
@@ -751,7 +751,7 @@ class TestMpicDcvChecker:
                 record_data = {"value": check_parameters.challenge_value}
                 record_name_prefix = check_parameters.dns_name_prefix
             case _:
-                record_data = {"value": check_parameters.key_authorization}
+                record_data = {"value": check_parameters.key_authorization_hash}
                 record_name_prefix = "_acme-challenge"
         txt_record_1 = MockDnsObjectCreator.create_record_by_type(DnsRecordType.TXT, record_data)
         txt_record_2 = MockDnsObjectCreator.create_record_by_type(DnsRecordType.TXT, {"value": "whatever2"})
@@ -784,7 +784,7 @@ class TestMpicDcvChecker:
             case DcvValidationMethod.CONTACT_PHONE_CAA:
                 record_data = {"flags": "", "tag": "contactphone", "value": check_parameters.challenge_value}
             case _:  # ACME_DNS_01
-                record_data = {"value": check_parameters.key_authorization}
+                record_data = {"value": check_parameters.key_authorization_hash}
         record_type = check_parameters.dns_record_type
         record_prefix = check_parameters.dns_name_prefix
         test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer(

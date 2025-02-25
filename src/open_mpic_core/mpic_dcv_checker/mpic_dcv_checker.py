@@ -112,7 +112,7 @@ class MpicDcvChecker:
             name_to_resolve = request.domain_or_ip_target
 
         if validation_method == DcvValidationMethod.ACME_DNS_01:
-            expected_dns_record_content = check_parameters.key_authorization
+            expected_dns_record_content = check_parameters.key_authorization_hash
         else:
             expected_dns_record_content = check_parameters.challenge_value
             exact_match = check_parameters.require_exact_match

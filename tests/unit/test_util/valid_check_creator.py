@@ -93,7 +93,7 @@ class ValidCheckCreator:
     def create_valid_acme_dns_01_check_request():
         return DcvCheckRequest(
             domain_or_ip_target="example.com",
-            dcv_check_parameters=DcvAcmeDns01ValidationParameters(key_authorization="challenge_111"),
+            dcv_check_parameters=DcvAcmeDns01ValidationParameters(key_authorization_hash="challenge_111"),
         )
 
     @staticmethod
