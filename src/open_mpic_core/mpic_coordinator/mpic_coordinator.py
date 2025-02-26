@@ -164,7 +164,7 @@ class MpicCoordinator:
         )
         # if <=5 perspectives, 1 error allowed; if >5, 2 errors allowed
         if error_count > perspective_count - quorum_count:
-            log_msg = f"Too many perspectives failed to return a valid check response. Trace Identifier: {mpic_request.trace_identifier}"
+            log_msg = f"{ErrorMessages.TOO_MANY_FAILED_PERSPECTIVES_ERROR.message}. Trace Identifier: {mpic_request.trace_identifier}"
             self.logger.warning(log_msg)
             raise MpicRequestProcessingException(log_msg)
 
