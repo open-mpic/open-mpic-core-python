@@ -14,7 +14,6 @@ from open_mpic_core import (
     MpicRequestOrchestrationParameters,
     RemotePerspective,
     MpicRequestValidationException,
-    MpicRequestProcessingException,
     MpicResponse,
     MpicCoordinator,
     MpicCoordinatorConfiguration,
@@ -456,16 +455,22 @@ class TestMpicCoordinator:
         log_contents = self.log_output.getvalue()
         assert all(text in log_contents for text in ["seconds", "TRACE", mpic_coordinator.logger.name])
 
-    async def coordinate_mpic__should_raise_error_if_final_attempt_had_too_many_remote_check_errors(self):
+    @pytest.mark.parametrize("should_complete_mpic", [True, False])
+    async def coordinate_mpic__should_set_mpic_completed_true_if_enough_perspectives_completed_check_otherwise_false(
+            self, should_complete_mpic
+    ):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
         mocked_call_perspective_function = AsyncMock()
-        mocked_call_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
-            self.create_failing_remote_response_with_exception
-        )
+        if should_complete_mpic:
+            side_effect = self.create_passing_caa_check_response
+        else:
+            side_effect = self.create_incomplete_remote_caa_check_response
+        mocked_call_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(side_effect)
         mpic_coordinator = MpicCoordinator(mocked_call_perspective_function, mpic_coordinator_config)
-        with pytest.raises(MpicRequestProcessingException):
-            await mpic_coordinator.coordinate_mpic(mpic_request)
+        mpic_response = await mpic_coordinator.coordinate_mpic(mpic_request)
+        assert mpic_response.is_valid is should_complete_mpic
+        assert mpic_response.mpic_completed is should_complete_mpic
 
     @staticmethod
     def create_mpic_coordinator_configuration() -> MpicCoordinatorConfiguration:
@@ -491,6 +496,7 @@ class TestMpicCoordinator:
         self, perspective: RemotePerspective, check_type: CheckType, check_request_serialized: str
     ):
         return CaaCheckResponse(
+            check_completed=True,
             check_passed=True,
             details=CaaCheckResponseDetails(caa_record_present=False),
         )
@@ -500,8 +506,19 @@ class TestMpicCoordinator:
         self, perspective: RemotePerspective, check_type: CheckType, check_request_serialized: str
     ):
         return CaaCheckResponse(
+            check_completed=True,
             check_passed=False,
             details=CaaCheckResponseDetails(caa_record_present=True),
+        )
+
+    # noinspection PyUnusedLocal
+    def create_incomplete_remote_caa_check_response(
+        self, perspective: RemotePerspective, check_type: CheckType, check_request_serialized: str
+    ):
+        return CaaCheckResponse(
+            check_completed=False,
+            check_passed=False,
+            details=CaaCheckResponseDetails(caa_record_present=None),
         )
 
     def create_remote_caa_response_that_only_passes_for_arin_rir(

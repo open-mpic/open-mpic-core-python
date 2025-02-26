@@ -8,6 +8,7 @@ from open_mpic_core import CaaCheckParameters, DcvCheckParameters, PerspectiveRe
 
 
 class BaseMpicResponse(BaseModel, ABC):
+    mpic_completed: bool | None = False
     request_orchestration_parameters: MpicRequestOrchestrationParameters | None = None
     actual_orchestration_parameters: MpicEffectiveOrchestrationParameters | None = None
     check_type: CheckType

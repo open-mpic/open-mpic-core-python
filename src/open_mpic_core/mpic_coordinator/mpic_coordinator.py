@@ -10,7 +10,7 @@ from open_mpic_core import CaaCheckResponse, DcvCheckResponse, CaaCheckResponseD
 from open_mpic_core import MpicRequest, MpicResponse, PerspectiveResponse
 from open_mpic_core import CaaCheckRequest, DcvCheckRequest
 from open_mpic_core import DcvCheckResponseDetailsBuilder
-from open_mpic_core import MpicRequestValidationException, MpicRequestProcessingException
+from open_mpic_core import MpicRequestValidationException
 from open_mpic_core import MpicValidationError, ErrorMessages
 from open_mpic_core import CheckType
 from open_mpic_core import CohortCreator
@@ -115,12 +115,6 @@ class MpicCoordinator:
                 rir_count = len(set(perspective.rir for perspective in valid_perspectives))
                 is_valid_result = rir_count >= 2 and is_valid_result
 
-            # if we're at max_attempts, see if we have enough exceptions from perspectives to raise an overall exception
-            if not is_valid_result and attempts == max_attempts:
-                self._raise_exception_on_too_many_perspective_exceptions(
-                    mpic_request, perspective_count, perspective_responses, quorum_count
-                )
-
             if is_valid_result or attempts == max_attempts:
                 response = MpicResponseBuilder.build_response(
                     mpic_request,
@@ -150,23 +144,6 @@ class MpicCoordinator:
             validation_issues_as_string = json.dumps([vars(issue) for issue in validation_issues])
             error.add_note(validation_issues_as_string)
             raise error
-
-    def _raise_exception_on_too_many_perspective_exceptions(
-        self, mpic_request, perspective_count, perspective_responses, quorum_count
-    ):
-        error_count = len(
-            [
-                response
-                for response in perspective_responses
-                if response.check_response.errors is not None
-                and response.check_response.errors[0].error_type == ErrorMessages.COORDINATOR_REMOTE_CHECK_ERROR.key
-            ]
-        )
-        # if <=5 perspectives, 1 error allowed; if >5, 2 errors allowed
-        if error_count > perspective_count - quorum_count:
-            log_msg = f"{ErrorMessages.TOO_MANY_FAILED_PERSPECTIVES_ERROR.message}. Trace Identifier: {mpic_request.trace_identifier}"
-            self.logger.warning(log_msg)
-            raise MpicRequestProcessingException(log_msg)
 
     # Returns randomized grouping(s) of perspectives with a goal of maximum RIR diversity.
     # If more than 2 perspectives are needed (count), it will enforce a minimum of 2 RIRs per cohort.
@@ -210,7 +187,7 @@ class MpicCoordinator:
             check_parameters = DcvCheckRequest(
                 domain_or_ip_target=domain_or_ip_target,
                 dcv_check_parameters=mpic_request.dcv_check_parameters,
-                trace_identifier=mpic_request.trace_identifier
+                trace_identifier=mpic_request.trace_identifier,
             )
 
         for perspective in perspectives_to_use:
@@ -258,6 +235,7 @@ class MpicCoordinator:
         match check_type:
             case CheckType.CAA:
                 check_error_response = CaaCheckResponse(
+                    check_completed=False,
                     check_passed=False,
                     errors=errors,
                     details=CaaCheckResponseDetails(caa_record_present=None),
@@ -267,6 +245,7 @@ class MpicCoordinator:
                 dcv_check_request: DcvCheckRequest = remote_check_exception.call_config.check_request
                 validation_method = dcv_check_request.dcv_check_parameters.validation_method
                 check_error_response = DcvCheckResponse(
+                    check_completed=False,
                     check_passed=False,
                     errors=errors,
                     details=DcvCheckResponseDetailsBuilder.build_response_details(validation_method),

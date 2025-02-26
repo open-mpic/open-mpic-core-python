@@ -73,6 +73,7 @@ class MpicCaaChecker:
         rrset = None
 
         caa_check_response = CaaCheckResponse(
+            check_completed=False,
             check_passed=False,
             errors=None,
             details=CaaCheckResponseDetails(caa_record_present=None),
@@ -99,11 +100,13 @@ class MpicCaaChecker:
             caa_check_response.details.found_at = None
             caa_check_response.details.records_seen = None
         elif not caa_found:  # if domain has no CAA records: valid for issuance
+            caa_check_response.check_completed = True
             caa_check_response.check_passed = True
             caa_check_response.details.caa_record_present = False
             caa_check_response.details.found_at = None
             caa_check_response.details.records_seen = None
         else:
+            caa_check_response.check_completed = True
             valid_for_issuance = MpicCaaChecker.is_valid_for_issuance(caa_domains, is_wc_domain, rrset)
             caa_check_response.check_passed = valid_for_issuance
             caa_check_response.details.caa_record_present = True

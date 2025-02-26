@@ -10,7 +10,7 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock
 from yarl import URL
 from asyncio import StreamReader
-from aiohttp import ClientResponse, ClientError
+from aiohttp import ClientResponse
 from aiohttp.client_exceptions import ClientConnectionError
 from aiohttp.web import HTTPInternalServerError
 from multidict import CIMultiDictProxy, CIMultiDict
@@ -127,6 +127,35 @@ class TestMpicDcvChecker:
         dcv_request.domain_or_ip_target = domain  # set to original to see if the mock triggers as expected
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is True
+
+    # fmt: off
+    @pytest.mark.parametrize("validation_method, should_complete_check", [
+        (DcvValidationMethod.WEBSITE_CHANGE, True),
+        (DcvValidationMethod.WEBSITE_CHANGE, False),
+        (DcvValidationMethod.ACME_DNS_01, True),
+        (DcvValidationMethod.ACME_DNS_01, False),
+    ])
+    # fmt: on
+    async def check_dcv__should_set_check_completed_true_if_no_errors_encountered_and_false_otherwise(
+            self, validation_method, should_complete_check, mocker
+    ):
+        if validation_method == DcvValidationMethod.WEBSITE_CHANGE:
+            dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE)
+            if should_complete_check:
+                self.mock_request_specific_http_response(dcv_request, mocker)
+            else:
+                self.mock_error_http_response(mocker)
+        else:
+            dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.ACME_DNS_01)
+            if should_complete_check:
+                self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+            else:
+                timeout_error = dns.exception.Timeout()
+                self.patch_resolver_with_answer_or_exception(mocker, timeout_error)
+
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        assert dcv_response.check_passed is should_complete_check
+        assert dcv_response.check_completed is should_complete_check
 
     @pytest.mark.parametrize("validation_method", [DcvValidationMethod.ACME_HTTP_01, DcvValidationMethod.ACME_DNS_01])
     async def check_dcv__should_be_able_to_trace_timing_of_http_and_dns_lookups(self, validation_method, mocker):

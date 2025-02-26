@@ -61,7 +61,7 @@ class MpicDcvChecker:
                 if self._async_http_client and not self._async_http_client.closed:
                     await self._async_http_client.close()
 
-                connector = aiohttp.TCPConnector(ssl=self.verify_ssl)
+                connector = aiohttp.TCPConnector(ssl=self.verify_ssl, limit=0)  # no limit on simultaneous connections
                 self._async_http_client = aiohttp.ClientSession(
                     connector=connector, timeout=aiohttp.ClientTimeout(total=self._http_client_timeout)
                 )
@@ -208,6 +208,7 @@ class MpicDcvChecker:
     @staticmethod
     def create_empty_check_response(validation_method: DcvValidationMethod) -> DcvCheckResponse:
         return DcvCheckResponse(
+            check_completed=False,
             check_passed=False,
             timestamp_ns=None,
             errors=None,
@@ -257,6 +258,7 @@ class MpicDcvChecker:
             dcv_check_response.details.response_url = target_url
             dcv_check_response.details.response_history = response_history
             dcv_check_response.details.response_page = base64.b64encode(content).decode()
+            dcv_check_response.check_completed = True
         else:
             dcv_check_response.errors = [
                 MpicValidationError(error_type=str(lookup_response.status), error_message=lookup_response.reason)
@@ -311,6 +313,7 @@ class MpicDcvChecker:
                 expected_dns_record_content in record for record in records_as_strings
             )
         dcv_check_response.timestamp_ns = time.time_ns()
+        dcv_check_response.check_completed = True
 
     # noinspection PyUnresolvedReferences
     @staticmethod

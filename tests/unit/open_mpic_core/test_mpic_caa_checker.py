@@ -74,7 +74,13 @@ class TestMpicCaaChecker:
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
         caa_response = await caa_checker.check_caa(caa_request)
         check_response_details = CaaCheckResponseDetails(caa_record_present=False)
-        assert self.is_result_as_expected(caa_response, True, check_response_details) is True
+        caa_response.timestamp_ns = None  # ignore timestamp for comparison
+        expected_response = CaaCheckResponse(
+            check_passed=True,
+            check_completed=True,
+            details=check_response_details,
+        )
+        assert caa_response == expected_response
 
     async def check_caa__should_allow_issuance_given_matching_caa_record_found(self, mocker):
         record_name, expected_domain = "example.com", "example.com."
@@ -90,7 +96,13 @@ class TestMpicCaaChecker:
         check_response_details = CaaCheckResponseDetails(
             caa_record_present=True, found_at="example.com", records_seen=expected_records_seen
         )
-        assert self.is_result_as_expected(caa_response, True, check_response_details) is True
+        caa_response.timestamp_ns = None  # ignore timestamp for comparison
+        expected_response = CaaCheckResponse(
+            check_passed=True,
+            check_completed=True,
+            details=check_response_details,
+        )
+        assert caa_response == expected_response
 
     @pytest.mark.parametrize(
         "domain, encoded_domain", [("bücher.example.de", "xn--bcher-kva.example.de."), ("café.com", "xn--caf-dma.com.")]
@@ -141,6 +153,21 @@ class TestMpicCaaChecker:
         caa_response = await caa_checker.check_caa(caa_request)
         assert caa_response.check_passed is True
 
+    @pytest.mark.parametrize("should_complete_check", [True, False])
+    async def check_caa__should_set_check_completed_true_if_no_errors_encountered_and_false_otherwise(
+            self, should_complete_check, mocker
+    ):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
+        if should_complete_check:
+            self.patch_resolver_with_answer_or_exception(mocker, dns.resolver.NoAnswer())
+        else:
+            self.patch_resolver_with_answer_or_exception(mocker, dns.exception.Timeout())
+        caa_request = self.create_caa_check_request("example.com", ["ca111.com"])
+        caa_request.trace_identifier = "test_trace_identifier"
+        caa_result = await caa_checker.check_caa(caa_request)
+        assert caa_result.check_passed is should_complete_check
+        assert caa_result.check_completed is should_complete_check
+
     async def check_caa__should_include_timestamp_in_nanos_in_result(self, mocker):
         self.patch_resolver_with_answer_or_exception(mocker, dns.resolver.NoAnswer())
         caa_request = self.create_caa_check_request("example.com", ["ca111.com"])
@@ -159,7 +186,14 @@ class TestMpicCaaChecker:
                 error_type=ErrorMessages.CAA_LOOKUP_ERROR.key, error_message=ErrorMessages.CAA_LOOKUP_ERROR.message
             )
         ]
-        assert self.is_result_as_expected(caa_response, False, check_response_details, errors) is True
+        caa_response.timestamp_ns = None  # ignore timestamp for comparison
+        expected_response = CaaCheckResponse(
+            check_passed=False,
+            check_completed=False,
+            details=check_response_details,
+            errors=errors
+        )
+        assert caa_response == expected_response
 
     @pytest.mark.parametrize("caa_answer_value, check_passed", [("ca1allowed.org", True), ("ca1notallowed.org", False)])
     async def check_caa__should_return_rrset_and_domain_given_domain_with_caa_record_on_success_or_failure(
@@ -509,11 +543,6 @@ class TestMpicCaaChecker:
             raise ex
 
         return _raise()
-
-    def is_result_as_expected(self, result, check_passed, check_response_details, errors=None):
-        result.timestamp_ns = None  # ignore timestamp for comparison
-        expected_result = CaaCheckResponse(check_passed=check_passed, details=check_response_details, errors=errors)
-        return result == expected_result  # Pydantic allows direct comparison with equality operator
 
     def patch_resolver_resolve_with_side_effect(self, mocker, side_effect):
         return mocker.patch("dns.asyncresolver.resolve", new_callable=AsyncMock, side_effect=side_effect)
