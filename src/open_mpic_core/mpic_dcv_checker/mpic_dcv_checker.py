@@ -138,7 +138,8 @@ class MpicDcvChecker:
                 dcv_check_response, lookup, validation_method, dns_record_type, expected_dns_record_content, exact_match
             )
         except dns.exception.DNSException as e:
-            self.logger.error(f"DNS lookup error for {name_to_resolve}: {str(e)}.")
+            log_msg = f"DNS lookup error for {name_to_resolve}: {str(e)}. Trace identifier: {request.trace_identifier}"
+            self.logger.error(log_msg)
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)]
         return dcv_check_response
@@ -192,11 +193,13 @@ class MpicDcvChecker:
                         )
         except asyncio.TimeoutError as e:
             dcv_check_response.timestamp_ns = time.time_ns()
-            self.logger.warning(f"Timeout connecting to {token_url}: {str(e)}")
+            log_message = f"Timeout connecting to {token_url}: {str(e)}. Trace identifier: {request.trace_identifier}"
+            self.logger.warning(log_message)
             message = f"Connection timed out while attempting to connect to {token_url}"
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=message)]
         except (ClientError, HTTPException, OSError) as e:
-            self.logger.error(f"Error connecting to {token_url}: {str(e)}.")
+            log_message = f"Error connecting to {token_url}: {str(e)}. Trace identifier: {request.trace_identifier}"
+            self.logger.error(log_message)
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
 

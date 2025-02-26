@@ -257,6 +257,16 @@ class TestMpicCaaChecker:
         log_contents = self.log_output.getvalue()
         assert all(text in log_contents for text in ["seconds", "TRACE", caa_checker.logger.name])
 
+    async def check_caa__should_include_trace_identifier_in_logs_if_included_in_request(self, mocker):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
+        self.patch_resolver_with_answer_or_exception(mocker, dns.exception.Timeout())
+        caa_request = self.create_caa_check_request("example.com", ["ca111.com"])
+        caa_request.trace_identifier = "test_trace_identifier"
+        caa_result = await caa_checker.check_caa(caa_request)
+        log_contents = self.log_output.getvalue()
+        assert caa_result.check_passed is False
+        assert "test_trace_identifier" in log_contents
+
     # fmt: off
     # noinspection PyUnusedLocal
     @pytest.mark.parametrize("test_description, caa_value, expected_domain, expected_parameters", [

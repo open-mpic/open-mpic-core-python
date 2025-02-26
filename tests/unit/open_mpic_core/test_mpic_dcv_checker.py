@@ -10,7 +10,7 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock
 from yarl import URL
 from asyncio import StreamReader
-from aiohttp import ClientResponse
+from aiohttp import ClientResponse, ClientError
 from aiohttp.client_exceptions import ClientConnectionError
 from aiohttp.web import HTTPInternalServerError
 from multidict import CIMultiDictProxy, CIMultiDict
@@ -142,6 +142,16 @@ class TestMpicDcvChecker:
         await tracing_dcv_checker.check_dcv(dcv_request)
         log_contents = self.log_output.getvalue()
         assert all(text in log_contents for text in ["seconds", "TRACE", tracing_dcv_checker.logger.name])
+
+    async def check_dcv__should_include_trace_identifier_in_logs_if_included_in_request(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE)
+        dcv_request.trace_identifier = "test_trace_identifier"
+
+        self.mock_error_http_response(mocker)
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        assert dcv_response.check_passed is False
+        log_contents = self.log_output.getvalue()
+        assert "test_trace_identifier" in log_contents
 
     @pytest.mark.parametrize(
         "validation_method", [DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01]
@@ -698,6 +708,18 @@ class TestMpicDcvChecker:
         return mocker.patch(
             "aiohttp.ClientSession.get",
             side_effect=lambda *args, **kwargs: AsyncMock(__aenter__=AsyncMock(return_value=mock_response)),
+        )
+
+    def mock_error_http_response(self, mocker):
+        # noinspection PyUnusedLocal
+        async def side_effect(url, headers):
+            raise ClientConnectionError()
+        # return mocker.patch("aiohttp.ClientSession.get", side_effect=side_effect)
+        return mocker.patch(
+            "aiohttp.ClientSession.get",
+            side_effect=lambda *args, **kwargs: AsyncMock(
+                __aenter__=AsyncMock(side_effect=ClientConnectionError())
+            )
         )
 
     def patch_resolver_resolve_with_side_effect(self, mocker, side_effect):

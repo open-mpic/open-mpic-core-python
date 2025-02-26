@@ -46,8 +46,7 @@ class MpicCaaChecker:
             except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
                 domain = domain.parent()
             except Exception as e:
-                print(f"Exception during CAA lookup: {e}")
-                self.logger.error(f"Exception during CAA lookup: {e}")
+                self.logger.error(f"Exception during CAA lookup: {e}. Trace identifier: {caa_request.trace_identifier}")
                 raise MpicCaaLookupException from Exception(e)
 
         return rrset, domain
