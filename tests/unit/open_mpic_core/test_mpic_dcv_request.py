@@ -85,7 +85,10 @@ class TestMpicDcvRequest:
     def mpic_dcv_request__should_require_key_authorization_for_acme_validations(self, validation_method):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(validation_method)
         # noinspection PyTypeChecker
-        request.dcv_check_parameters.key_authorization = None
+        if validation_method == DcvValidationMethod.ACME_HTTP_01:
+            request.dcv_check_parameters.key_authorization = None
+        else:
+            request.dcv_check_parameters.key_authorization_hash = None
         with pytest.raises(pydantic.ValidationError) as validation_error:
             MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
         assert "key_authorization" in str(validation_error.value)

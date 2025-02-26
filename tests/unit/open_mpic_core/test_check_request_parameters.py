@@ -26,7 +26,7 @@ class TestCheckRequestDetails:
          DcvDnsChangeValidationParameters),
         ('{"validation_method": "acme-http-01", "token": "test-t", "key_authorization": "test-ka"}',
          DcvAcmeHttp01ValidationParameters),
-        ('{"validation_method": "acme-dns-01", "key_authorization": "test-ka"}',
+        ('{"validation_method": "acme-dns-01", "key_authorization_hash": "test-ka"}',
          DcvAcmeDns01ValidationParameters),
         ('{"validation_method": "contact-email-txt", "challenge_value": "test-cv"}',
          DcvContactEmailTxtValidationParameters),

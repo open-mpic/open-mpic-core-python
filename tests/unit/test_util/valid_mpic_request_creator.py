@@ -57,7 +57,7 @@ class ValidMpicRequestCreator:
             case DcvValidationMethod.ACME_HTTP_01:
                 check_parameters = DcvAcmeHttp01ValidationParameters(token="test", key_authorization="test")
             case DcvValidationMethod.ACME_DNS_01:
-                check_parameters = DcvAcmeDns01ValidationParameters(key_authorization="test")
+                check_parameters = DcvAcmeDns01ValidationParameters(key_authorization_hash="test")
             case DcvValidationMethod.CONTACT_PHONE_CAA:
                 check_parameters = DcvContactPhoneCaaValidationParameters(challenge_value="test")
             case DcvValidationMethod.CONTACT_PHONE_TXT:

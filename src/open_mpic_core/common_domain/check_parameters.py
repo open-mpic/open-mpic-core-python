@@ -11,7 +11,7 @@ IP_ADDRESS_ALLOWED_RECORD_TYPES: Set[DnsRecordType] = {DnsRecordType.A, DnsRecor
 
 
 class CaaCheckParameters(BaseModel):
-    certificate_type: CertificateType
+    certificate_type: CertificateType = CertificateType.TLS_SERVER
     caa_domains: list[str] | None = None
     # contact_info_query: bool | False = False  # to better accommodate email/phone based DCV using contact info in CAA
 
@@ -99,7 +99,7 @@ class DcvAcmeHttp01ValidationParameters(DcvValidationParameters):
 
 class DcvAcmeDns01ValidationParameters(DcvValidationParameters):
     validation_method: Literal[DcvValidationMethod.ACME_DNS_01] = DcvValidationMethod.ACME_DNS_01
-    key_authorization: str
+    key_authorization_hash: str
     dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
     dns_name_prefix: Literal["_acme-challenge"] = "_acme-challenge"
 
