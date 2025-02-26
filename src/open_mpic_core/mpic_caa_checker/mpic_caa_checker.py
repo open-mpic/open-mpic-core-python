@@ -156,7 +156,7 @@ class MpicCaaChecker:
             try:
                 # we don't do anything with the parameters yet, but we will eventually
                 domain, parameters = MpicCaaChecker.extract_domain_and_parameters_from_caa_value(value)
-                if domain in caa_domains:  # if the value is in the list of valid CAA domains
+                if domain.lower() in caa_domains:  # if the value is in the list of valid CAA domains
                     issuance_permitted = True
                     break
             except ValueError as ve:
@@ -167,7 +167,6 @@ class MpicCaaChecker:
     @staticmethod
     def extract_domain_and_parameters_from_caa_value(caa_value: str) -> tuple[str, Optional[dict[str, str]]]:
         # Split on semicolons since they're prohibited in parameter tag/value
-        issuer_domain_name = ""
         parameters = {}
         if ";" in caa_value:
             parts = caa_value.split(";")

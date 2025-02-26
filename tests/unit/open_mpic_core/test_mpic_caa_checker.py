@@ -326,6 +326,7 @@ class TestMpicCaaChecker:
         ("single matching record and no parameters present", ["ca111.org"]),
         ("multiple records with one match and no parameters present", ["ca111.org", "ca222.com"]),
         ("record with whitespace", ["  ca111.org  "]),
+        ("record with mixed case in domain", ["Ca111.org"]),
         ("matching record with parameters that should be ignored", ["ca111.org; policy=ev; account=12345"]),
     ])
     # fmt: on
