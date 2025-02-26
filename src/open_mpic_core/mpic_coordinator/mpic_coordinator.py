@@ -229,7 +229,7 @@ class MpicCoordinator:
         errors = [
             MpicValidationError(
                 error_type=ErrorMessages.COORDINATOR_REMOTE_CHECK_ERROR.key,
-                error_message=ErrorMessages.COORDINATOR_REMOTE_CHECK_ERROR.message,
+                error_message=f"{ErrorMessages.COORDINATOR_REMOTE_CHECK_ERROR.message} - {remote_check_exception}",
             )
         ]
 
