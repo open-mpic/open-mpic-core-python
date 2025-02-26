@@ -155,7 +155,7 @@ class TestMpicCaaChecker:
 
     @pytest.mark.parametrize("should_complete_check", [True, False])
     async def check_caa__should_set_check_completed_true_if_no_errors_encountered_and_false_otherwise(
-            self, should_complete_check, mocker
+        self, should_complete_check, mocker
     ):
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
         if should_complete_check:
@@ -176,7 +176,13 @@ class TestMpicCaaChecker:
         assert caa_response.timestamp_ns is not None
 
     async def check_caa__should_return_failure_response_with_errors_given_error_in_dns_lookup(self, mocker):
-        self.patch_resolver_with_answer_or_exception(mocker, dns.resolver.NoNameservers)
+        dns_lookup_error = dns.resolver.NoNameservers(
+            request=dns.message.make_query("example.com", "CAA", "IN"),
+            errors=[
+                ("192.0.2.1", True, 53, dns.exception.Timeout("Timeout resolving example.com"))
+            ],  # List of (server, error) tuples
+        )
+        self.patch_resolver_with_answer_or_exception(mocker, dns_lookup_error)
         caa_request = self.create_caa_check_request("example.com", ["ca111.com"])
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
         caa_response = await caa_checker.check_caa(caa_request)
@@ -188,10 +194,7 @@ class TestMpicCaaChecker:
         ]
         caa_response.timestamp_ns = None  # ignore timestamp for comparison
         expected_response = CaaCheckResponse(
-            check_passed=False,
-            check_completed=False,
-            details=check_response_details,
-            errors=errors
+            check_passed=False, check_completed=False, details=check_response_details, errors=errors
         )
         assert caa_response == expected_response
 
