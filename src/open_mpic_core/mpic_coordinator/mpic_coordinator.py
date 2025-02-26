@@ -202,11 +202,15 @@ class MpicCoordinator:
         # check if mpic_request is an instance of MpicCaaRequest or MpicDcvRequest
         if check_type == CheckType.CAA:
             check_parameters = CaaCheckRequest(
-                domain_or_ip_target=domain_or_ip_target, caa_check_parameters=mpic_request.caa_check_parameters
+                domain_or_ip_target=domain_or_ip_target,
+                caa_check_parameters=mpic_request.caa_check_parameters,
+                trace_identifier=mpic_request.trace_identifier,
             )
         else:
             check_parameters = DcvCheckRequest(
-                domain_or_ip_target=domain_or_ip_target, dcv_check_parameters=mpic_request.dcv_check_parameters
+                domain_or_ip_target=domain_or_ip_target,
+                dcv_check_parameters=mpic_request.dcv_check_parameters,
+                trace_identifier=mpic_request.trace_identifier
             )
 
         for perspective in perspectives_to_use:

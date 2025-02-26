@@ -135,6 +135,14 @@ class TestMpicCoordinator:
         call_list = MpicCoordinator.collect_checker_calls_to_issue(request, target_perspectives)
         assert all(call.check_request.caa_check_parameters.caa_domains == ["example.com"] for call in call_list)
 
+    def collect_async_calls_to_issue__should_include_trace_identifier_if_present(self):
+        request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        request.trace_identifier = "test_trace_identifier"
+        coordinator_config = self.create_mpic_coordinator_configuration()
+        target_perspectives = coordinator_config.target_perspectives
+        call_list = MpicCoordinator.collect_checker_calls_to_issue(request, target_perspectives)
+        assert all(call.check_request.trace_identifier == "test_trace_identifier" for call in call_list)
+
     def collect_async_calls_to_issue__should_have_only_dcv_calls_with_check_parameters_given_dcv_check_type(self):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(DcvValidationMethod.DNS_CHANGE)
         coordinator_config = self.create_mpic_coordinator_configuration()
