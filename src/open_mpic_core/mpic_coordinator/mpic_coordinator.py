@@ -211,8 +211,9 @@ class MpicCoordinator:
                     call_config.perspective, call_config.check_type, call_config.check_request
                 )
         except Exception as exc:
+            error_message = str(exc) if str(exc) else exc.__class__.__name__
             raise RemoteCheckException(
-                f"Check failed for perspective {call_config.perspective.code}",
+                f"Check failed for perspective {call_config.perspective.code}: {error_message}",
                 call_config=call_config,
             ) from exc
         return PerspectiveResponse(perspective_code=call_config.perspective.code, check_response=response)
