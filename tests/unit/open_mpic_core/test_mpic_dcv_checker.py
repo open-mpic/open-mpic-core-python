@@ -128,6 +128,35 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is True
 
+    # fmt: off
+    @pytest.mark.parametrize("validation_method, should_complete_check", [
+        (DcvValidationMethod.WEBSITE_CHANGE, True),
+        (DcvValidationMethod.WEBSITE_CHANGE, False),
+        (DcvValidationMethod.ACME_DNS_01, True),
+        (DcvValidationMethod.ACME_DNS_01, False),
+    ])
+    # fmt: on
+    async def check_dcv__should_set_check_completed_true_if_no_errors_encountered_and_false_otherwise(
+            self, validation_method, should_complete_check, mocker
+    ):
+        if validation_method == DcvValidationMethod.WEBSITE_CHANGE:
+            dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE)
+            if should_complete_check:
+                self.mock_request_specific_http_response(dcv_request, mocker)
+            else:
+                self.mock_error_http_response(mocker)
+        else:
+            dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.ACME_DNS_01)
+            if should_complete_check:
+                self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+            else:
+                timeout_error = dns.exception.Timeout()
+                self.patch_resolver_with_answer_or_exception(mocker, timeout_error)
+
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        assert dcv_response.check_passed is should_complete_check
+        assert dcv_response.check_completed is should_complete_check
+
     @pytest.mark.parametrize("validation_method", [DcvValidationMethod.ACME_HTTP_01, DcvValidationMethod.ACME_DNS_01])
     async def check_dcv__should_be_able_to_trace_timing_of_http_and_dns_lookups(self, validation_method, mocker):
         tracing_dcv_checker = MpicDcvChecker(log_level=TRACE_LEVEL)
@@ -142,6 +171,16 @@ class TestMpicDcvChecker:
         await tracing_dcv_checker.check_dcv(dcv_request)
         log_contents = self.log_output.getvalue()
         assert all(text in log_contents for text in ["seconds", "TRACE", tracing_dcv_checker.logger.name])
+
+    async def check_dcv__should_include_trace_identifier_in_logs_if_included_in_request(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE)
+        dcv_request.trace_identifier = "test_trace_identifier"
+
+        self.mock_error_http_response(mocker)
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        assert dcv_response.check_passed is False
+        log_contents = self.log_output.getvalue()
+        assert "test_trace_identifier" in log_contents
 
     @pytest.mark.parametrize(
         "validation_method", [DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01]
@@ -202,13 +241,13 @@ class TestMpicDcvChecker:
         errors = [MpicValidationError(error_type="404", error_message="Not Found")]
         assert dcv_response.errors == errors
 
-    @pytest.mark.parametrize(
-        "validation_method, exception, error_message",
-        [
+    # fmt: off
+    @pytest.mark.parametrize("validation_method, exception, error_message", [
             (DcvValidationMethod.WEBSITE_CHANGE, HTTPInternalServerError(reason="Test Exception"), "Test Exception"),
             (DcvValidationMethod.ACME_HTTP_01, ClientConnectionError(), ""),
-        ],
-    )
+            (DcvValidationMethod.WEBSITE_CHANGE, asyncio.TimeoutError(), "Connection timed out"),
+    ])
+    # fmt: on
     async def http_based_dcv_checks__should_return_check_failure_and_error_details_given_exception_raised(
         self, validation_method, exception, error_message, mocker
     ):
@@ -217,7 +256,9 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False
         errors = [MpicValidationError(error_type=exception.__class__.__name__, error_message=error_message)]
-        assert dcv_response.errors == errors
+        for error in errors:
+            assert error.error_type in dcv_response.errors[0].error_type
+            assert error.error_message in dcv_response.errors[0].error_message
 
     @pytest.mark.parametrize(
         "validation_method", [DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01]
@@ -696,6 +737,18 @@ class TestMpicDcvChecker:
         return mocker.patch(
             "aiohttp.ClientSession.get",
             side_effect=lambda *args, **kwargs: AsyncMock(__aenter__=AsyncMock(return_value=mock_response)),
+        )
+
+    def mock_error_http_response(self, mocker):
+        # noinspection PyUnusedLocal
+        async def side_effect(url, headers):
+            raise ClientConnectionError()
+        # return mocker.patch("aiohttp.ClientSession.get", side_effect=side_effect)
+        return mocker.patch(
+            "aiohttp.ClientSession.get",
+            side_effect=lambda *args, **kwargs: AsyncMock(
+                __aenter__=AsyncMock(side_effect=ClientConnectionError())
+            )
         )
 
     def patch_resolver_resolve_with_side_effect(self, mocker, side_effect):

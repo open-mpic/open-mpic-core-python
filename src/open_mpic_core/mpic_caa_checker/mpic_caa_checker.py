@@ -4,7 +4,6 @@ from typing import Final, Optional
 import dns.resolver
 import dns.asyncresolver
 from dns.name import Name
-from dns.name import from_text
 from dns.rrset import RRset
 
 from open_mpic_core import CaaCheckRequest, CaaCheckResponse, CaaCheckResponseDetails
@@ -35,8 +34,7 @@ class MpicCaaChecker:
         if log_level is not None:
             self.logger.setLevel(log_level)
 
-    @staticmethod
-    async def find_caa_records_and_domain(caa_request) -> tuple[RRset, Name]:
+    async def find_caa_records_and_domain(self, caa_request) -> tuple[RRset, Name]:
         rrset = None
         domain = dns.name.from_text(caa_request.domain_or_ip_target)
 
@@ -48,7 +46,7 @@ class MpicCaaChecker:
             except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
                 domain = domain.parent()
             except Exception as e:
-                print(f"Exception during CAA lookup: {e}")
+                self.logger.error(f"Exception during CAA lookup: {e}. Trace identifier: {caa_request.trace_identifier}")
                 raise MpicCaaLookupException from Exception(e)
 
         return rrset, domain
@@ -75,6 +73,7 @@ class MpicCaaChecker:
         rrset = None
 
         caa_check_response = CaaCheckResponse(
+            check_completed=False,
             check_passed=False,
             errors=None,
             details=CaaCheckResponseDetails(caa_record_present=None),
@@ -87,7 +86,7 @@ class MpicCaaChecker:
         try:
             # noinspection PyUnresolvedReferences
             async with self.logger.trace_timing(f"CAA lookup for target {caa_request.domain_or_ip_target}"):
-                rrset, domain = await MpicCaaChecker.find_caa_records_and_domain(caa_request)
+                rrset, domain = await self.find_caa_records_and_domain(caa_request)
             caa_found = rrset is not None
         except MpicCaaLookupException:
             caa_lookup_error = True
@@ -101,11 +100,13 @@ class MpicCaaChecker:
             caa_check_response.details.found_at = None
             caa_check_response.details.records_seen = None
         elif not caa_found:  # if domain has no CAA records: valid for issuance
+            caa_check_response.check_completed = True
             caa_check_response.check_passed = True
             caa_check_response.details.caa_record_present = False
             caa_check_response.details.found_at = None
             caa_check_response.details.records_seen = None
         else:
+            caa_check_response.check_completed = True
             valid_for_issuance = MpicCaaChecker.is_valid_for_issuance(caa_domains, is_wc_domain, rrset)
             caa_check_response.check_passed = valid_for_issuance
             caa_check_response.details.caa_record_present = True
@@ -157,7 +158,7 @@ class MpicCaaChecker:
             try:
                 # we don't do anything with the parameters yet, but we will eventually
                 domain, parameters = MpicCaaChecker.extract_domain_and_parameters_from_caa_value(value)
-                if domain in caa_domains:  # if the value is in the list of valid CAA domains
+                if domain.lower() in caa_domains:  # if the value is in the list of valid CAA domains
                     issuance_permitted = True
                     break
             except ValueError as ve:
@@ -168,7 +169,6 @@ class MpicCaaChecker:
     @staticmethod
     def extract_domain_and_parameters_from_caa_value(caa_value: str) -> tuple[str, Optional[dict[str, str]]]:
         # Split on semicolons since they're prohibited in parameter tag/value
-        issuer_domain_name = ""
         parameters = {}
         if ";" in caa_value:
             parts = caa_value.split(";")

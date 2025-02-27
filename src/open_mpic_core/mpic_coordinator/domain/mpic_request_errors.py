@@ -1,0 +1,2 @@
+class MpicRequestValidationException(Exception):
+    pass

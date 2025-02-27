@@ -6,6 +6,7 @@ from open_mpic_core import CaaCheckResponseDetails, DcvCheckResponseDetails, Mpi
 
 
 class BaseCheckResponse(BaseModel, ABC):
+    check_completed: bool = False
     check_passed: bool = False
     errors: list[MpicValidationError] | None = None
     timestamp_ns: int | None = None
