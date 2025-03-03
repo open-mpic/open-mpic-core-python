@@ -101,7 +101,7 @@ class MpicDcvChecker:
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE | DcvValidationMethod.ACME_HTTP_01:
                 result = await self.perform_http_based_validation(dcv_request)
-            case _:  # ACME_DNS_01 | DNS_CHANGE | IP_LOOKUP | CONTACT_EMAIL | CONTACT_PHONE
+            case _:  # ACME_DNS_01 | DNS_CHANGE | IP_LOOKUP | CONTACT_EMAIL | CONTACT_PHONE | REVERSE_ADDRESS_LOOKUP
                 result = await self.perform_general_dns_validation(dcv_request)
 
         # noinspection PyUnresolvedReferences
@@ -329,7 +329,7 @@ class MpicDcvChecker:
                 record_value = b"".join(record.strings).decode("utf-8")  # TODO errors='strict' or replace (lenient)?
             case dns.rdatatype.CAA:
                 record_value = record.value.decode("utf-8")
-            case dns.rdatatype.CNAME:
+            case dns.rdatatype.CNAME | dns.rdatatype.PTR:
                 record_value = b".".join(record.target.labels).decode("utf-8")
             case dns.rdatatype.A | dns.rdatatype.AAAA:
                 record_value = record.address

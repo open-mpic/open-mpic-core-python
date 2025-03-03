@@ -9,6 +9,7 @@ from open_mpic_core import (
     DcvContactEmailTxtValidationParameters,
     DcvContactPhoneCaaValidationParameters,
     DcvContactPhoneTxtValidationParameters,
+    DcvReverseAddressLookupValidationParameters,
     DcvCheckRequest,
     CaaCheckRequest,
     CertificateType,
@@ -73,7 +74,7 @@ class ValidCheckCreator:
         check_request = DcvCheckRequest(
             domain_or_ip_target="example.com",
             dcv_check_parameters=DcvIpAddressValidationParameters(
-                dns_name_prefix="_dnsauth", dns_record_type=record_type, challenge_value="CHANGE_ME"
+                dns_name_prefix="_dnsauth", dns_record_type=record_type, challenge_value="challenge_111"
             ),
         )
         challenge_value = "192.0.2.1" if record_type == DnsRecordType.A else "2001:db8::1"  # A or AAAA
@@ -97,6 +98,13 @@ class ValidCheckCreator:
         )
 
     @staticmethod
+    def create_valid_reverse_address_lookup_check_request() -> DcvCheckRequest:
+        return DcvCheckRequest(
+            domain_or_ip_target="example.com",
+            dcv_check_parameters=DcvReverseAddressLookupValidationParameters(challenge_value="challenge_111"),
+        )
+
+    @staticmethod
     def create_valid_dcv_check_request(validation_method: DcvValidationMethod, record_type=DnsRecordType.TXT):
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE:
@@ -109,6 +117,8 @@ class ValidCheckCreator:
                 return ValidCheckCreator.create_valid_acme_dns_01_check_request()
             case DcvValidationMethod.IP_ADDRESS:
                 return ValidCheckCreator.create_valid_ip_lookup_check_request(record_type)
+            case DcvValidationMethod.REVERSE_ADDRESS_LOOKUP:
+                return ValidCheckCreator.create_valid_reverse_address_lookup_check_request()
             case (
                 DcvValidationMethod.CONTACT_EMAIL_CAA
                 | DcvValidationMethod.CONTACT_EMAIL_TXT

@@ -91,6 +91,7 @@ class TestMpicDcvChecker:
             (DcvValidationMethod.IP_ADDRESS, DnsRecordType.AAAA),
             (DcvValidationMethod.ACME_HTTP_01, None),
             (DcvValidationMethod.ACME_DNS_01, None),
+            (DcvValidationMethod.REVERSE_ADDRESS_LOOKUP, None),
         ],
     )
     async def check_dcv__should_perform_appropriate_check_and_allow_issuance_given_target_record_found(
@@ -137,7 +138,7 @@ class TestMpicDcvChecker:
     ])
     # fmt: on
     async def check_dcv__should_set_check_completed_true_if_no_errors_encountered_and_false_otherwise(
-            self, validation_method, should_complete_check, mocker
+        self, validation_method, should_complete_check, mocker
     ):
         if validation_method == DcvValidationMethod.WEBSITE_CHANGE:
             dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE)
@@ -743,12 +744,11 @@ class TestMpicDcvChecker:
         # noinspection PyUnusedLocal
         async def side_effect(url, headers):
             raise ClientConnectionError()
+
         # return mocker.patch("aiohttp.ClientSession.get", side_effect=side_effect)
         return mocker.patch(
             "aiohttp.ClientSession.get",
-            side_effect=lambda *args, **kwargs: AsyncMock(
-                __aenter__=AsyncMock(side_effect=ClientConnectionError())
-            )
+            side_effect=lambda *args, **kwargs: AsyncMock(__aenter__=AsyncMock(side_effect=ClientConnectionError())),
         )
 
     def patch_resolver_resolve_with_side_effect(self, mocker, side_effect):
@@ -826,12 +826,12 @@ class TestMpicDcvChecker:
                 | DcvValidationMethod.IP_ADDRESS
                 | DcvValidationMethod.CONTACT_PHONE_TXT
                 | DcvValidationMethod.CONTACT_EMAIL_TXT
+                | DcvValidationMethod.REVERSE_ADDRESS_LOOKUP
             ):
-                match check_parameters.dns_record_type:
-                    case DnsRecordType.CNAME | DnsRecordType.TXT | DnsRecordType.A | DnsRecordType.AAAA:
-                        record_data = {"value": check_parameters.challenge_value}
-                    case _:  # CAA
-                        record_data = {"flags": "", "tag": "issue", "value": check_parameters.challenge_value}
+                if check_parameters.dns_record_type == DnsRecordType.CAA:
+                    record_data = {"flags": "", "tag": "issue", "value": check_parameters.challenge_value}
+                else:
+                    record_data = {"value": check_parameters.challenge_value}
             case DcvValidationMethod.CONTACT_EMAIL_CAA:
                 record_data = {"flags": "", "tag": "contactemail", "value": check_parameters.challenge_value}
             case DcvValidationMethod.CONTACT_PHONE_CAA:
