@@ -99,9 +99,10 @@ class ValidCheckCreator:
 
     @staticmethod
     def create_valid_reverse_address_lookup_check_request() -> DcvCheckRequest:
+        # a PTR record will have a trailing dot in the value
         return DcvCheckRequest(
             domain_or_ip_target="example.com",
-            dcv_check_parameters=DcvReverseAddressLookupValidationParameters(challenge_value="challenge_111"),
+            dcv_check_parameters=DcvReverseAddressLookupValidationParameters(challenge_value="challenge_111."),
         )
 
     @staticmethod
