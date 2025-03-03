@@ -139,9 +139,15 @@ class MpicDcvChecker:
             )
         except dns.exception.DNSException as e:
             log_msg = f"DNS lookup error for {name_to_resolve}: {str(e)}. Trace identifier: {request.trace_identifier}"
-            self.logger.error(log_msg)
-            dcv_check_response.timestamp_ns = time.time_ns()
+            if isinstance(e, dns.resolver.NoAnswer) or isinstance(e, dns.resolver.NXDOMAIN):
+                dcv_check_response.check_completed = True  # errors on the target domain, not the lookup
+                # noinspection PyUnresolvedReferences
+                self.logger.trace(log_msg)
+            else:
+                self.logger.warning(log_msg)
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)]
+
+        dcv_check_response.timestamp_ns = time.time_ns()
         return dcv_check_response
 
     @staticmethod
@@ -312,7 +318,6 @@ class MpicDcvChecker:
             dcv_check_response.check_passed = any(
                 expected_dns_record_content in record for record in records_as_strings
             )
-        dcv_check_response.timestamp_ns = time.time_ns()
         dcv_check_response.check_completed = True
 
     # noinspection PyUnresolvedReferences
