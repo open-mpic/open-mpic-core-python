@@ -12,3 +12,4 @@ class DcvValidationMethod(StrEnum):
     CONTACT_PHONE_TXT = 'contact-phone-txt'
     IP_ADDRESS = 'ip-address'  # A or AAAA record
     ACME_TLS_ALPN_01 = 'acme-tls-alpn-01'  # not implemented yet
+    REVERSE_ADDRESS_LOOKUP = 'reverse-address-lookup'  # PTR record
