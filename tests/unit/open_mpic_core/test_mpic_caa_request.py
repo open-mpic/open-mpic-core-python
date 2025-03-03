@@ -26,7 +26,7 @@ class TestMpicCaaRequest:
             MpicCaaRequest.model_validate_json(json.dumps(request.model_dump()))
         assert "domain_or_ip_target" in str(validation_error.value)
 
-    @pytest.mark.parametrize("certificate_type", [None, "invalid"])
+    @pytest.mark.parametrize("certificate_type", ["invalid"])
     def mpic_caa_request__should_require_valid_certificate_type(self, certificate_type):
         request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         request.caa_check_parameters.certificate_type = certificate_type

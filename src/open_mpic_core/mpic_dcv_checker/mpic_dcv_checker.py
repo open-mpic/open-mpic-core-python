@@ -28,13 +28,17 @@ class MpicDcvChecker:
     CONTACT_PHONE_TAG = "contactphone"
 
     def __init__(
-        self, perspective_code: str, reuse_http_client: bool = False, verify_ssl: bool = False, log_level: int = None
+        self,
+        http_client_timeout: float = 30,
+        reuse_http_client: bool = False,
+        verify_ssl: bool = False,
+        log_level: int = None,
     ):
-        self.perspective_code = perspective_code
         self.verify_ssl = verify_ssl
         self._reuse_http_client = reuse_http_client
         self._async_http_client = None
         self._http_client_loop = None  # track which loop the http client was created on
+        self._http_client_timeout = http_client_timeout
 
         self.logger = logger.getChild(self.__class__.__name__)
         if log_level is not None:
@@ -57,31 +61,22 @@ class MpicDcvChecker:
                 if self._async_http_client and not self._async_http_client.closed:
                     await self._async_http_client.close()
 
-                connector = aiohttp.TCPConnector(ssl=self.verify_ssl)
+                connector = aiohttp.TCPConnector(ssl=self.verify_ssl, limit=0)  # no limit on simultaneous connections
                 self._async_http_client = aiohttp.ClientSession(
-                    connector=connector, timeout=aiohttp.ClientTimeout(total=30)
+                    connector=connector, timeout=aiohttp.ClientTimeout(total=self._http_client_timeout)
                 )
                 self._http_client_loop = current_loop
             yield self._async_http_client
         else:  # implementations such as AWS Lambda will need a new client for each invocation
             connector = aiohttp.TCPConnector(ssl=self.verify_ssl)
-            client = aiohttp.ClientSession(connector=connector, timeout=aiohttp.ClientTimeout(total=30))
+            client = aiohttp.ClientSession(
+                connector=connector, timeout=aiohttp.ClientTimeout(total=self._http_client_timeout)
+            )
             try:
                 yield client
             finally:
                 if not client.closed:
                     await client.close()
-
-    async def initialize_async_http_client(self):
-        """Initialize the async HTTP client.
-        Needs to be called before the first HTTP based validation check.
-        :return:
-        """
-        connector = aiohttp.TCPConnector(ssl=self.verify_ssl)  # flag to verify TLS certificates; defaults to False
-        self._async_http_client = aiohttp.ClientSession(
-            connector=connector,
-            timeout=aiohttp.ClientTimeout(total=30),  # Add reasonable timeouts
-        )
 
     async def shutdown(self):
         """Close the async HTTP client.
@@ -95,16 +90,16 @@ class MpicDcvChecker:
             self._async_http_client = None
 
     async def check_dcv(self, dcv_request: DcvCheckRequest) -> DcvCheckResponse:
-        validation_method = dcv_request.dcv_check_parameters.validation_details.validation_method
+        validation_method = dcv_request.dcv_check_parameters.validation_method
         # noinspection PyUnresolvedReferences
-        self.logger.trace(f"Checking DCV for {dcv_request.domain_or_ip_target} with method {validation_method}")
+        self.logger.trace(f"Checking DCV for {dcv_request.domain_or_ip_target} with method {validation_method}.")
 
         # encode domain if needed
         dcv_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(dcv_request.domain_or_ip_target)
 
         result = None
         match validation_method:
-            case DcvValidationMethod.WEBSITE_CHANGE_V2 | DcvValidationMethod.ACME_HTTP_01:
+            case DcvValidationMethod.WEBSITE_CHANGE | DcvValidationMethod.ACME_HTTP_01:
                 result = await self.perform_http_based_validation(dcv_request)
             case _:  # ACME_DNS_01 | DNS_CHANGE | IP_LOOKUP | CONTACT_EMAIL | CONTACT_PHONE
                 result = await self.perform_general_dns_validation(dcv_request)
@@ -113,11 +108,11 @@ class MpicDcvChecker:
         self.logger.trace(f"Completed DCV for {dcv_request.domain_or_ip_target} with method {validation_method}")
         return result
 
-    async def perform_general_dns_validation(self, request) -> DcvCheckResponse:
-        validation_details = request.dcv_check_parameters.validation_details
-        validation_method = validation_details.validation_method
-        dns_name_prefix = validation_details.dns_name_prefix
-        dns_record_type = validation_details.dns_record_type
+    async def perform_general_dns_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:
+        check_parameters = request.dcv_check_parameters
+        validation_method = check_parameters.validation_method
+        dns_name_prefix = check_parameters.dns_name_prefix
+        dns_record_type = check_parameters.dns_record_type
         exact_match = True
 
         if dns_name_prefix is not None and len(dns_name_prefix) > 0:
@@ -126,14 +121,14 @@ class MpicDcvChecker:
             name_to_resolve = request.domain_or_ip_target
 
         if validation_method == DcvValidationMethod.ACME_DNS_01:
-            expected_dns_record_content = validation_details.key_authorization
+            expected_dns_record_content = check_parameters.key_authorization_hash
         else:
-            expected_dns_record_content = validation_details.challenge_value
-        
-        if validation_method == DcvValidationMethod.DNS_CHANGE:
-            exact_match = validation_details.require_exact_match
+            expected_dns_record_content = check_parameters.challenge_value
 
-        dcv_check_response = self.create_empty_check_response(validation_method)
+        if validation_method == DcvValidationMethod.DNS_CHANGE:
+            exact_match = check_parameters.require_exact_match
+
+        dcv_check_response = MpicDcvChecker.create_empty_check_response(validation_method)
 
         try:
             # noinspection PyUnresolvedReferences
@@ -145,15 +140,18 @@ class MpicDcvChecker:
                 dcv_check_response, lookup, validation_method, dns_record_type, expected_dns_record_content, exact_match
             )
         except dns.exception.DNSException as e:
+            log_msg = f"DNS lookup error for {name_to_resolve}: {str(e)}. Trace identifier: {request.trace_identifier}"
+            self.logger.error(log_msg)
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)]
         return dcv_check_response
 
     @staticmethod
     async def perform_dns_resolution(name_to_resolve, validation_method, dns_record_type) -> dns.resolver.Answer:
-        walk_domain_tree = (
-            validation_method in [DcvValidationMethod.CONTACT_EMAIL, DcvValidationMethod.CONTACT_PHONE]
-        ) and dns_record_type == DnsRecordType.CAA
+        walk_domain_tree = validation_method in [
+            DcvValidationMethod.CONTACT_EMAIL_CAA,
+            DcvValidationMethod.CONTACT_PHONE_CAA,
+        ]
 
         dns_rdata_type = dns.rdatatype.from_text(dns_record_type)
         lookup = None
@@ -170,23 +168,23 @@ class MpicDcvChecker:
             lookup = await dns.asyncresolver.resolve(name_to_resolve, dns_rdata_type)
         return lookup
 
-    async def perform_http_based_validation(self, request) -> DcvCheckResponse:
-        validation_method = request.dcv_check_parameters.validation_details.validation_method
+    async def perform_http_based_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:
+        validation_method = request.dcv_check_parameters.validation_method
         domain_or_ip_target = request.domain_or_ip_target
-        http_headers = request.dcv_check_parameters.validation_details.http_headers
-        if validation_method == DcvValidationMethod.WEBSITE_CHANGE_V2:
-            expected_response_content = request.dcv_check_parameters.validation_details.challenge_value
-            url_scheme = request.dcv_check_parameters.validation_details.url_scheme
-            token_path = request.dcv_check_parameters.validation_details.http_token_path
+        http_headers = request.dcv_check_parameters.http_headers
+        if validation_method == DcvValidationMethod.WEBSITE_CHANGE:
+            expected_response_content = request.dcv_check_parameters.challenge_value
+            url_scheme = request.dcv_check_parameters.url_scheme
+            token_path = request.dcv_check_parameters.http_token_path
             token_url = f"{url_scheme}://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{token_path}"  # noqa E501 (http)
-            dcv_check_response = self.create_empty_check_response(DcvValidationMethod.WEBSITE_CHANGE_V2)
+            dcv_check_response = MpicDcvChecker.create_empty_check_response(DcvValidationMethod.WEBSITE_CHANGE)
         else:
-            expected_response_content = request.dcv_check_parameters.validation_details.key_authorization
-            token = request.dcv_check_parameters.validation_details.token
+            expected_response_content = request.dcv_check_parameters.key_authorization
+            token = request.dcv_check_parameters.token
             token_url = (
                 f"http://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
             )
-            dcv_check_response = self.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
+            dcv_check_response = MpicDcvChecker.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
         try:
             async with self.get_async_http_client() as async_http_client:
                 # noinspection PyUnresolvedReferences
@@ -195,14 +193,24 @@ class MpicDcvChecker:
                         await MpicDcvChecker.evaluate_http_lookup_response(
                             request, dcv_check_response, response, token_url, expected_response_content
                         )
-        except (ClientError, HTTPException) as e:
+        except asyncio.TimeoutError as e:
+            dcv_check_response.timestamp_ns = time.time_ns()
+            log_message = f"Timeout connecting to {token_url}: {str(e)}. Trace identifier: {request.trace_identifier}"
+            self.logger.warning(log_message)
+            message = f"Connection timed out while attempting to connect to {token_url}"
+            dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=message)]
+        except (ClientError, HTTPException, OSError) as e:
+            log_message = f"Error connecting to {token_url}: {str(e)}. Trace identifier: {request.trace_identifier}"
+            self.logger.error(log_message)
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
+
         return dcv_check_response
 
-    def create_empty_check_response(self, validation_method: DcvValidationMethod) -> DcvCheckResponse:
+    @staticmethod
+    def create_empty_check_response(validation_method: DcvValidationMethod) -> DcvCheckResponse:
         return DcvCheckResponse(
-            perspective_code=self.perspective_code,
+            check_completed=False,
             check_passed=False,
             timestamp_ns=None,
             errors=None,
@@ -238,13 +246,13 @@ class MpicDcvChecker:
             response_text = await lookup_response.text()
             result = response_text.strip()
             expected_response_content = challenge_value
-            validation_method = dcv_check_request.dcv_check_parameters.validation_details.validation_method
+            validation_method = dcv_check_request.dcv_check_parameters.validation_method
             if validation_method == DcvValidationMethod.ACME_HTTP_01:
                 # need to match exactly for ACME HTTP-01
                 dcv_check_response.check_passed = expected_response_content == result
             else:
                 dcv_check_response.check_passed = expected_response_content in result
-                match_regex = dcv_check_request.dcv_check_parameters.validation_details.match_regex
+                match_regex = dcv_check_request.dcv_check_parameters.match_regex
                 if match_regex is not None and len(match_regex) > 0:
                     match = re.search(match_regex, result)
                     dcv_check_response.check_passed = dcv_check_response.check_passed and (match is not None)
@@ -252,6 +260,7 @@ class MpicDcvChecker:
             dcv_check_response.details.response_url = target_url
             dcv_check_response.details.response_history = response_history
             dcv_check_response.details.response_page = base64.b64encode(content).decode()
+            dcv_check_response.check_completed = True
         else:
             dcv_check_response.errors = [
                 MpicValidationError(error_type=str(lookup_response.status), error_message=lookup_response.reason)
@@ -272,23 +281,18 @@ class MpicDcvChecker:
         for response_answer in lookup_response.response.answer:
             if response_answer.rdtype == dns_rdata_type:
                 for record_data in response_answer:
-                    if validation_method == DcvValidationMethod.CONTACT_EMAIL and dns_record_type == DnsRecordType.CAA:
+                    if validation_method == DcvValidationMethod.CONTACT_EMAIL_CAA:
                         if record_data.tag.decode("utf-8").lower() == MpicDcvChecker.CONTACT_EMAIL_TAG:
                             record_data_as_string = record_data.value.decode("utf-8")
                         else:
                             continue
-                    elif (
-                        validation_method == DcvValidationMethod.CONTACT_PHONE and dns_record_type == DnsRecordType.CAA
-                    ):
+                    elif validation_method == DcvValidationMethod.CONTACT_PHONE_CAA:
                         if record_data.tag.decode("utf-8").lower() == MpicDcvChecker.CONTACT_PHONE_TAG:
                             record_data_as_string = record_data.value.decode("utf-8")
                         else:
                             continue
                     else:
-                        record_data_as_string = record_data.to_text()
-                    # only need to remove enclosing quotes if they're there, e.g., for a TXT record
-                    if record_data_as_string[0] == '"' and record_data_as_string[-1] == '"':
-                        record_data_as_string = record_data_as_string[1:-1]
+                        record_data_as_string = MpicDcvChecker.extract_value_from_record(record_data)
                     records_as_strings.append(record_data_as_string)
 
         dcv_check_response.details.response_code = response_code
@@ -302,6 +306,8 @@ class MpicDcvChecker:
             expected_dns_record_content = expected_dns_record_content.lower()
             records_as_strings = [record.lower() for record in records_as_strings]
 
+        # exact_match=True requires at least one record matches and will fail even if whitespace is different.
+        # exact_match=False simply runs a contains check.
         if exact_match:
             dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
         else:
@@ -309,3 +315,19 @@ class MpicDcvChecker:
                 expected_dns_record_content in record for record in records_as_strings
             )
         dcv_check_response.timestamp_ns = time.time_ns()
+        dcv_check_response.check_completed = True
+
+    # noinspection PyUnresolvedReferences
+    @staticmethod
+    def extract_value_from_record(record: dns.rdata.Rdata) -> str:
+        record_value = None
+        match record.rdtype:
+            case dns.rdatatype.TXT:
+                record_value = b"".join(record.strings).decode("utf-8")  # TODO errors='strict' or replace (lenient)?
+            case dns.rdatatype.CAA:
+                record_value = record.value.decode("utf-8")
+            case dns.rdatatype.CNAME:
+                record_value = b".".join(record.target.labels).decode("utf-8")
+            case dns.rdatatype.A | dns.rdatatype.AAAA:
+                record_value = record.address
+        return record_value

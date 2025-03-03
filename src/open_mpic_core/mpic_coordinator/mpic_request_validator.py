@@ -31,16 +31,16 @@ class MpicRequestValidator:
                 )
 
         if mpic_request.check_type == CheckType.DCV:
-            validation_details = mpic_request.dcv_check_parameters.validation_details
+            check_parameters = mpic_request.dcv_check_parameters
             if (
-                validation_details.validation_method == DcvValidationMethod.WEBSITE_CHANGE_V2
-                and validation_details.challenge_value == ""
-                and (validation_details.match_regex is None or validation_details.match_regex == "")
+                check_parameters.validation_method == DcvValidationMethod.WEBSITE_CHANGE
+                and check_parameters.challenge_value == ""
+                and (check_parameters.match_regex is None or check_parameters.match_regex == "")
             ):
                 request_validation_issues.append(
                     MpicRequestValidationIssue(
                         MpicRequestValidationMessages.EMPTY_CHALLENGE_VALUE,
-                        validation_details.challenge_value,
+                        check_parameters.challenge_value,
                     )
                 )
 

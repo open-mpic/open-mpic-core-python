@@ -1,11 +1,12 @@
+from abc import ABC
+from pydantic import BaseModel
 from typing import Union, Literal
 
 from open_mpic_core import CaaCheckResponseDetails, DcvCheckResponseDetails, MpicValidationError, CheckType
-from pydantic import BaseModel
 
 
-class BaseCheckResponse(BaseModel):
-    perspective_code: str
+class BaseCheckResponse(BaseModel, ABC):
+    check_completed: bool = False
     check_passed: bool = False
     errors: list[MpicValidationError] | None = None
     timestamp_ns: int | None = None

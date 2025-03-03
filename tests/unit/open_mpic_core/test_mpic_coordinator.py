@@ -13,7 +13,7 @@ from open_mpic_core import (
     CaaCheckResponseDetails,
     MpicRequestOrchestrationParameters,
     RemotePerspective,
-    MpicRequestValidationError,
+    MpicRequestValidationException,
     MpicResponse,
     MpicCoordinator,
     MpicCoordinatorConfiguration,
@@ -122,7 +122,7 @@ class TestMpicCoordinator:
         request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         coordinator_config = self.create_mpic_coordinator_configuration()
         target_perspectives = coordinator_config.target_perspectives
-        call_list = MpicCoordinator.collect_async_calls_to_issue(request, target_perspectives)
+        call_list = MpicCoordinator.collect_checker_calls_to_issue(request, target_perspectives)
         assert len(call_list) == 6
         assert set(map(lambda call_result: call_result.check_type, call_list)) == {CheckType.CAA}
 
@@ -131,20 +131,27 @@ class TestMpicCoordinator:
         request.caa_check_parameters.caa_domains = ["example.com"]
         coordinator_config = self.create_mpic_coordinator_configuration()
         target_perspectives = coordinator_config.target_perspectives
-        call_list = MpicCoordinator.collect_async_calls_to_issue(request, target_perspectives)
+        call_list = MpicCoordinator.collect_checker_calls_to_issue(request, target_perspectives)
         assert all(call.check_request.caa_check_parameters.caa_domains == ["example.com"] for call in call_list)
 
-    def collect_async_calls_to_issue__should_have_only_dcv_calls_with_validation_details_given_dcv_check_type(self):
+    def collect_async_calls_to_issue__should_include_trace_identifier_if_present(self):
+        request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        request.trace_identifier = "test_trace_identifier"
+        coordinator_config = self.create_mpic_coordinator_configuration()
+        target_perspectives = coordinator_config.target_perspectives
+        call_list = MpicCoordinator.collect_checker_calls_to_issue(request, target_perspectives)
+        assert all(call.check_request.trace_identifier == "test_trace_identifier" for call in call_list)
+
+    def collect_async_calls_to_issue__should_have_only_dcv_calls_with_check_parameters_given_dcv_check_type(self):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(DcvValidationMethod.DNS_CHANGE)
         coordinator_config = self.create_mpic_coordinator_configuration()
         target_perspectives = coordinator_config.target_perspectives
-        call_list = MpicCoordinator.collect_async_calls_to_issue(request, target_perspectives)
+        call_list = MpicCoordinator.collect_checker_calls_to_issue(request, target_perspectives)
         assert len(call_list) == 6
         assert set(map(lambda call_result: call_result.check_type, call_list)) == {CheckType.DCV}
         for call in call_list:
-            validation_method = call.check_request.dcv_check_parameters.validation_details.validation_method
+            validation_method = call.check_request.dcv_check_parameters.validation_method
             assert validation_method == DcvValidationMethod.DNS_CHANGE
-            assert call.check_request.dcv_check_parameters.validation_details.dns_name_prefix == "test"
 
     async def coordinate_mpic__should_invoke_async_call_remote_perspective_function_with_correct_parameters(self):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
@@ -306,7 +313,9 @@ class TestMpicCoordinator:
         mpic_coordinator = MpicCoordinator(succeed_after_two_attempts, mpic_coordinator_config)
         first_response: MpicResponse = await mpic_coordinator.coordinate_mpic(first_request)
         first_cohort = first_response.perspectives
-        first_cohort_sorted = sorted(first_cohort, key=lambda check_response: check_response.perspective_code)
+        first_cohort_sorted = sorted(
+            first_cohort, key=lambda perspective_response: perspective_response.perspective_code
+        )
 
         second_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         second_request.orchestration_parameters = MpicRequestOrchestrationParameters(
@@ -321,7 +330,9 @@ class TestMpicCoordinator:
         mpic_coordinator = MpicCoordinator(succeed_after_five_attempts, mpic_coordinator_config)
         second_response: MpicResponse = await mpic_coordinator.coordinate_mpic(second_request)
         second_cohort = second_response.perspectives
-        second_cohort_sorted = sorted(second_cohort, key=lambda check_response: check_response.perspective_code)
+        second_cohort_sorted = sorted(
+            second_cohort, key=lambda perspective_response: perspective_response.perspective_code
+        )
 
         # assert that perspectives in first cohort and in second cohort are the same perspectives
         for i in range(len(first_cohort_sorted)):
@@ -364,10 +375,10 @@ class TestMpicCoordinator:
         assert len(previous_attempts) == 2
         for perspective_result_list in previous_attempts:
             assert len(perspective_result_list) == 2
-            assert all(not perspective.check_passed for perspective in perspective_result_list)
+            assert all(not perspective.check_response.check_passed for perspective in perspective_result_list)
 
     @pytest.mark.parametrize("check_type", [CheckType.CAA, CheckType.DCV])
-    async def coordinate_mpic__should_return_check_failure_message_given_remote_perspective_failure(self, check_type):
+    async def coordinate_mpic__should_allow_exceptions_in_failing_remotes_if_quorum_achieved_overall(self, check_type):
         mpic_request = None
         match check_type:
             case CheckType.CAA:
@@ -377,16 +388,18 @@ class TestMpicCoordinator:
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
 
         mocked_call_remote_perspective_function = AsyncMock()
-        mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
-            self.create_failing_remote_response_with_exception
+        # six total perspectives in the test setup; if 2 or fewer fail, it can be with an exception.
+        mocked_call_remote_perspective_function.side_effect = self.sequence_of(
+            (2, self.create_failing_remote_response_with_exception), (4, self.create_passing_caa_check_response)
         )
         mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config)
 
         mpic_response = await mpic_coordinator.coordinate_mpic(mpic_request)
-        assert mpic_response.is_valid is False
+        assert mpic_response.is_valid is True
         for perspective in mpic_response.perspectives:
-            assert perspective.check_passed is False
-            assert perspective.errors[0].error_type == ErrorMessages.COORDINATOR_COMMUNICATION_ERROR.key
+            if not perspective.check_response.check_passed:
+                perspective_error = perspective.check_response.errors[0]
+                assert perspective_error.error_type == ErrorMessages.COORDINATOR_REMOTE_CHECK_ERROR.key
 
     async def coordinate_mpic__should_raise_exception_given_logically_invalid_mpic_request(self):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
@@ -401,7 +414,7 @@ class TestMpicCoordinator:
             self.create_passing_caa_check_response
         )
         mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config)
-        with pytest.raises(MpicRequestValidationError):
+        with pytest.raises(MpicRequestValidationException):
             await mpic_coordinator.coordinate_mpic(mpic_request)
 
     async def coordinate_mpic__should_return_trace_identifier_if_included_in_request(self):
@@ -442,6 +455,23 @@ class TestMpicCoordinator:
         log_contents = self.log_output.getvalue()
         assert all(text in log_contents for text in ["seconds", "TRACE", mpic_coordinator.logger.name])
 
+    @pytest.mark.parametrize("should_complete_mpic", [True, False])
+    async def coordinate_mpic__should_set_mpic_completed_true_if_enough_perspectives_completed_check_otherwise_false(
+            self, should_complete_mpic
+    ):
+        mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
+        mocked_call_perspective_function = AsyncMock()
+        if should_complete_mpic:
+            side_effect = self.create_passing_caa_check_response
+        else:
+            side_effect = self.create_incomplete_remote_caa_check_response
+        mocked_call_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(side_effect)
+        mpic_coordinator = MpicCoordinator(mocked_call_perspective_function, mpic_coordinator_config)
+        mpic_response = await mpic_coordinator.coordinate_mpic(mpic_request)
+        assert mpic_response.is_valid is should_complete_mpic
+        assert mpic_response.mpic_completed is should_complete_mpic
+
     @staticmethod
     def create_mpic_coordinator_configuration() -> MpicCoordinatorConfiguration:
         target_perspectives = [
@@ -466,7 +496,7 @@ class TestMpicCoordinator:
         self, perspective: RemotePerspective, check_type: CheckType, check_request_serialized: str
     ):
         return CaaCheckResponse(
-            perspective_code=perspective.code,
+            check_completed=True,
             check_passed=True,
             details=CaaCheckResponseDetails(caa_record_present=False),
         )
@@ -476,9 +506,19 @@ class TestMpicCoordinator:
         self, perspective: RemotePerspective, check_type: CheckType, check_request_serialized: str
     ):
         return CaaCheckResponse(
-            perspective_code=perspective.code,
+            check_completed=True,
             check_passed=False,
             details=CaaCheckResponseDetails(caa_record_present=True),
+        )
+
+    # noinspection PyUnusedLocal
+    def create_incomplete_remote_caa_check_response(
+        self, perspective: RemotePerspective, check_type: CheckType, check_request_serialized: str
+    ):
+        return CaaCheckResponse(
+            check_completed=False,
+            check_passed=False,
+            details=CaaCheckResponseDetails(caa_record_present=None),
         )
 
     def create_remote_caa_response_that_only_passes_for_arin_rir(

@@ -8,6 +8,7 @@ from open_mpic_core import CaaCheckParameters, DcvCheckParameters
 
 class BaseCheckRequest(BaseModel, ABC):
     domain_or_ip_target: str
+    trace_identifier: str | None = None
 
 
 class CaaCheckRequest(BaseCheckRequest):

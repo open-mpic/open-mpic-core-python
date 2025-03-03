@@ -25,8 +25,6 @@ class TestMpicCaaChecker:
     def set_env_variables():
         envvars = {
             "default_caa_domains": "ca1.com|ca2.net|ca3.org",
-            "AWS_REGION": "us-east-4",
-            "rir_region": "arin",
         }
         with pytest.MonkeyPatch.context() as class_scoped_monkeypatch:
             for k, v in envvars.items():
@@ -51,7 +49,7 @@ class TestMpicCaaChecker:
 
     @staticmethod
     def create_configured_caa_checker(log_level=None):
-        return MpicCaaChecker(["ca1.com", "ca2.net", "ca3.org"], "us-east-4", log_level)
+        return MpicCaaChecker(["ca1.com", "ca2.net", "ca3.org"], log_level)
 
     def constructor__should_set_log_level_if_provided(self):
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker(logging.ERROR)
@@ -76,7 +74,13 @@ class TestMpicCaaChecker:
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
         caa_response = await caa_checker.check_caa(caa_request)
         check_response_details = CaaCheckResponseDetails(caa_record_present=False)
-        assert self.is_result_as_expected(caa_response, True, check_response_details) is True
+        caa_response.timestamp_ns = None  # ignore timestamp for comparison
+        expected_response = CaaCheckResponse(
+            check_passed=True,
+            check_completed=True,
+            details=check_response_details,
+        )
+        assert caa_response == expected_response
 
     async def check_caa__should_allow_issuance_given_matching_caa_record_found(self, mocker):
         record_name, expected_domain = "example.com", "example.com."
@@ -92,7 +96,13 @@ class TestMpicCaaChecker:
         check_response_details = CaaCheckResponseDetails(
             caa_record_present=True, found_at="example.com", records_seen=expected_records_seen
         )
-        assert self.is_result_as_expected(caa_response, True, check_response_details) is True
+        caa_response.timestamp_ns = None  # ignore timestamp for comparison
+        expected_response = CaaCheckResponse(
+            check_passed=True,
+            check_completed=True,
+            details=check_response_details,
+        )
+        assert caa_response == expected_response
 
     @pytest.mark.parametrize(
         "domain, encoded_domain", [("bücher.example.de", "xn--bcher-kva.example.de."), ("café.com", "xn--caf-dma.com.")]
@@ -143,6 +153,21 @@ class TestMpicCaaChecker:
         caa_response = await caa_checker.check_caa(caa_request)
         assert caa_response.check_passed is True
 
+    @pytest.mark.parametrize("should_complete_check", [True, False])
+    async def check_caa__should_set_check_completed_true_if_no_errors_encountered_and_false_otherwise(
+        self, should_complete_check, mocker
+    ):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
+        if should_complete_check:
+            self.patch_resolver_with_answer_or_exception(mocker, dns.resolver.NoAnswer())
+        else:
+            self.patch_resolver_with_answer_or_exception(mocker, dns.exception.Timeout())
+        caa_request = self.create_caa_check_request("example.com", ["ca111.com"])
+        caa_request.trace_identifier = "test_trace_identifier"
+        caa_result = await caa_checker.check_caa(caa_request)
+        assert caa_result.check_passed is should_complete_check
+        assert caa_result.check_completed is should_complete_check
+
     async def check_caa__should_include_timestamp_in_nanos_in_result(self, mocker):
         self.patch_resolver_with_answer_or_exception(mocker, dns.resolver.NoAnswer())
         caa_request = self.create_caa_check_request("example.com", ["ca111.com"])
@@ -151,7 +176,13 @@ class TestMpicCaaChecker:
         assert caa_response.timestamp_ns is not None
 
     async def check_caa__should_return_failure_response_with_errors_given_error_in_dns_lookup(self, mocker):
-        self.patch_resolver_with_answer_or_exception(mocker, dns.resolver.NoNameservers)
+        dns_lookup_error = dns.resolver.NoNameservers(
+            request=dns.message.make_query("example.com", "CAA", "IN"),
+            errors=[
+                ("192.0.2.1", True, 53, dns.exception.Timeout("Timeout resolving example.com"))
+            ],  # List of (server, error) tuples
+        )
+        self.patch_resolver_with_answer_or_exception(mocker, dns_lookup_error)
         caa_request = self.create_caa_check_request("example.com", ["ca111.com"])
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
         caa_response = await caa_checker.check_caa(caa_request)
@@ -161,7 +192,11 @@ class TestMpicCaaChecker:
                 error_type=ErrorMessages.CAA_LOOKUP_ERROR.key, error_message=ErrorMessages.CAA_LOOKUP_ERROR.message
             )
         ]
-        assert self.is_result_as_expected(caa_response, False, check_response_details, errors) is True
+        caa_response.timestamp_ns = None  # ignore timestamp for comparison
+        expected_response = CaaCheckResponse(
+            check_passed=False, check_completed=False, details=check_response_details, errors=errors
+        )
+        assert caa_response == expected_response
 
     @pytest.mark.parametrize("caa_answer_value, check_passed", [("ca1allowed.org", True), ("ca1notallowed.org", False)])
     async def check_caa__should_return_rrset_and_domain_given_domain_with_caa_record_on_success_or_failure(
@@ -216,11 +251,12 @@ class TestMpicCaaChecker:
         assert caa_response.details.caa_record_present == record_present
 
     async def check_caa__should_support_wildcard_domain(self, mocker):
-        record_name, expected_domain = "*.example.com", "*.example.com."
+        record_name, expected_domain = "foo.example.com", "foo.example.com."
         test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(record_name, 0, "issue", "ca1.com", mocker)
-        self.patch_resolver_to_expect_domain(mocker, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer)
+        # throwing base Exception to ensure correct domain in DNS lookup (asterisk is removed prior); previously a bug
+        self.patch_resolver_to_expect_domain(mocker, expected_domain, test_dns_query_answer, Exception)
         caa_request = CaaCheckRequest(
-            domain_or_ip_target="*.example.com",
+            domain_or_ip_target="*.foo.example.com",
             caa_check_parameters=CaaCheckParameters(certificate_type=CertificateType.TLS_SERVER, caa_domains=None),
         )
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
@@ -258,37 +294,124 @@ class TestMpicCaaChecker:
         log_contents = self.log_output.getvalue()
         assert all(text in log_contents for text in ["seconds", "TRACE", caa_checker.logger.name])
 
-    @pytest.mark.parametrize(
-        "value_list, caa_domains",
-        [
-            (["ca111.org"], ["ca111.org"]),
-            (["ca111.org", "ca222.com"], ["ca222.com"]),
-            (["ca111.org", "ca222.com"], ["ca333.net", "ca111.org"]),
-        ],
-    )
-    def does_value_list_permit_issuance__should_return_true_given_one_value_found_in_caa_domains(
-        self, value_list, caa_domains
+    async def check_caa__should_include_trace_identifier_in_logs_if_included_in_request(self, mocker):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
+        self.patch_resolver_with_answer_or_exception(mocker, dns.exception.Timeout())
+        caa_request = self.create_caa_check_request("example.com", ["ca111.com"])
+        caa_request.trace_identifier = "test_trace_identifier"
+        caa_result = await caa_checker.check_caa(caa_request)
+        log_contents = self.log_output.getvalue()
+        assert caa_result.check_passed is False
+        assert "test_trace_identifier" in log_contents
+
+    # fmt: off
+    # noinspection PyUnusedLocal
+    @pytest.mark.parametrize("test_description, caa_value, expected_domain, expected_parameters", [
+        ("empty value (just whitespace)", "", "", {}),
+        ("bare domain", "ca111.com", "ca111.com", {}),
+        ("domain with leading/trailing whitespace", "  ca111.com  ", "ca111.com", {}),
+        ("domain with mixed case", "Ca111.com", "Ca111.com", {}),
+        ("domain with numeric labels", "1ca111.com", "1ca111.com", {}),
+        ("domain with hyphenated labels", "c-a-111.com", "c-a-111.com", {}),
+        ("domain with multiple labels", "sub.ca111.com", "sub.ca111.com", {}),
+        ("domain followed by semicolon with no parameters", "ca111.com;", "ca111.com", {}),
+        ("domain with single simple parameter", "ca111.com; policy=ev", "ca111.com", {"policy": "ev"}),
+        ("domain with multiple parameters", "ca111.com; policy=ev;account=12345", "ca111.com", {"policy": "ev", "account": "12345"}),
+        ("parameters with extra whitespace around separators", "ca111.com; policy = ev; account = 12345", "ca111.com", {"policy": "ev", "account": "12345"}),
+        ("parameter tags with multiple consecutive dashes", "ca111.com; validation---method=http-01", "ca111.com", {"validation---method": "http-01"}),
+        ("parameter values containing some special ASCII characters", "ca111.com; account=!@_[}#$z", "ca111.com", {"account": "!@_[}#$z"}),
+        ("parameters without values", "ca111.com; policy=; account=12345", "ca111.com", {"policy": "", "account": "12345"}),  # why???
+        ("parameters without domain", "; policy=ev", "", {"policy": "ev"}),
+    ])
+    # fmt: on
+    def extract_domain_and_parameters_from_caa_value__should_parse_domain_and_parameters_given_well_formed_value(
+        self, test_description, caa_value, expected_domain, expected_parameters
     ):
-        result = MpicCaaChecker.does_value_list_permit_issuance(value_list, caa_domains)
-        assert result is True
+        domain, parameters = MpicCaaChecker.extract_domain_and_parameters_from_caa_value(caa_value)
+        assert domain == expected_domain
+        assert parameters == expected_parameters
 
-    def does_value_list_permit_issuance__should_return_false_given_value_not_found_in_caa_domains(self):
-        value_list = ["ca222.org"]
-        caa_domains = ["ca111.com"]
-        result = MpicCaaChecker.does_value_list_permit_issuance(value_list, caa_domains)
-        assert result is False
+    # fmt: off
+    # noinspection PyUnusedLocal
+    @pytest.mark.parametrize("test_description, caa_value", [
+        ("rejects domain starting with dot", ".example.com"),
+        ("rejects domain ending with dot", "ca111.com."),
+        ("rejects domain with consecutive dots", "example..com"),
+        ("rejects domain with invalid characters", "ex@mple.com!"),
+        ("rejects domain labels starting with hyphen", "sub.-example.com"),
+        ("rejects domain labels ending with hyphen", "example-.com"),
+        ("rejects parameter tag starting with hyphen", "ca111.org; -policy=ev"),
+        ("rejects parameter tag ending with hyphen", "ca111.org; policy-=ev"),
+        ("rejects parameter without equals sign", "ca111.org; policy"),
+        ("rejects parameter value containing semicolon", "ca111.org; policy=ev;account=12;345"),
+        ("rejects parameter value containing control characters", "ca111.org; policy=ev;account=\x00"),
+        ("rejects parameter tag with illegal characters", "ca111.org; queensrÿche=ev"),
+        ("rejects parameter value with illegal characters in value", "ca111.org; policy=mötleycrüe"),
+        ("rejects parameter tag containing space", "ca111.org; cool policy=ev"),
+        ("rejects parameter value containing space", "ca111.org; policy=ev cool"),
+        ("rejects trailing semicolon after parameter", "ca111.org; policy=ev;"),  # why???
+        ("rejects malformed parameter separators", "ca111.org; policy=ev;;account=12345"),
+    ])
+    # fmt: on
+    def extract_domain_and_parameters_from_caa_value__should_raise_error_given_malformed_value(
+        self, test_description, caa_value
+    ):
+        # ABNF for CAA record value:
+        #    issue-value = *WSP [issuer-domain-name *WSP] [";" *WSP [parameters *WSP]]
+        #    issuer-domain-name = label *("." label)
+        #    label = (ALPHA / DIGIT) *( *("-") (ALPHA / DIGIT))
+        #    parameters = (parameter *WSP ";" *WSP parameters) / parameter
+        #    parameter = tag *WSP "=" *WSP value
+        #    tag = (ALPHA / DIGIT) *( *("-") (ALPHA / DIGIT))
+        #    value = *(%x21-3A / %x3C-7E)
+        with pytest.raises(ValueError) as error:
+            MpicCaaChecker.extract_domain_and_parameters_from_caa_value(caa_value)
 
-    def does_value_list_permit_issuance__should_return_false_given_only_values_with_extensions(self):
-        value_list = ['0 issue "ca111.com; policy=ev"']
-        caa_domains = ["ca111.com"]
-        result = MpicCaaChecker.does_value_list_permit_issuance(value_list, caa_domains)
-        assert result is False
+    # fmt: off
+    # noinspection PyUnusedLocal
+    @pytest.mark.parametrize("test_description, caa_values", [
+        ("single matching record and no parameters present", ["ca111.org"]),
+        ("multiple records with one match and no parameters present", ["ca111.org", "ca222.com"]),
+        ("record with whitespace", ["  ca111.org  "]),
+        ("record with mixed case in domain", ["Ca111.org"]),
+        ("matching record with parameters that should be ignored", ["ca111.org; policy=ev; account=12345"]),
+    ])
+    # fmt: on
+    def do_caa_values_permit_issuance__should_return_true_given_matching_well_formed_records(
+        self, test_description, caa_values
+    ):
+        caa_domains = ["ca111.org", "ca333.net"]
+        assert MpicCaaChecker.do_caa_values_permit_issuance(caa_values, caa_domains) is True
 
-    def does_value_list_permit_issuance__should_ignore_whitespace_around_values(self):
-        value_list = ["  ca111.com  "]
-        caa_domains = ["ca111.com"]
-        result = MpicCaaChecker.does_value_list_permit_issuance(value_list, caa_domains)
-        assert result is True
+    # fmt: off
+    # noinspection PyUnusedLocal
+    @pytest.mark.parametrize("test_description, rrset_values", [
+        ("empty record", [""]),
+        ("empty record with semicolon only", [";"]),
+        ("empty record with leading semicolon", [";policy=ev"]),
+        ("single non-matching record and no parameters present", ["ca222.org"]),
+        ("multiple records with no matches and no parameters present", ["ca333.net", "ca444.com"]),
+        ("non-matching record with parameters that should be ignored", ["ca222.org; favorite-ca=ca111.org"]),
+    ])
+    # fmt: on
+    def do_caa_values_permit_issuance__should_return_false_given_non_matching_well_formed_records(
+        self, test_description, rrset_values
+    ):
+        caa_domains = ["ca111.org"]
+        assert MpicCaaChecker.do_caa_values_permit_issuance(rrset_values, caa_domains) is False
+
+    # fmt: off
+    # noinspection PyUnusedLocal
+    @pytest.mark.parametrize("test_description, rrset_values", [
+        ("matching record with empty parameter", ["ca111.org; policy"]),
+        ("matching record with illegal character in parameter", ["ca111.org; account=123föur5"]),
+    ])
+    # fmt: on
+    def do_caa_values_permit_issuance__should_return_false_given_matching_but_malformed_records(
+        self, test_description, rrset_values
+    ):
+        caa_domains = ["ca111.org"]
+        assert MpicCaaChecker.do_caa_values_permit_issuance(rrset_values, caa_domains) is False
 
     def is_valid_for_issuance__should_be_true_given_matching_issue_tag_for_non_wildcard_domain(self):
         records = [MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org")]
@@ -339,18 +462,25 @@ class TestMpicCaaChecker:
         result = MpicCaaChecker.is_valid_for_issuance(caa_domains=["ca1.org"], is_wc_domain=False, rrset=test_rrset)
         assert result is True
 
-    @pytest.mark.parametrize("known_tag", ["issue", "issuewild"])  # TODO what about issuemail, and iodef? (they fail)
+    @pytest.mark.parametrize("known_tag", ["issue", "issuewild", "iodef", "issuemail", "contactemail", "contactphone"])
     def is_valid_for_issuance__should_be_true_given_critical_flag_and_known_tag(self, known_tag):
         records = [MockDnsObjectCreator.create_caa_record(128, known_tag, "ca1.org")]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
         result = MpicCaaChecker.is_valid_for_issuance(caa_domains=["ca1.org"], is_wc_domain=False, rrset=test_rrset)
         assert result is True
 
-    def is_valid_for_issuance__should_be_false_given_only_non_matching_issue_tags(self):
+    def is_valid_for_issuance__should_be_true_given_restrictive_tag_alongside_matching_tag(self):
         records = [
-            MockDnsObjectCreator.create_caa_record(0, "issue", "ca5.org"),
-            MockDnsObjectCreator.create_caa_record(0, "issue", "ca6.org"),
+            MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org"),
+            MockDnsObjectCreator.create_caa_record(0, "issue", ";"),
         ]
+        test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
+        result = MpicCaaChecker.is_valid_for_issuance(caa_domains=["ca1.org"], is_wc_domain=False, rrset=test_rrset)
+        assert result is True
+
+    @pytest.mark.parametrize("tag_value", [";", "ca5.org", ";policy=ev"])
+    def is_valid_for_issuance__should_be_false_given_non_matching_or_restrictive_issue_tags(self, tag_value):
+        records = [MockDnsObjectCreator.create_caa_record(0, "issue", tag_value)]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
         result = MpicCaaChecker.is_valid_for_issuance(caa_domains=["ca1.org"], is_wc_domain=False, rrset=test_rrset)
         assert result is False
@@ -416,13 +546,6 @@ class TestMpicCaaChecker:
             raise ex
 
         return _raise()
-
-    def is_result_as_expected(self, result, check_passed, check_response_details, errors=None):
-        result.timestamp_ns = None  # ignore timestamp for comparison
-        expected_result = CaaCheckResponse(
-            perspective_code="us-east-4", check_passed=check_passed, details=check_response_details, errors=errors
-        )
-        return result == expected_result  # Pydantic allows direct comparison with equality operator
 
     def patch_resolver_resolve_with_side_effect(self, mocker, side_effect):
         return mocker.patch("dns.asyncresolver.resolve", new_callable=AsyncMock, side_effect=side_effect)
