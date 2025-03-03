@@ -65,7 +65,7 @@ class ValidCheckCreator:
             case _:  # CONTACT_PHONE_TXT
                 check_parameters = DcvContactPhoneTxtValidationParameters(challenge_value="555-555-5555")
         check_request = DcvCheckRequest(domain_or_ip_target="example.com", dcv_check_parameters=check_parameters)
-        check_request.dcv_check_parameters.require_exact_match = True
+        # check_request.dcv_check_parameters.require_exact_match = True
         return check_request
 
     @staticmethod
