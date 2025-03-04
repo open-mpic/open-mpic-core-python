@@ -7,3 +7,4 @@ class DnsRecordType(StrEnum):
     CAA = 'CAA'
     CNAME = 'CNAME'
     TXT = 'TXT'
+    PTR = 'PTR'

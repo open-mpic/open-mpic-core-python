@@ -33,6 +33,7 @@ class DcvDnsCheckResponseDetails(BaseModel):
         DcvValidationMethod.CONTACT_PHONE_CAA,
         DcvValidationMethod.CONTACT_PHONE_TXT,
         DcvValidationMethod.ACME_DNS_01,
+        DcvValidationMethod.REVERSE_ADDRESS_LOOKUP,
     ]
     records_seen: list[str] | None = None  # list of records found in DNS query; not base64 encoded
     response_code: int | None = None  # DNS response code
@@ -57,5 +58,6 @@ class DcvCheckResponseDetailsBuilder:
             DcvValidationMethod.CONTACT_EMAIL_TXT: DcvDnsCheckResponseDetails,
             DcvValidationMethod.CONTACT_EMAIL_CAA: DcvDnsCheckResponseDetails,
             DcvValidationMethod.IP_ADDRESS: DcvDnsCheckResponseDetails,
+            DcvValidationMethod.REVERSE_ADDRESS_LOOKUP: DcvDnsCheckResponseDetails,
         }
         return types[validation_method](validation_method=validation_method)
