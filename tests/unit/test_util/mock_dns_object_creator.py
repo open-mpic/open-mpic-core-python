@@ -5,6 +5,7 @@ from dns.rdtypes.ANY.CNAME import CNAME
 from dns.rdtypes.ANY.TXT import TXT
 from dns.rdtypes.IN.A import A
 from dns.rdtypes.IN.AAAA import AAAA
+from dns.rdtypes.ANY.PTR import PTR
 from dns.rrset import RRset
 from dns.message import QueryMessage
 
@@ -47,6 +48,8 @@ class MockDnsObjectCreator:
                 return A(dns.rdataclass.IN, dns.rdatatype.A, address=value)
             case DnsRecordType.AAAA:
                 return AAAA(dns.rdataclass.IN, dns.rdatatype.AAAA, address=value)
+            case DnsRecordType.PTR:
+                return PTR(dns.rdataclass.IN, dns.rdatatype.PTR, target=value)
 
     @staticmethod
     def create_caa_query_answer(record_name, flags, tag, value, mocker):

@@ -8,8 +8,10 @@ import re
 import aiohttp
 import base64
 
+from yarl import URL
 from aiohttp import ClientError
 from aiohttp.web import HTTPException
+
 from open_mpic_core import DcvCheckRequest, DcvCheckResponse
 from open_mpic_core import RedirectResponse, DcvCheckResponseDetailsBuilder
 from open_mpic_core import DcvValidationMethod, DnsRecordType
@@ -68,7 +70,7 @@ class MpicDcvChecker:
                 self._http_client_loop = current_loop
             yield self._async_http_client
         else:  # implementations such as AWS Lambda will need a new client for each invocation
-            connector = aiohttp.TCPConnector(ssl=self.verify_ssl)
+            connector = aiohttp.TCPConnector(ssl=self.verify_ssl, limit=0)
             client = aiohttp.ClientSession(
                 connector=connector, timeout=aiohttp.ClientTimeout(total=self._http_client_timeout)
             )
@@ -101,7 +103,7 @@ class MpicDcvChecker:
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE | DcvValidationMethod.ACME_HTTP_01:
                 result = await self.perform_http_based_validation(dcv_request)
-            case _:  # ACME_DNS_01 | DNS_CHANGE | IP_LOOKUP | CONTACT_EMAIL | CONTACT_PHONE
+            case _:  # ACME_DNS_01 | DNS_CHANGE | IP_LOOKUP | CONTACT_EMAIL | CONTACT_PHONE | REVERSE_ADDRESS_LOOKUP
                 result = await self.perform_general_dns_validation(dcv_request)
 
         # noinspection PyUnresolvedReferences
@@ -141,9 +143,15 @@ class MpicDcvChecker:
             )
         except dns.exception.DNSException as e:
             log_msg = f"DNS lookup error for {name_to_resolve}: {str(e)}. Trace identifier: {request.trace_identifier}"
-            self.logger.error(log_msg)
-            dcv_check_response.timestamp_ns = time.time_ns()
+            if isinstance(e, dns.resolver.NoAnswer) or isinstance(e, dns.resolver.NXDOMAIN):
+                dcv_check_response.check_completed = True  # errors on the target domain, not the lookup
+                # noinspection PyUnresolvedReferences
+                self.logger.trace(log_msg)
+            else:
+                self.logger.warning(log_msg)
             dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)]
+
+        dcv_check_response.timestamp_ns = time.time_ns()
         return dcv_check_response
 
     @staticmethod
@@ -190,7 +198,7 @@ class MpicDcvChecker:
                 # noinspection PyUnresolvedReferences
                 async with self.logger.trace_timing(f"HTTP lookup for target {token_url}"):
                     async with async_http_client.get(url=token_url, headers=http_headers) as response:
-                        await MpicDcvChecker.evaluate_http_lookup_response(
+                        dcv_check_response = await MpicDcvChecker.evaluate_http_lookup_response(
                             request, dcv_check_response, response, token_url, expected_response_content
                         )
         except asyncio.TimeoutError as e:
@@ -221,29 +229,36 @@ class MpicDcvChecker:
     async def evaluate_http_lookup_response(
         dcv_check_request: DcvCheckRequest,
         dcv_check_response: DcvCheckResponse,
-        lookup_response: aiohttp.ClientResponse,
+        http_response: aiohttp.ClientResponse,
         target_url: str,
         challenge_value: str,
     ):
-        response_history = None
-        if (
-            hasattr(lookup_response, "history")
-            and lookup_response.history is not None
-            and len(lookup_response.history) > 0
-        ):
-            response_history = [
-                RedirectResponse(status_code=resp.status, url=resp.headers["Location"])
-                for resp in lookup_response.history
-            ]
-
         dcv_check_response.timestamp_ns = time.time_ns()
+        dcv_check_response.check_completed = True
+        response_history = None
 
-        if lookup_response.status == requests.codes.OK:
+        if http_response.status != requests.codes.OK:
+            dcv_check_response.errors = [
+                MpicValidationError(error_type=str(http_response.status), error_message=http_response.reason)
+            ]
+        else:
+            if (
+                hasattr(http_response, "history")
+                and http_response.history is not None
+                and len(http_response.history) > 0
+            ):
+                response_history = [
+                    RedirectResponse(status_code=resp.status, url=resp.headers["Location"])
+                    for resp in http_response.history
+                ]
+                MpicDcvChecker.set_errors_on_invalid_response_history(dcv_check_response, response_history)
+
+        if dcv_check_response.errors is None:
             bytes_to_read = max(100, len(challenge_value))  # read up to 100 bytes, unless challenge value is larger
-            content = await lookup_response.content.read(bytes_to_read)
+            content = await http_response.content.read(bytes_to_read)
             # set internal _content to leverage decoding capabilities of ClientResponse.text without reading the entire response
-            lookup_response._body = content
-            response_text = await lookup_response.text()
+            http_response._body = content
+            response_text = await http_response.text()
             result = response_text.strip()
             expected_response_content = challenge_value
             validation_method = dcv_check_request.dcv_check_parameters.validation_method
@@ -256,29 +271,40 @@ class MpicDcvChecker:
                 if match_regex is not None and len(match_regex) > 0:
                     match = re.search(match_regex, result)
                     dcv_check_response.check_passed = dcv_check_response.check_passed and (match is not None)
-            dcv_check_response.details.response_status_code = lookup_response.status
+            dcv_check_response.details.response_status_code = http_response.status
             dcv_check_response.details.response_url = target_url
             dcv_check_response.details.response_history = response_history
             dcv_check_response.details.response_page = base64.b64encode(content).decode()
-            dcv_check_response.check_completed = True
-        else:
-            dcv_check_response.errors = [
-                MpicValidationError(error_type=str(lookup_response.status), error_message=lookup_response.reason)
-            ]
+
+        return dcv_check_response
+
+    @staticmethod
+    def set_errors_on_invalid_response_history(dcv_check_response, response_history):
+        """check if redirects included non-authorized response codes or ports and set errors if so"""
+        for response in response_history:
+            response_port = URL(response.url).port
+            if (response.status_code not in (301, 302, 307, 308)) or (
+                response_port is not None and response_port not in (80, 443)
+            ):
+                error = MpicValidationError(
+                    error_type=f"Invalid redirect ({response.status_code})",
+                    error_message=f"Redirected to {response.url}",
+                )
+                dcv_check_response.errors = [error]
 
     @staticmethod
     def evaluate_dns_lookup_response(
         dcv_check_response: DcvCheckResponse,
-        lookup_response: dns.resolver.Answer,
+        dns_response: dns.resolver.Answer,
         validation_method: DcvValidationMethod,
         dns_record_type: DnsRecordType,
         expected_dns_record_content: str,
         exact_match: bool = True,
     ):
-        response_code = lookup_response.response.rcode()
+        response_code = dns_response.response.rcode()
         records_as_strings = []
         dns_rdata_type = dns.rdatatype.from_text(dns_record_type)
-        for response_answer in lookup_response.response.answer:
+        for response_answer in dns_response.response.answer:
             if response_answer.rdtype == dns_rdata_type:
                 for record_data in response_answer:
                     if validation_method == DcvValidationMethod.CONTACT_EMAIL_CAA:
@@ -298,9 +324,9 @@ class MpicDcvChecker:
         dcv_check_response.details.response_code = response_code
         dcv_check_response.details.records_seen = records_as_strings
         dcv_check_response.details.ad_flag = (
-            lookup_response.response.flags & dns.flags.AD == dns.flags.AD
+            dns_response.response.flags & dns.flags.AD == dns.flags.AD
         )  # single ampersand
-        dcv_check_response.details.found_at = lookup_response.qname.to_text(omit_final_dot=True)
+        dcv_check_response.details.found_at = dns_response.qname.to_text(omit_final_dot=True)
 
         if dns_record_type == DnsRecordType.CNAME:  # case-insensitive comparison -> convert strings to lowercase
             expected_dns_record_content = expected_dns_record_content.lower()
@@ -314,7 +340,6 @@ class MpicDcvChecker:
             dcv_check_response.check_passed = any(
                 expected_dns_record_content in record for record in records_as_strings
             )
-        dcv_check_response.timestamp_ns = time.time_ns()
         dcv_check_response.check_completed = True
 
     # noinspection PyUnresolvedReferences
@@ -326,7 +351,7 @@ class MpicDcvChecker:
                 record_value = b"".join(record.strings).decode("utf-8")  # TODO errors='strict' or replace (lenient)?
             case dns.rdatatype.CAA:
                 record_value = record.value.decode("utf-8")
-            case dns.rdatatype.CNAME:
+            case dns.rdatatype.CNAME | dns.rdatatype.PTR:
                 record_value = b".".join(record.target.labels).decode("utf-8")
             case dns.rdatatype.A | dns.rdatatype.AAAA:
                 record_value = record.address

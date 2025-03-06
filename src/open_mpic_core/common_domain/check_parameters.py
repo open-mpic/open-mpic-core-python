@@ -89,6 +89,11 @@ class DcvIpAddressValidationParameters(DcvGeneralDnsValidationParameters):
         return v
 
 
+class DcvReverseAddressLookupValidationParameters(DcvGeneralDnsValidationParameters):
+    validation_method: Literal[DcvValidationMethod.REVERSE_ADDRESS_LOOKUP] = DcvValidationMethod.REVERSE_ADDRESS_LOOKUP
+    dns_record_type: Literal[DnsRecordType.PTR] = DnsRecordType.PTR
+
+
 class DcvAcmeHttp01ValidationParameters(DcvValidationParameters):
     validation_method: Literal[DcvValidationMethod.ACME_HTTP_01] = DcvValidationMethod.ACME_HTTP_01
     token: str
@@ -113,7 +118,8 @@ DcvCheckParameters = Annotated[
         DcvContactEmailCaaValidationParameters,
         DcvContactPhoneTxtValidationParameters,
         DcvContactPhoneCaaValidationParameters,
-        DcvIpAddressValidationParameters
+        DcvIpAddressValidationParameters,
+        DcvReverseAddressLookupValidationParameters,
     ],
     Field(discriminator="validation_method"),
 ]
