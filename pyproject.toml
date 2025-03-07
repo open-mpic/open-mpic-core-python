@@ -23,11 +23,11 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy"
 ]
 dependencies = [
-  "pyyaml==6.0.1",
+  "pyyaml==6.0.2",
   "requests>=2.32.3",
-  "dnspython==2.6.1",
-  "pydantic==2.8.2",
-  "aiohttp==3.11.11",
+  "dnspython==2.7.0",
+  "pydantic==2.10.6",
+  "aiohttp==3.11.13",
   "black==24.8.0",
 ]
 
