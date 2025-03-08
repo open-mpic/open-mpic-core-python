@@ -141,7 +141,7 @@ class MpicCaaChecker:
             elif tag_lower == ISSUEMAIL_TAG:
                 issue_mail_tags.append(val)
             elif (
-                not (tag_lower in [CONTACTEMAIL_TAG, CONTACTPHONE_TAG, ISSUEMAIL_TAG, IODEF_TAG])
+                not (tag_lower in [CONTACTEMAIL_TAG, CONTACTPHONE_TAG, IODEF_TAG])
                 and resource_record.flags & 0b10000000
             ):  # bitwise-and to check if flags are 128 (the critical flag)
                 has_unknown_critical_flags = True
