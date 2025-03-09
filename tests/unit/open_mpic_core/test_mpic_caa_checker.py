@@ -577,6 +577,13 @@ class TestMpicCaaChecker:
         result = MpicCaaChecker.is_valid_for_issuance(caa_domains=["ca1.org"], certificate_type=CertificateType.TLS_SERVER, is_wc_domain=False, rrset=test_rrset)
         assert result is expected_result
 
+    def is_valid_for_issuance__should_be_false_given_invalid_certificate_type(self):
+        records = [MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org")]
+        test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
+        # noinspection PyTypeChecker
+        result = MpicCaaChecker.is_valid_for_issuance(caa_domains=["ca1.org"], certificate_type="INVALID", is_wc_domain=False, rrset=test_rrset)
+        assert result is False
+
     def raise_(self, ex):
         # noinspection PyUnusedLocal
         def _raise(*args, **kwargs):
