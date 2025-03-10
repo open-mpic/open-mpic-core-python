@@ -1,3 +1,7 @@
+# Hatch-generated files
+clean/
+prune/
+
 lambda_caa_resolver/
 lambda_validator/
 src/aws_lambda_mpic/lambda_caa_resolver/
