@@ -8,6 +8,8 @@ import re
 import aiohttp
 import base64
 
+import ipaddress
+
 from yarl import URL
 from aiohttp import ClientError
 from aiohttp.web import HTTPException
@@ -335,7 +337,35 @@ class MpicDcvChecker:
         # exact_match=True requires at least one record matches and will fail even if whitespace is different.
         # exact_match=False simply runs a contains check.
         if exact_match:
-            dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
+            if dns_record_type in [DnsRecordType.A, DnsRecordType.AAAA]:
+
+                # Attempt to parse the provided string as an IP address.
+                expected_ip_address = None
+                try:
+                    expected_ip_address = ipaddress.ip_address(expected_dns_record_content)
+                except ValueError:
+                    expected_ip_address = None
+
+
+                if expected_ip_address is None:
+                    # If the expected_dns_record_content cannot be parsed into a proper IP address, check_passed = False
+                    dcv_check_response.check_passed = False
+                else:
+                    matching_record = False
+                    for seen_record_string in records_as_strings:
+                        # Try parsing each seen string an IP address.
+                        try:
+                            seen_ip_address = ipaddress.ip_address(seen_record_string)
+                            if seen_ip_address == expected_ip_address:
+                                matching_record = True
+                                # We can terminate iteration if something matches.
+                                break
+                        except ValueError:
+                            # If one of the IPs cannot be parsed, continue and don't count it as a match.
+                            continue
+                    dcv_check_response.check_passed = matching_record
+            else:
+                dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
         else:
             dcv_check_response.check_passed = any(
                 expected_dns_record_content in record for record in records_as_strings
