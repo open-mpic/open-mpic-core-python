@@ -303,6 +303,10 @@ class MpicDcvChecker:
         expected_dns_record_content: str,
         exact_match: bool = True,
     ):
+        if dns_response is None:
+            dcv_check_response.check_passed = False
+            dcv_check_response.check_completed = True
+            return # no response to evaluate
         response_code = dns_response.response.rcode()
         records_as_strings = []
         dns_rdata_type = dns.rdatatype.from_text(dns_record_type)
