@@ -10,6 +10,7 @@ from open_mpic_core import CaaCheckRequest, CaaCheckResponse, CaaCheckResponseDe
 from open_mpic_core import MpicValidationError, ErrorMessages
 from open_mpic_core import DomainEncoder
 from open_mpic_core import get_logger
+from open_mpic_core import CertificateType
 
 ISSUE_TAG: Final[str] = "issue"
 ISSUEWILD_TAG: Final[str] = "issuewild"
@@ -58,7 +59,10 @@ class MpicCaaChecker:
         # Assume the default system configured validation targets and override if sent in the API call.
         caa_domains = self.default_caa_domain_list
         is_wc_domain = False
+        certificate_type = CertificateType.TLS_SERVER
         if caa_request.caa_check_parameters:
+            if caa_request.caa_check_parameters.certificate_type:
+                certificate_type = caa_request.caa_check_parameters.certificate_type
             if caa_request.caa_check_parameters.caa_domains:
                 caa_domains = caa_request.caa_check_parameters.caa_domains
 
@@ -107,7 +111,7 @@ class MpicCaaChecker:
             caa_check_response.details.records_seen = None
         else:
             caa_check_response.check_completed = True
-            valid_for_issuance = MpicCaaChecker.is_valid_for_issuance(caa_domains, is_wc_domain, rrset)
+            valid_for_issuance = MpicCaaChecker.is_valid_for_issuance(caa_domains, certificate_type, is_wc_domain, rrset)
             caa_check_response.check_passed = valid_for_issuance
             caa_check_response.details.caa_record_present = True
             caa_check_response.details.found_at = domain.to_text(omit_final_dot=True)
@@ -119,9 +123,10 @@ class MpicCaaChecker:
         return caa_check_response
 
     @staticmethod
-    def is_valid_for_issuance(caa_domains, is_wc_domain, rrset) -> bool:
+    def is_valid_for_issuance(caa_domains, certificate_type: CertificateType, is_wc_domain, rrset) -> bool:
         issue_tags = []
         issue_wild_tags = []
+        issue_mail_tags = []
         has_unknown_critical_flags = False
 
         # Note: a record with critical flag and 'issue' tag will be considered valid for issuance
@@ -133,15 +138,23 @@ class MpicCaaChecker:
                 issue_tags.append(val)
             elif tag_lower == ISSUEWILD_TAG:
                 issue_wild_tags.append(val)
+            elif tag_lower == ISSUEMAIL_TAG:
+                issue_mail_tags.append(val)
             elif (
-                not (tag_lower in [CONTACTEMAIL_TAG, CONTACTPHONE_TAG, ISSUEMAIL_TAG, IODEF_TAG])
+                not (tag_lower in [CONTACTEMAIL_TAG, CONTACTPHONE_TAG, IODEF_TAG])
                 and resource_record.flags & 0b10000000
             ):  # bitwise-and to check if flags are 128 (the critical flag)
                 has_unknown_critical_flags = True
 
         if has_unknown_critical_flags:
             valid_for_issuance = False
-        else:
+        elif certificate_type == CertificateType.S_MIME:
+            if len(issue_mail_tags) > 0:
+                valid_for_issuance = MpicCaaChecker.do_caa_values_permit_issuance(issue_mail_tags, caa_domains)
+            else:
+                # No issue mail tags
+                valid_for_issuance = True
+        elif certificate_type == CertificateType.TLS_SERVER:
             if is_wc_domain and len(issue_wild_tags) > 0:
                 valid_for_issuance = MpicCaaChecker.do_caa_values_permit_issuance(issue_wild_tags, caa_domains)
             elif len(issue_tags) > 0:
@@ -149,6 +162,9 @@ class MpicCaaChecker:
             else:
                 # We had no unknown critical tags, and we found no issue tags. Issuance can proceed.
                 valid_for_issuance = True
+        else:
+            # This is the case of an unimplemented certificate type. We cannot determine if issuance is valid or not. This case should never be hit as all values of the certificate type enum should be tested for in the above logic.
+            valid_for_issuance = False
         return valid_for_issuance
 
     @staticmethod
