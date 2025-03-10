@@ -8,6 +8,8 @@ import re
 import aiohttp
 import base64
 
+import ipaddress
+
 from yarl import URL
 from aiohttp import ClientError
 from aiohttp.web import HTTPException
@@ -301,6 +303,10 @@ class MpicDcvChecker:
         expected_dns_record_content: str,
         exact_match: bool = True,
     ):
+        if dns_response is None:
+            dcv_check_response.check_passed = False
+            dcv_check_response.check_completed = True
+            return # no response to evaluate
         response_code = dns_response.response.rcode()
         records_as_strings = []
         dns_rdata_type = dns.rdatatype.from_text(dns_record_type)
@@ -335,12 +341,38 @@ class MpicDcvChecker:
         # exact_match=True requires at least one record matches and will fail even if whitespace is different.
         # exact_match=False simply runs a contains check.
         if exact_match:
-            dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
+            if dns_record_type in [DnsRecordType.A, DnsRecordType.AAAA]:
+                dcv_check_response.check_passed = MpicDcvChecker.is_expected_ip_address_in_response(
+                    expected_dns_record_content, records_as_strings
+                )
+            else:
+                dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
         else:
             dcv_check_response.check_passed = any(
                 expected_dns_record_content in record for record in records_as_strings
             )
         dcv_check_response.check_completed = True
+
+    @staticmethod
+    def is_expected_ip_address_in_response(ip_address_as_string: str, records_as_strings: list[str]) -> bool:
+        ip_address_found = False
+
+        # compare IP addresses as objects, not strings, particularly to accommodate IPv6.
+        try:
+            expected_ip_address = ipaddress.ip_address(ip_address_as_string)
+        except ValueError:
+            expected_ip_address = None
+
+        if expected_ip_address is not None:
+            for seen_record_string in records_as_strings:
+                try:
+                    seen_ip_address = ipaddress.ip_address(seen_record_string)
+                    if seen_ip_address == expected_ip_address:
+                        ip_address_found = True
+                        break
+                except ValueError:
+                    continue
+        return ip_address_found
 
     # noinspection PyUnresolvedReferences
     @staticmethod

@@ -106,6 +106,46 @@ class TestMpicDcvChecker:
         dcv_response.timestamp_ns = None  # ignore timestamp for comparison
         assert dcv_response.check_passed is True
 
+    @pytest.mark.parametrize(
+        "record_type, target_record_data, mock_record_data",
+        [(DnsRecordType.A, "1.2.00.3", "1.2.0.3"), (DnsRecordType.AAAA, "1:00000::", "1::")],
+    )
+    async def check_dcv__should_disallow_issuance_given_malformed_records_in_ip_address_lookup(
+        self, record_type, target_record_data, mock_record_data, mocker
+    ):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.IP_ADDRESS, record_type)
+        dcv_request.dcv_check_parameters.challenge_value = target_record_data
+        mock_record_data_with_value = {"value": mock_record_data}
+        dns_response = MockDnsObjectCreator.create_dns_query_answer(
+            dcv_request.domain_or_ip_target, "", record_type, mock_record_data_with_value, mocker
+        )
+        self.patch_resolver_with_answer_or_exception(mocker, dns_response)
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        dcv_response.timestamp_ns = None  # ignore timestamp for comparison
+        assert dcv_response.check_passed is False
+
+    # fmt: off
+    @pytest.mark.parametrize("record_type, target_record_data, mock_record_data", [
+        (DnsRecordType.A, "1.2.0.3", "1.2.0.3"),
+        (DnsRecordType.AAAA, "1:0:00:000:0000::", "1::"),  # Expanding zero block
+        (DnsRecordType.AAAA, "2001:db8:3333:4444:5555:6666:1.2.3.4", "2001:db8:3333:4444:5555:6666:102:304"),  # IPv4 in IPv6
+        (DnsRecordType.AAAA, "::11.22.33.44", "::b16:212c")  # IPv4 in IPv6, leading zeros
+    ])
+    # fmt: on
+    async def check_dcv__should_allow_issuance_for_different_record_formats_in_ip_address_lookup(
+        self, record_type, target_record_data, mock_record_data, mocker
+    ):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.IP_ADDRESS, record_type)
+        dcv_request.dcv_check_parameters.challenge_value = target_record_data
+        mock_record_data_with_value = {"value": mock_record_data}
+        dns_response = MockDnsObjectCreator.create_dns_query_answer(
+            dcv_request.domain_or_ip_target, "", record_type, mock_record_data_with_value, mocker
+        )
+        self.patch_resolver_with_answer_or_exception(mocker, dns_response)
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        dcv_response.timestamp_ns = None  # ignore timestamp for comparison
+        assert dcv_response.check_passed is True
+
     # fmt: off
     @pytest.mark.parametrize("dcv_method, domain, encoded_domain", [
         (DcvValidationMethod.WEBSITE_CHANGE, "bücher.example.de", "xn--bcher-kva.example.de"),
@@ -557,6 +597,13 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is True
         assert dcv_response.details.found_at == current_target
 
+    async def contact_info_caa_lookup__should_not_pass_if_no_records_found_in_domain_tree(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_contact_check_request(DcvValidationMethod.CONTACT_EMAIL_CAA)
+        self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+        dcv_request.domain_or_ip_target = "sub2.sub1.sub0.nonexistent.com"
+        dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
+        assert dcv_response.check_passed is False
+
     @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.DNS_CHANGE, DcvValidationMethod.ACME_DNS_01])
     async def dns_based_dcv_checks__should_not_pass_given_non_matching_dns_record(self, dcv_method, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
@@ -622,6 +669,19 @@ class TestMpicDcvChecker:
         errors = [MpicValidationError(error_type=no_answer_error.__class__.__name__, error_message=no_answer_error.msg)]
         assert dcv_response.check_passed is False
         assert dcv_response.errors == errors
+
+    @pytest.mark.parametrize("record_type", [DnsRecordType.A, DnsRecordType.AAAA])
+    async def is_expected_ip_address_in_response__should_return_true_if_valid_record_exists_alongside_malformed_records(
+            self, record_type
+    ):
+        records_as_strings = ["foo", "bar"]
+        if record_type is DnsRecordType.A:
+            expected_record = "1.2.3.4"
+            records_as_strings.append(expected_record)
+        else:
+            expected_record = "1::1"
+            records_as_strings.append("1:0::0:1")
+        assert MpicDcvChecker.is_expected_ip_address_in_response(expected_record, records_as_strings) is True
 
     def raise_(self, ex):
         # noinspection PyUnusedLocal

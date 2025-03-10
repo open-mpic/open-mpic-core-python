@@ -455,6 +455,20 @@ class TestMpicCoordinator:
         log_contents = self.log_output.getvalue()
         assert all(text in log_contents for text in ["seconds", "TRACE", mpic_coordinator.logger.name])
 
+    async def coordinate_mpi__should_not_log_trace_timings_if_trace_level_logging_is_not_enabled(self):
+        mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
+        mocked_call_perspective_function = AsyncMock()
+        mocked_call_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
+            self.create_passing_caa_check_response
+        )
+        # note the INFO_LEVEL here
+        mpic_coordinator = MpicCoordinator(mocked_call_perspective_function, mpic_coordinator_config, logging.INFO)
+        await mpic_coordinator.coordinate_mpic(mpic_request)
+        # Get the log output and assert
+        log_contents = self.log_output.getvalue()
+        assert "seconds" not in log_contents
+
     @pytest.mark.parametrize("should_complete_mpic", [True, False])
     async def coordinate_mpic__should_set_mpic_completed_true_if_enough_perspectives_completed_check_otherwise_false(
             self, should_complete_mpic
