@@ -106,6 +106,89 @@ class TestMpicDcvChecker:
         dcv_response.timestamp_ns = None  # ignore timestamp for comparison
         assert dcv_response.check_passed is True
 
+    # integration test of a sort -- only mocking dns methods rather than remaining class methods
+    @pytest.mark.parametrize(
+        "dcv_method, record_type, target_record_data, mock_record_data",
+        [
+            (DcvValidationMethod.IP_ADDRESS, DnsRecordType.A, "1.2.00.3", "1.2.0.3"),
+            (DcvValidationMethod.IP_ADDRESS, DnsRecordType.AAAA, "1:00000::", "1::"),
+        ],
+    )
+    async def check_dcv__should_perform_ip_lookup_check_and_block_issuance_given_malformed_record_str(
+        self, dcv_method, record_type, target_record_data, mock_record_data, mocker
+    ):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type)
+        dcv_request.dcv_check_parameters.challenge_value = target_record_data
+        mock_record_data_with_value = {"value": mock_record_data}
+        dns_response = MockDnsObjectCreator.create_dns_query_answer(
+            dcv_request.domain_or_ip_target, "", record_type, mock_record_data_with_value, mocker
+        )
+        self.patch_resolver_with_answer_or_exception(mocker, dns_response)
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        dcv_response.timestamp_ns = None  # ignore timestamp for comparison
+        assert dcv_response.check_passed is False
+
+
+    # integration test of a sort -- only mocking dns methods rather than remaining class methods
+    @pytest.mark.parametrize(
+        "dcv_method, record_type, target_record_data, mock_record_data",
+        [
+            (DcvValidationMethod.IP_ADDRESS, DnsRecordType.A, "1.2.0.3", "1.2.0.3"),
+            (DcvValidationMethod.IP_ADDRESS, DnsRecordType.AAAA, "1:0:00:000:0000::", "1::"), # Expanding zero block
+            (DcvValidationMethod.IP_ADDRESS, DnsRecordType.AAAA, "2001:db8:3333:4444:5555:6666:1.2.3.4", "2001:db8:3333:4444:5555:6666:102:304"), # IPv4 in IPv6
+            (DcvValidationMethod.IP_ADDRESS, DnsRecordType.AAAA, "::11.22.33.44", "::b16:212c"), # IPv4 in IPv6, leading zeros
+            
+        ],
+    )
+    async def check_dcv__should_perform_ip_lookup_check_and_permit_issuance_given_different_record_formats(
+        self, dcv_method, record_type, target_record_data, mock_record_data, mocker
+    ):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type)
+        dcv_request.dcv_check_parameters.challenge_value = target_record_data
+        mock_record_data_with_value = {"value": mock_record_data}
+        dns_response = MockDnsObjectCreator.create_dns_query_answer(
+            dcv_request.domain_or_ip_target, "", record_type, mock_record_data_with_value, mocker
+        )
+        self.patch_resolver_with_answer_or_exception(mocker, dns_response)
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        dcv_response.timestamp_ns = None  # ignore timestamp for comparison
+        assert dcv_response.check_passed is True
+
+
+    # integration test of a sort -- only mocking dns methods rather than remaining class methods
+    # even if the DNS response contains a malformed record, as long as there is a well formed record that matches we should pass the check.
+    @pytest.mark.skip("DNS library refuses to construct records without valid IP addresses.")
+    @pytest.mark.parametrize(
+        "dcv_method, record_type",
+        [
+            (DcvValidationMethod.IP_ADDRESS, DnsRecordType.A),
+            (DcvValidationMethod.IP_ADDRESS, DnsRecordType.AAAA),
+        ],
+    )
+    async def check_dcv__should_perform_ip_lookup_check_and_permit_issuance_given_different_record_formats(
+        self, dcv_method, record_type, mocker
+    ):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type)
+        dcv_request.dcv_check_parameters.challenge_value = "1.2.3.4" if record_type == DnsRecordType.A else "1::1"
+        ip_record_1 = MockDnsObjectCreator.create_record_by_type(record_type, {"value": "foo"})
+        ip_record_2 = MockDnsObjectCreator.create_record_by_type(record_type, {"value": "bar"})
+        if DnsRecordType.A:
+            target_record = MockDnsObjectCreator.create_record_by_type(record_type, {"value": "1.2.3.4"})
+            dns_response = MockDnsObjectCreator.create_dns_query_answer_with_multiple_records(
+                dcv_request.domain_or_ip_target, "", record_type, ip_record_1, ip_record_2, target_record, mocker=mocker
+            )
+        else:
+            target_record = MockDnsObjectCreator.create_record_by_type(record_type, {"value": "1:0::0:1"})
+            dns_response = MockDnsObjectCreator.create_dns_query_answer_with_multiple_records(
+                dcv_request.domain_or_ip_target, "", record_type, ip_record_1, ip_record_2, target_record, mocker=mocker
+            )
+        self.patch_resolver_with_answer_or_exception(mocker, dns_response)
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        dcv_response.timestamp_ns = None  # ignore timestamp for comparison
+        assert dcv_response.check_passed is True
+
+
+
     # fmt: off
     @pytest.mark.parametrize("dcv_method, domain, encoded_domain", [
         (DcvValidationMethod.WEBSITE_CHANGE, "bücher.example.de", "xn--bcher-kva.example.de"),
