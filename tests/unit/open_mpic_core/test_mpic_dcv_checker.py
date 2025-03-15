@@ -2,12 +2,14 @@ import asyncio
 import base64
 import logging
 from io import StringIO
+from itertools import cycle
 from typing import List
 
 import dns
 import pytest
 
 from unittest.mock import MagicMock, AsyncMock
+
 from yarl import URL
 from asyncio import StreamReader
 from aiohttp import ClientResponse
@@ -329,7 +331,7 @@ class TestMpicDcvChecker:
             case _:
                 expected_challenge = dcv_request.dcv_check_parameters.key_authorization
 
-        history = self.create_http_redirect_history()
+        history = self.create_http_redirect_history(2)
         mock_response = TestMpicDcvChecker.create_mock_http_response(200, expected_challenge, {"history": history})
         self.mock_request_agnostic_http_response(mock_response, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
@@ -529,10 +531,10 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is True
         if dns_name_prefix is not None and len(dns_name_prefix) > 0:
             mock_dns_resolver_resolve.assert_called_once_with(
-                f"{dns_name_prefix}.{dcv_request.domain_or_ip_target}", dns.rdatatype.TXT
+                f"{dns_name_prefix}.{dcv_request.domain_or_ip_target}", dns.rdatatype.TXT, tcp=True
             )
         else:
-            mock_dns_resolver_resolve.assert_called_once_with(dcv_request.domain_or_ip_target, dns.rdatatype.TXT)
+            mock_dns_resolver_resolve.assert_called_once_with(dcv_request.domain_or_ip_target, dns.rdatatype.TXT, tcp=True)
 
     async def acme_dns_validation__should_auto_insert_acme_challenge_prefix(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_acme_dns_01_check_request()
@@ -540,7 +542,7 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
         mock_dns_resolver_resolve.assert_called_once_with(
-            f"_acme-challenge.{dcv_request.domain_or_ip_target}", dns.rdatatype.TXT
+            f"_acme-challenge.{dcv_request.domain_or_ip_target}", dns.rdatatype.TXT, tcp=True
         )
 
     async def contact_email_txt_lookup__should_auto_insert_validation_prefix(self, mocker):
@@ -549,7 +551,7 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
         mock_dns_resolver_resolve.assert_called_once_with(
-            f"_validation-contactemail.{dcv_request.domain_or_ip_target}", dns.rdatatype.TXT
+            f"_validation-contactemail.{dcv_request.domain_or_ip_target}", dns.rdatatype.TXT, tcp=True
         )
 
     async def contact_phone_txt_lookup__should_auto_insert_validation_prefix(self, mocker):
@@ -558,7 +560,7 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
         mock_dns_resolver_resolve.assert_called_once_with(
-            f"_validation-contactphone.{dcv_request.domain_or_ip_target}", dns.rdatatype.TXT
+            f"_validation-contactphone.{dcv_request.domain_or_ip_target}", dns.rdatatype.TXT, tcp=True
         )
 
     # fmt: off
@@ -806,7 +808,7 @@ class TestMpicDcvChecker:
 
     def patch_resolver_with_answer_or_exception(self, mocker, mocked_response_or_exception):
         # noinspection PyUnusedLocal
-        async def side_effect(domain_name, rdtype):
+        async def side_effect(*args, **kwargs):
             if isinstance(mocked_response_or_exception, Exception):
                 raise mocked_response_or_exception
             return mocked_response_or_exception
@@ -830,7 +832,7 @@ class TestMpicDcvChecker:
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
 
         # noinspection PyUnusedLocal
-        async def side_effect(domain_name, rdtype):
+        async def side_effect(domain_name, *args, **kwargs):
             if domain_name == expected_domain:
                 return test_dns_query_answer
             raise self.raise_(dns.resolver.NoAnswer)
@@ -895,12 +897,14 @@ class TestMpicDcvChecker:
         )
         return test_dns_query_answer
 
-    def create_http_redirect_history(self):
-        redirect_url_1 = f"https://example.com/redirected-1"
-        redirect_response_1 = TestMpicDcvChecker.create_mock_http_redirect_response(301, redirect_url_1)
-        redirect_url_2 = f"https://example.com/redirected-2"
-        redirect_response_2 = TestMpicDcvChecker.create_mock_http_redirect_response(302, redirect_url_2)
-        return [redirect_response_1, redirect_response_2]
+    def create_http_redirect_history(self, depth):
+        redirects = []
+        redirect_code_cycle = cycle([301, 302])
+        for i in range(1, depth+1):
+            redirect_url = f"https://example.com/redirected-{i}"
+            redirect_response = TestMpicDcvChecker.create_mock_http_redirect_response(next(redirect_code_cycle), redirect_url)
+            redirects.append(redirect_response)
+        return redirects
 
     def create_http_redirect_history_with_disallowed_code(self):
         redirect_url = f"https://example.com/redirected-1"

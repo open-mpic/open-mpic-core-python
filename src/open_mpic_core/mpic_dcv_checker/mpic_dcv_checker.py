@@ -170,12 +170,12 @@ class MpicDcvChecker:
 
             while domain != dns.name.root:
                 try:
-                    lookup = await dns.asyncresolver.resolve(domain, dns_rdata_type)
+                    lookup = await dns.asyncresolver.resolve(domain, dns_rdata_type, tcp=True)
                     break
                 except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
                     domain = domain.parent()
         else:
-            lookup = await dns.asyncresolver.resolve(name_to_resolve, dns_rdata_type)
+            lookup = await dns.asyncresolver.resolve(name_to_resolve, dns_rdata_type, tcp=True)
         return lookup
 
     async def perform_http_based_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:

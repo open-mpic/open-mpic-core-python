@@ -41,7 +41,7 @@ class MpicCaaChecker:
 
         while domain != dns.name.root:
             try:
-                lookup = await dns.asyncresolver.resolve(domain, dns.rdatatype.CAA)
+                lookup = await dns.asyncresolver.resolve(domain, dns.rdatatype.CAA, tcp=True)
                 rrset = lookup.rrset
                 break
             except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):

@@ -596,7 +596,7 @@ class TestMpicCaaChecker:
 
     def patch_resolver_with_answer_or_exception(self, mocker, mocked_answer_or_exception):
         # noinspection PyUnusedLocal
-        async def side_effect(domain_name, rdtype):
+        async def side_effect(*args, **kwargs):
             if isinstance(mocked_answer_or_exception, Exception):
                 raise mocked_answer_or_exception
             return mocked_answer_or_exception
@@ -605,7 +605,7 @@ class TestMpicCaaChecker:
 
     def patch_resolver_to_expect_domain(self, mocker, expected_domain, mocked_answer, exception):
         # noinspection PyUnusedLocal
-        async def side_effect(domain_name, rdtype):
+        async def side_effect(domain_name, *args, **kwargs):
             if domain_name.to_text() == expected_domain:
                 return mocked_answer
             else:
