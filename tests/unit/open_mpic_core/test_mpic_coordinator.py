@@ -19,6 +19,7 @@ from open_mpic_core import (
     MpicCoordinatorConfiguration,
     TRACE_LEVEL,
 )
+from open_mpic_core.common_domain.enum.regional_internet_registry import RegionalInternetRegistry
 
 from unit.test_util.valid_mpic_request_creator import ValidMpicRequestCreator
 
@@ -232,22 +233,22 @@ class TestMpicCoordinator:
     async def coordinate_mpic__should_enforce_minimum_two_rirs_in_successful_perspectives_if_cohort_size_exceeds_2(
         self, cohort_size, expected_result
     ):
-        # If cohort_size is 2, should create cohorts with 2 perspectives each. (One cohort will be all 'arin'.)
-        # If cohort_size is 3, should create cohorts with 3 perspectives each (2 in RIR 'arin', and 1 in RIR 'ripe').
-        # If cohort_size is 6, should create cohort with 6 perspectives (4 in RIR 'arin', and 2 in RIR 'ripe').
+        # If cohort_size is 2, should create cohorts with 2 perspectives each. (One cohort will be all 'ARIN'.)
+        # If cohort_size is 3, should create cohorts with 3 perspectives each (2 in RIR 'ARIN', and 1 in 'RIPE NCC').
+        # If cohort_size is 6, should create cohort with 6 perspectives (4 in RIR 'ARIN', and 2 in 'RIPE NCC').
         perspectives = [
-            RemotePerspective(rir="arin", code="us-east-1"),
-            RemotePerspective(rir="arin", code="us-west-1"),
-            RemotePerspective(rir="ripe", code="eu-central-1"),
-            RemotePerspective(rir="arin", code="us-east-2"),
-            RemotePerspective(rir="arin", code="us-west-2"),
-            RemotePerspective(rir="ripe", code="eu-central-2"),
+            RemotePerspective(rir=RegionalInternetRegistry.ARIN, code="us-east-1"),
+            RemotePerspective(rir=RegionalInternetRegistry.ARIN, code="us-west-1"),
+            RemotePerspective(rir=RegionalInternetRegistry.RIPE_NCC, code="eu-central-1"),
+            RemotePerspective(rir=RegionalInternetRegistry.ARIN, code="us-east-2"),
+            RemotePerspective(rir=RegionalInternetRegistry.ARIN, code="us-west-2"),
+            RemotePerspective(rir=RegionalInternetRegistry.RIPE_NCC, code="eu-central-2"),
         ]
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
         mpic_coordinator_config.target_perspectives = perspectives
 
         mocked_call_remote_perspective_function = AsyncMock()
-        # The 'arin' perspectives will pass check and the 'ripe' perspectives will fail check.
+        # The 'ARIN' perspectives will pass check and the 'RIPE NCC' perspectives will fail check.
         # Should meet quorum count, but should fail RIRs requirement if cohort size is greater than 2.
         # (This test is limited based on how test data is set up, so can't test cohort_size 4 or 5 here easily.)
         mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
@@ -489,12 +490,12 @@ class TestMpicCoordinator:
     @staticmethod
     def create_mpic_coordinator_configuration() -> MpicCoordinatorConfiguration:
         target_perspectives = [
-            RemotePerspective(rir="arin", code="us-east-1"),
-            RemotePerspective(rir="arin", code="us-west-1"),
-            RemotePerspective(rir="ripe", code="eu-west-2"),
-            RemotePerspective(rir="ripe", code="eu-central-2"),
-            RemotePerspective(rir="apnic", code="ap-northeast-1"),
-            RemotePerspective(rir="apnic", code="ap-south-2"),
+            RemotePerspective(rir=RegionalInternetRegistry.ARIN, code="us-east-1"),
+            RemotePerspective(rir=RegionalInternetRegistry.ARIN, code="us-west-1"),
+            RemotePerspective(rir=RegionalInternetRegistry.RIPE_NCC, code="eu-west-2"),
+            RemotePerspective(rir=RegionalInternetRegistry.RIPE_NCC, code="eu-central-2"),
+            RemotePerspective(rir=RegionalInternetRegistry.APNIC, code="ap-northeast-1"),
+            RemotePerspective(rir=RegionalInternetRegistry.APNIC, code="ap-south-2"),
         ]
         default_perspective_count = 3
         global_max_attempts = None
@@ -538,7 +539,7 @@ class TestMpicCoordinator:
     def create_remote_caa_response_that_only_passes_for_arin_rir(
         self, perspective: RemotePerspective, check_type: CheckType, check_request_serialized: str
     ):
-        if perspective.rir == "arin":
+        if perspective.rir == RegionalInternetRegistry.ARIN:
             return self.create_passing_caa_check_response(perspective, check_type, check_request_serialized)
         else:
             return self.create_failing_remote_caa_check_response(perspective, check_type, check_request_serialized)

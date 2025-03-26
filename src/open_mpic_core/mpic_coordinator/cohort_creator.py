@@ -2,13 +2,14 @@ import random
 from itertools import cycle, chain
 
 from open_mpic_core import RemotePerspective
+from open_mpic_core.common_domain.enum.regional_internet_registry import RegionalInternetRegistry
 
 
 class CohortCreator:
     @staticmethod
     def shuffle_available_perspectives_per_rir(
         remote_perspectives: list[RemotePerspective], random_seed: bytes
-    ) -> dict[str, list[RemotePerspective]]:
+    ) -> dict[RegionalInternetRegistry, list[RemotePerspective]]:
         # first sort all perspectives deterministically
         remote_perspectives.sort(key=lambda remote_perspective: remote_perspective.code)
         local_random = random.Random(random_seed)

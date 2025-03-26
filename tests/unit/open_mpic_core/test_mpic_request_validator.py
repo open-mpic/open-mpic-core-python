@@ -2,6 +2,7 @@ import sys
 import pytest
 
 from open_mpic_core import DcvValidationMethod, RemotePerspective, MpicRequestValidationMessages, MpicRequestValidator
+from open_mpic_core.common_domain.enum.regional_internet_registry import RegionalInternetRegistry
 
 from unit.test_util.valid_mpic_request_creator import ValidMpicRequestCreator
 
@@ -11,16 +12,16 @@ class TestMpicRequestValidator:
     @classmethod
     def setup_class(cls):
         cls.known_perspectives = [
-            RemotePerspective(rir="rir1", code="p1"),
-            RemotePerspective(rir="rir1", code="p2"),
-            RemotePerspective(rir="rir1", code="p3"),
-            RemotePerspective(rir="rir1", code="p4"),
-            RemotePerspective(rir="rir2", code="p5"),
-            RemotePerspective(rir="rir2", code="p6"),
-            RemotePerspective(rir="rir2", code="p7"),
-            RemotePerspective(rir="rir2", code="p8"),
-            RemotePerspective(rir="rir3", code="p9"),
-            RemotePerspective(rir="rir3", code="p10"),
+            RemotePerspective(rir=RegionalInternetRegistry.AFRINIC, code="p1"),
+            RemotePerspective(rir=RegionalInternetRegistry.AFRINIC, code="p2"),
+            RemotePerspective(rir=RegionalInternetRegistry.AFRINIC, code="p3"),
+            RemotePerspective(rir=RegionalInternetRegistry.AFRINIC, code="p4"),
+            RemotePerspective(rir=RegionalInternetRegistry.APNIC, code="p5"),
+            RemotePerspective(rir=RegionalInternetRegistry.APNIC, code="p6"),
+            RemotePerspective(rir=RegionalInternetRegistry.APNIC, code="p7"),
+            RemotePerspective(rir=RegionalInternetRegistry.APNIC, code="p8"),
+            RemotePerspective(rir=RegionalInternetRegistry.ARIN, code="p9"),
+            RemotePerspective(rir=RegionalInternetRegistry.ARIN, code="p10"),
         ]
 
     def is_request_valid__should_be_true_and_empty_list_given_valid_caa_check_request_with_perspective_count(self):
