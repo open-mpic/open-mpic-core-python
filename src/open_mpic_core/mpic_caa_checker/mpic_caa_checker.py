@@ -59,11 +59,9 @@ class MpicCaaChecker:
         # Assume the default system configured validation targets and override if sent in the API call.
         caa_domains = self.default_caa_domain_list
         is_wc_domain = False
-        # FIXME unnecessary if check parameters object defaults to TLS_SERVER already
         certificate_type = CertificateType.TLS_SERVER
         if caa_request.caa_check_parameters:
-            if caa_request.caa_check_parameters.certificate_type:
-                certificate_type = caa_request.caa_check_parameters.certificate_type
+            certificate_type = caa_request.caa_check_parameters.certificate_type   # defaults to TLS_SERVER
             if caa_request.caa_check_parameters.caa_domains:
                 caa_domains = caa_request.caa_check_parameters.caa_domains
 
