@@ -22,6 +22,7 @@ from open_mpic_core import (
     DnsRecordType,
     MpicValidationError,
     MpicDcvChecker,
+    ErrorMessages,
     TRACE_LEVEL,
 )
 
@@ -262,7 +263,7 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False
         assert dcv_response.timestamp_ns is not None
-        errors = [MpicValidationError(error_type="404", error_message="Not Found")]
+        errors = [MpicValidationError.create(ErrorMessages.GENERAL_HTTP_ERROR, "404", "Not Found")]
         assert dcv_response.errors == errors
 
     # fmt: off
@@ -279,7 +280,9 @@ class TestMpicDcvChecker:
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False
-        errors = [MpicValidationError(error_type=exception.__class__.__name__, error_message=error_message)]
+        errors = [
+            MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, exception.__class__.__name__, error_message)
+        ]
         for error in errors:
             assert error.error_type in dcv_response.errors[0].error_type
             assert error.error_message in dcv_response.errors[0].error_message
@@ -666,13 +669,17 @@ class TestMpicDcvChecker:
         no_answer_error = dns.resolver.NoAnswer()
         self.patch_resolver_with_answer_or_exception(mocker, no_answer_error)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
-        errors = [MpicValidationError(error_type=no_answer_error.__class__.__name__, error_message=no_answer_error.msg)]
+        errors = [
+            MpicValidationError.create(
+                ErrorMessages.DCV_LOOKUP_ERROR, no_answer_error.__class__.__name__, no_answer_error.msg
+            )
+        ]
         assert dcv_response.check_passed is False
         assert dcv_response.errors == errors
 
     @pytest.mark.parametrize("record_type", [DnsRecordType.A, DnsRecordType.AAAA])
     async def is_expected_ip_address_in_response__should_return_true_if_valid_record_exists_alongside_malformed_records(
-            self, record_type
+        self, record_type
     ):
         records_as_strings = ["foo", "bar"]
         if record_type is DnsRecordType.A:
