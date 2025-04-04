@@ -470,6 +470,26 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.perform_http_based_validation(dcv_request)
         assert dcv_response.check_passed is False
 
+    async def website_change_validation__should_read_more_than_100_bytes_if_regex_requires_it(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_http_check_request()
+        dcv_request.dcv_check_parameters.challenge_value = ""  # blank out challenge value to delegate all matching to regex
+        dcv_request.dcv_check_parameters.match_regex = "^" + "a" * 150 + "$"  # 150 'a' characters
+        mock_response = TestMpicDcvChecker.create_mock_http_response_with_content_and_encoding(b"a" * 150, "utf-8")
+        self.mock_request_agnostic_http_response(mock_response, mocker)
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        assert dcv_response.check_passed is True
+        hundred_fifty_a_chars_b64 = base64.b64encode(b"a" * 150).decode()  # store 150 chars in base64 encoded string
+        assert len(dcv_response.details.response_page) == len(hundred_fifty_a_chars_b64)
+
+    async def website_change_validation__should_handle_whitespace_characters_within_content_using_regex(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_http_check_request()
+        dcv_request.dcv_check_parameters.challenge_value = ""
+        dcv_request.dcv_check_parameters.match_regex = r"ABC123[\s]+(example.com|example.org|example.net)[\s]+XYZ789"
+        mock_response = TestMpicDcvChecker.create_mock_http_response_with_content_and_encoding(b"ABC123\n\n\n\n\t example.com\n\n\n\t  XYZ789", "utf-8")
+        self.mock_request_agnostic_http_response(mock_response, mocker)
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        assert dcv_response.check_passed is True
+
     @pytest.mark.parametrize(
         "key_authorization, check_passed", [("challenge_111", True), ("eXtRaStUfFchallenge_111MoReStUfF", False)]
     )

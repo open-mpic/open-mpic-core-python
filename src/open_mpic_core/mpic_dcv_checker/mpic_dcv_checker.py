@@ -202,7 +202,7 @@ class MpicDcvChecker:
             async with self.get_async_http_client() as async_http_client:
                 # noinspection PyUnresolvedReferences
                 async with self.logger.trace_timing(f"HTTP lookup for target {token_url}"):
-                    async with async_http_client.get(url=token_url, headers=http_headers) as response:
+                    async with async_http_client.get(url=token_url, headers=http_headers, max_redirects=20) as response:
                         dcv_check_response = await MpicDcvChecker.evaluate_http_lookup_response(
                             request, dcv_check_response, response, token_url, expected_response_content
                         )
@@ -265,23 +265,30 @@ class MpicDcvChecker:
                 MpicDcvChecker.set_errors_on_invalid_response_history(dcv_check_response, response_history)
 
         if dcv_check_response.errors is None:
+            match_regex = None
             bytes_to_read = max(100, len(challenge_value))  # read up to 100 bytes, unless challenge value is larger
+
+            validation_method = dcv_check_request.dcv_check_parameters.validation_method
+            if validation_method == DcvValidationMethod.WEBSITE_CHANGE:
+                match_regex = dcv_check_request.dcv_check_parameters.match_regex
+                if match_regex is not None and len(match_regex) > 0:
+                    # read up to 100 bytes, unless challenge_value or match_regex is larger
+                    bytes_to_read = max(100, len(challenge_value), len(match_regex))
+
             content = await http_response.content.read(bytes_to_read)
             # set internal _content to leverage decoding capabilities of ClientResponse.text without reading the entire response
             http_response._body = content
             response_text = await http_response.text()
             result = response_text.strip()
-            expected_response_content = challenge_value
-            validation_method = dcv_check_request.dcv_check_parameters.validation_method
+
             if validation_method == DcvValidationMethod.ACME_HTTP_01:
                 # need to match exactly for ACME HTTP-01
-                dcv_check_response.check_passed = expected_response_content == result
+                dcv_check_response.check_passed = challenge_value == result
             else:
-                dcv_check_response.check_passed = expected_response_content in result
-                match_regex = dcv_check_request.dcv_check_parameters.match_regex
+                dcv_check_response.check_passed = challenge_value in result
                 if match_regex is not None and len(match_regex) > 0:
                     match = re.search(match_regex, result)
-                    dcv_check_response.check_passed = dcv_check_response.check_passed and (match is not None)
+                    dcv_check_response.check_passed = challenge_value in result and match is not None
             dcv_check_response.details.response_status_code = http_response.status
             dcv_check_response.details.response_url = target_url
             dcv_check_response.details.response_history = response_history
