@@ -48,7 +48,7 @@ class MpicCaaChecker:
                 domain = domain.parent()
             except Exception as e:
                 self.logger.error(f"Exception during CAA lookup: {e}. Trace identifier: {caa_request.trace_identifier}")
-                raise MpicCaaLookupException from Exception(e)
+                raise MpicCaaLookupException(f"{e}") from e
 
         return rrset, domain
 
@@ -61,8 +61,7 @@ class MpicCaaChecker:
         is_wc_domain = False
         certificate_type = CertificateType.TLS_SERVER
         if caa_request.caa_check_parameters:
-            if caa_request.caa_check_parameters.certificate_type:
-                certificate_type = caa_request.caa_check_parameters.certificate_type
+            certificate_type = caa_request.caa_check_parameters.certificate_type   # defaults to TLS_SERVER
             if caa_request.caa_check_parameters.caa_domains:
                 caa_domains = caa_request.caa_check_parameters.caa_domains
 
@@ -84,25 +83,23 @@ class MpicCaaChecker:
             timestamp_ns=None,
         )
 
-        # encode domain if needed
-        caa_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(caa_request.domain_or_ip_target)
-
         try:
+            # encode domain if needed
+            caa_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(caa_request.domain_or_ip_target)
+
             # noinspection PyUnresolvedReferences
             async with self.logger.trace_timing(f"CAA lookup for target {caa_request.domain_or_ip_target}"):
                 rrset, domain = await self.find_caa_records_and_domain(caa_request)
             caa_found = rrset is not None
-        except MpicCaaLookupException:
+        except (MpicCaaLookupException, ValueError) as e:
             caa_lookup_error = True
-
-        if caa_lookup_error:
-            caa_check_response.errors = [
-                MpicValidationError(
-                    error_type=ErrorMessages.CAA_LOOKUP_ERROR.key, error_message=ErrorMessages.CAA_LOOKUP_ERROR.message
-                )
-            ]
+            error_message = f"Error during CAA lookup: {e}"
+            caa_check_response.errors = [MpicValidationError.create(ErrorMessages.CAA_LOOKUP_ERROR, error_message)]
             caa_check_response.details.found_at = None
             caa_check_response.details.records_seen = None
+
+        if caa_lookup_error:
+            pass
         elif not caa_found:  # if domain has no CAA records: valid for issuance
             caa_check_response.check_completed = True
             caa_check_response.check_passed = True
@@ -111,7 +108,9 @@ class MpicCaaChecker:
             caa_check_response.details.records_seen = None
         else:
             caa_check_response.check_completed = True
-            valid_for_issuance = MpicCaaChecker.is_valid_for_issuance(caa_domains, certificate_type, is_wc_domain, rrset)
+            valid_for_issuance = MpicCaaChecker.is_valid_for_issuance(
+                caa_domains, certificate_type, is_wc_domain, rrset
+            )
             caa_check_response.check_passed = valid_for_issuance
             caa_check_response.details.caa_record_present = True
             caa_check_response.details.found_at = domain.to_text(omit_final_dot=True)

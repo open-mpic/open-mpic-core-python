@@ -7,6 +7,7 @@ from itertools import chain, cycle
 from pydantic import TypeAdapter
 
 from open_mpic_core import CohortCreator, RemotePerspective
+from open_mpic_core.common_domain.enum.regional_internet_registry import RegionalInternetRegistry
 
 
 # noinspection PyMethodMayBeStatic
@@ -33,9 +34,9 @@ class TestCohortCreator:
         # get all rirs from named perspectives
         # convert list to set
         expected_perspectives_per_rir = {
-            "arin": ["us-east-1", "us-west-1", "ca-west-1"],
-            "apnic": ["ap-southeast-1"],
-            "ripe": ["eu-west-1", "eu-central-1"],
+            RegionalInternetRegistry.ARIN: ["us-east-1", "us-west-1", "ca-west-1"],
+            RegionalInternetRegistry.APNIC: ["ap-southeast-1"],
+            RegionalInternetRegistry.RIPE_NCC: ["eu-west-1", "eu-central-1"],
         }
         for rir in shuffled_perspectives_per_rir.keys():
             assert len(shuffled_perspectives_per_rir[rir]) == len(expected_perspectives_per_rir[rir])
@@ -147,9 +148,10 @@ class TestCohortCreator:
     def create_perspective_cohorts__should_handle_uneven_numbers_of_perspectives_per_rir(self):
         # 9 total perspectives, but can only make 2 cohorts of 3 perspectives each due to rir constraints
         perspectives_per_rir = {
-            "apnic": self.all_perspectives_per_rir["apnic"][:7],  # 7 perspectives from apnic
-            "ripe": self.all_perspectives_per_rir["ripe"][:1],  # 1 from ripe
-            "arin": self.all_perspectives_per_rir["arin"][:1],
+            # 7 perspectives from apnic, 1 from ripe, 1 from arin
+            RegionalInternetRegistry.APNIC: self.all_perspectives_per_rir[RegionalInternetRegistry.APNIC][:7],
+            RegionalInternetRegistry.RIPE_NCC: self.all_perspectives_per_rir[RegionalInternetRegistry.RIPE_NCC][:1],
+            RegionalInternetRegistry.ARIN: self.all_perspectives_per_rir[RegionalInternetRegistry.ARIN][:1],
         }  # 1 from arin
         cohorts = CohortCreator.create_perspective_cohorts(perspectives_per_rir, 3)
         assert len(cohorts) == 2

@@ -20,6 +20,7 @@ from open_mpic_core import DcvValidationMethod, DnsRecordType
 from open_mpic_core import MpicValidationError
 from open_mpic_core import DomainEncoder
 from open_mpic_core import get_logger
+from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
 
 logger = get_logger(__name__)
 
@@ -151,7 +152,9 @@ class MpicDcvChecker:
                 self.logger.trace(log_msg)
             else:
                 self.logger.warning(log_msg)
-            dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=e.msg)]
+            dcv_check_response.errors = [
+                MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, e.msg)
+            ]
 
         dcv_check_response.timestamp_ns = time.time_ns()
         return dcv_check_response
@@ -199,7 +202,7 @@ class MpicDcvChecker:
             async with self.get_async_http_client() as async_http_client:
                 # noinspection PyUnresolvedReferences
                 async with self.logger.trace_timing(f"HTTP lookup for target {token_url}"):
-                    async with async_http_client.get(url=token_url, headers=http_headers) as response:
+                    async with async_http_client.get(url=token_url, headers=http_headers, max_redirects=20) as response:
                         dcv_check_response = await MpicDcvChecker.evaluate_http_lookup_response(
                             request, dcv_check_response, response, token_url, expected_response_content
                         )
@@ -208,12 +211,16 @@ class MpicDcvChecker:
             log_message = f"Timeout connecting to {token_url}: {str(e)}. Trace identifier: {request.trace_identifier}"
             self.logger.warning(log_message)
             message = f"Connection timed out while attempting to connect to {token_url}"
-            dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=message)]
+            dcv_check_response.errors = [
+                MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, message)
+            ]
         except (ClientError, HTTPException, OSError) as e:
             log_message = f"Error connecting to {token_url}: {str(e)}. Trace identifier: {request.trace_identifier}"
             self.logger.error(log_message)
             dcv_check_response.timestamp_ns = time.time_ns()
-            dcv_check_response.errors = [MpicValidationError(error_type=e.__class__.__name__, error_message=str(e))]
+            dcv_check_response.errors = [
+                MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, str(e))
+            ]
 
         return dcv_check_response
 
@@ -241,7 +248,9 @@ class MpicDcvChecker:
 
         if http_response.status != requests.codes.OK:
             dcv_check_response.errors = [
-                MpicValidationError(error_type=str(http_response.status), error_message=http_response.reason)
+                MpicValidationError.create(
+                    ErrorMessages.GENERAL_HTTP_ERROR, str(http_response.status), http_response.reason
+                )
             ]
         else:
             if (
@@ -256,23 +265,30 @@ class MpicDcvChecker:
                 MpicDcvChecker.set_errors_on_invalid_response_history(dcv_check_response, response_history)
 
         if dcv_check_response.errors is None:
+            match_regex = None
             bytes_to_read = max(100, len(challenge_value))  # read up to 100 bytes, unless challenge value is larger
+
+            validation_method = dcv_check_request.dcv_check_parameters.validation_method
+            if validation_method == DcvValidationMethod.WEBSITE_CHANGE:
+                match_regex = dcv_check_request.dcv_check_parameters.match_regex
+                if match_regex is not None and len(match_regex) > 0:
+                    # read up to 100 bytes, unless challenge_value or match_regex is larger
+                    bytes_to_read = max(100, len(challenge_value), len(match_regex))
+
             content = await http_response.content.read(bytes_to_read)
             # set internal _content to leverage decoding capabilities of ClientResponse.text without reading the entire response
             http_response._body = content
             response_text = await http_response.text()
             result = response_text.strip()
-            expected_response_content = challenge_value
-            validation_method = dcv_check_request.dcv_check_parameters.validation_method
+
             if validation_method == DcvValidationMethod.ACME_HTTP_01:
                 # need to match exactly for ACME HTTP-01
-                dcv_check_response.check_passed = expected_response_content == result
+                dcv_check_response.check_passed = challenge_value == result
             else:
-                dcv_check_response.check_passed = expected_response_content in result
-                match_regex = dcv_check_request.dcv_check_parameters.match_regex
+                dcv_check_response.check_passed = challenge_value in result
                 if match_regex is not None and len(match_regex) > 0:
                     match = re.search(match_regex, result)
-                    dcv_check_response.check_passed = dcv_check_response.check_passed and (match is not None)
+                    dcv_check_response.check_passed = challenge_value in result and match is not None
             dcv_check_response.details.response_status_code = http_response.status
             dcv_check_response.details.response_url = target_url
             dcv_check_response.details.response_history = response_history
@@ -288,9 +304,8 @@ class MpicDcvChecker:
             if (response.status_code not in (301, 302, 307, 308)) or (
                 response_port is not None and response_port not in (80, 443)
             ):
-                error = MpicValidationError(
-                    error_type=f"Invalid redirect ({response.status_code})",
-                    error_message=f"Redirected to {response.url}",
+                error = MpicValidationError.create(
+                    ErrorMessages.INVALID_REDIRECT_ERROR, response.status_code, response.url
                 )
                 dcv_check_response.errors = [error]
 
@@ -306,7 +321,7 @@ class MpicDcvChecker:
         if dns_response is None:
             dcv_check_response.check_passed = False
             dcv_check_response.check_completed = True
-            return # no response to evaluate
+            return  # no response to evaluate
         response_code = dns_response.response.rcode()
         records_as_strings = []
         dns_rdata_type = dns.rdatatype.from_text(dns_record_type)

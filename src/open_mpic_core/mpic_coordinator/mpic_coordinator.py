@@ -227,10 +227,7 @@ class MpicCoordinator:
         check_error_response = None
 
         errors = [
-            MpicValidationError(
-                error_type=ErrorMessages.COORDINATOR_REMOTE_CHECK_ERROR.key,
-                error_message=f"{ErrorMessages.COORDINATOR_REMOTE_CHECK_ERROR.message} - {remote_check_exception}",
-            )
+            MpicValidationError.create(ErrorMessages.COORDINATOR_REMOTE_CHECK_ERROR, remote_check_exception)
         ]
 
         match check_type:

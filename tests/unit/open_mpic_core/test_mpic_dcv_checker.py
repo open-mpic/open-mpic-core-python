@@ -22,6 +22,7 @@ from open_mpic_core import (
     DnsRecordType,
     MpicValidationError,
     MpicDcvChecker,
+    ErrorMessages,
     TRACE_LEVEL,
 )
 
@@ -262,7 +263,7 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False
         assert dcv_response.timestamp_ns is not None
-        errors = [MpicValidationError(error_type="404", error_message="Not Found")]
+        errors = [MpicValidationError.create(ErrorMessages.GENERAL_HTTP_ERROR, "404", "Not Found")]
         assert dcv_response.errors == errors
 
     # fmt: off
@@ -279,7 +280,9 @@ class TestMpicDcvChecker:
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False
-        errors = [MpicValidationError(error_type=exception.__class__.__name__, error_message=error_message)]
+        errors = [
+            MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, exception.__class__.__name__, error_message)
+        ]
         for error in errors:
             assert error.error_type in dcv_response.errors[0].error_type
             assert error.error_message in dcv_response.errors[0].error_message
@@ -466,6 +469,26 @@ class TestMpicDcvChecker:
         self.mock_request_specific_http_response(dcv_request, mocker)
         dcv_response = await self.dcv_checker.perform_http_based_validation(dcv_request)
         assert dcv_response.check_passed is False
+
+    async def website_change_validation__should_read_more_than_100_bytes_if_regex_requires_it(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_http_check_request()
+        dcv_request.dcv_check_parameters.challenge_value = ""  # blank out challenge value to delegate all matching to regex
+        dcv_request.dcv_check_parameters.match_regex = "^" + "a" * 150 + "$"  # 150 'a' characters
+        mock_response = TestMpicDcvChecker.create_mock_http_response_with_content_and_encoding(b"a" * 150, "utf-8")
+        self.mock_request_agnostic_http_response(mock_response, mocker)
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        assert dcv_response.check_passed is True
+        hundred_fifty_a_chars_b64 = base64.b64encode(b"a" * 150).decode()  # store 150 chars in base64 encoded string
+        assert len(dcv_response.details.response_page) == len(hundred_fifty_a_chars_b64)
+
+    async def website_change_validation__should_handle_whitespace_characters_within_content_using_regex(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_http_check_request()
+        dcv_request.dcv_check_parameters.challenge_value = ""
+        dcv_request.dcv_check_parameters.match_regex = r"ABC123[\s]+(example.com|example.org|example.net)[\s]+XYZ789"
+        mock_response = TestMpicDcvChecker.create_mock_http_response_with_content_and_encoding(b"ABC123\n\n\n\n\t example.com\n\n\n\t  XYZ789", "utf-8")
+        self.mock_request_agnostic_http_response(mock_response, mocker)
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        assert dcv_response.check_passed is True
 
     @pytest.mark.parametrize(
         "key_authorization, check_passed", [("challenge_111", True), ("eXtRaStUfFchallenge_111MoReStUfF", False)]
@@ -666,13 +689,17 @@ class TestMpicDcvChecker:
         no_answer_error = dns.resolver.NoAnswer()
         self.patch_resolver_with_answer_or_exception(mocker, no_answer_error)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
-        errors = [MpicValidationError(error_type=no_answer_error.__class__.__name__, error_message=no_answer_error.msg)]
+        errors = [
+            MpicValidationError.create(
+                ErrorMessages.DCV_LOOKUP_ERROR, no_answer_error.__class__.__name__, no_answer_error.msg
+            )
+        ]
         assert dcv_response.check_passed is False
         assert dcv_response.errors == errors
 
     @pytest.mark.parametrize("record_type", [DnsRecordType.A, DnsRecordType.AAAA])
     async def is_expected_ip_address_in_response__should_return_true_if_valid_record_exists_alongside_malformed_records(
-            self, record_type
+        self, record_type
     ):
         records_as_strings = ["foo", "bar"]
         if record_type is DnsRecordType.A:
