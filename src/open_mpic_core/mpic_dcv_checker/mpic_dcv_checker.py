@@ -282,13 +282,14 @@ class MpicDcvChecker:
             result = response_text.strip()
 
             if validation_method == DcvValidationMethod.ACME_HTTP_01:
-                # need to match exactly for ACME HTTP-01
+                # ACME requires an exact match
                 dcv_check_response.check_passed = challenge_value == result
             else:
-                dcv_check_response.check_passed = challenge_value in result
+                # Case-insensitive substring check for WEBSITE_CHANGE; also checks regex if provided
+                dcv_check_response.check_passed = challenge_value.lower() in result.lower()
                 if match_regex is not None and len(match_regex) > 0:
                     match = re.search(match_regex, result)
-                    dcv_check_response.check_passed = challenge_value in result and match is not None
+                    dcv_check_response.check_passed = challenge_value.lower() in result.lower() and match is not None
             dcv_check_response.details.response_status_code = http_response.status
             dcv_check_response.details.response_url = target_url
             dcv_check_response.details.response_history = response_history
@@ -349,14 +350,15 @@ class MpicDcvChecker:
         )  # single ampersand
         dcv_check_response.details.found_at = dns_response.qname.to_text(omit_final_dot=True)
 
-        if dns_record_type == DnsRecordType.CNAME:  # case-insensitive comparison -> convert strings to lowercase
+        # Case-insensitive comparison for all validation methods except ACME and IP Address
+        if validation_method not in (DcvValidationMethod.ACME_DNS_01, DcvValidationMethod.IP_ADDRESS):
             expected_dns_record_content = expected_dns_record_content.lower()
             records_as_strings = [record.lower() for record in records_as_strings]
 
         # exact_match=True requires at least one record matches and will fail even if whitespace is different.
         # exact_match=False simply runs a contains check.
         if exact_match:
-            if dns_record_type in [DnsRecordType.A, DnsRecordType.AAAA]:
+            if validation_method == DcvValidationMethod.IP_ADDRESS:
                 dcv_check_response.check_passed = MpicDcvChecker.is_expected_ip_address_in_response(
                     expected_dns_record_content, records_as_strings
                 )

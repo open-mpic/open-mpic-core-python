@@ -1,11 +1,12 @@
 import asyncio
 import base64
 import logging
+import dns
+import random
+import pytest
+
 from io import StringIO
 from typing import List
-
-import dns
-import pytest
 
 from unittest.mock import MagicMock, AsyncMock
 from yarl import URL
@@ -106,6 +107,57 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         dcv_response.timestamp_ns = None  # ignore timestamp for comparison
         assert dcv_response.check_passed is True
+
+    @pytest.mark.parametrize(
+        "dcv_method, record_type, is_case_insensitive",
+        [
+            (DcvValidationMethod.WEBSITE_CHANGE, None, True),
+            (DcvValidationMethod.DNS_CHANGE, DnsRecordType.TXT, True),
+            (DcvValidationMethod.DNS_CHANGE, DnsRecordType.CNAME, True),
+            (DcvValidationMethod.DNS_CHANGE, DnsRecordType.CAA, True),
+            (DcvValidationMethod.CONTACT_EMAIL_TXT, None, True),
+            (DcvValidationMethod.CONTACT_EMAIL_CAA, None, True),
+            (DcvValidationMethod.CONTACT_PHONE_TXT, None, True),
+            (DcvValidationMethod.CONTACT_PHONE_CAA, None, True),
+            # (DcvValidationMethod.IP_ADDRESS, DnsRecordType.A, False),  # A records should not have letters anyway
+            (DcvValidationMethod.IP_ADDRESS, DnsRecordType.AAAA, True),
+            (DcvValidationMethod.ACME_HTTP_01, None, False),
+            (DcvValidationMethod.ACME_DNS_01, None, False),
+            (DcvValidationMethod.REVERSE_ADDRESS_LOOKUP, None, True),
+        ],
+    )
+    async def check_dcv__should_be_case_insensitive_for_challenge_values_for_all_validation_methods_except_acme(
+        self, dcv_method, record_type, is_case_insensitive, mocker
+    ):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type)
+        if dcv_method in (DcvValidationMethod.CONTACT_PHONE_TXT, DcvValidationMethod.CONTACT_PHONE_CAA):
+            # technically this should be case-insensitive, but also it would usually have digits...
+            dcv_request.dcv_check_parameters.challenge_value = "test-challenge-value"
+        elif dcv_method == DcvValidationMethod.IP_ADDRESS:
+            dcv_request.dcv_check_parameters.challenge_value = "2001:0DB8:85A3:0000:0000:8A2E:03C0:7B34"
+
+        # set up mocks prior which will return the original challenge value in the dcv_request
+        if dcv_method in (DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01):
+            self.mock_request_specific_http_response(dcv_request, mocker)
+        else:
+            self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+
+        # set up the challenge value casing to be different from the original
+        if dcv_method == DcvValidationMethod.ACME_HTTP_01:
+            dcv_request.dcv_check_parameters.key_authorization = TestMpicDcvChecker.shuffle_case(
+                dcv_request.dcv_check_parameters.key_authorization
+            )
+        elif dcv_method == DcvValidationMethod.ACME_DNS_01:
+            dcv_request.dcv_check_parameters.key_authorization_hash = TestMpicDcvChecker.shuffle_case(
+                dcv_request.dcv_check_parameters.key_authorization_hash
+            )
+        else:
+            dcv_request.dcv_check_parameters.challenge_value = TestMpicDcvChecker.shuffle_case(
+                dcv_request.dcv_check_parameters.challenge_value
+            )
+
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        assert dcv_response.check_passed is is_case_insensitive
 
     @pytest.mark.parametrize(
         "record_type, target_record_data, mock_record_data",
@@ -472,7 +524,9 @@ class TestMpicDcvChecker:
 
     async def website_change_validation__should_read_more_than_100_bytes_if_regex_requires_it(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
-        dcv_request.dcv_check_parameters.challenge_value = ""  # blank out challenge value to delegate all matching to regex
+        dcv_request.dcv_check_parameters.challenge_value = (
+            ""  # blank out challenge value to delegate all matching to regex
+        )
         dcv_request.dcv_check_parameters.match_regex = "^" + "a" * 150 + "$"  # 150 'a' characters
         mock_response = TestMpicDcvChecker.create_mock_http_response_with_content_and_encoding(b"a" * 150, "utf-8")
         self.mock_request_agnostic_http_response(mock_response, mocker)
@@ -485,7 +539,9 @@ class TestMpicDcvChecker:
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
         dcv_request.dcv_check_parameters.challenge_value = ""
         dcv_request.dcv_check_parameters.match_regex = r"ABC123[\s]+(example.com|example.org|example.net)[\s]+XYZ789"
-        mock_response = TestMpicDcvChecker.create_mock_http_response_with_content_and_encoding(b"ABC123\n\n\n\n\t example.com\n\n\n\t  XYZ789", "utf-8")
+        mock_response = TestMpicDcvChecker.create_mock_http_response_with_content_and_encoding(
+            b"ABC123\n\n\n\n\t example.com\n\n\n\t  XYZ789", "utf-8"
+        )
         self.mock_request_agnostic_http_response(mock_response, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is True
@@ -516,14 +572,6 @@ class TestMpicDcvChecker:
         # create string with null byte and utf-8 character
         dcv_request.dcv_check_parameters.challenge_value = "Mötley\0Crüe"
         self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
-        dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
-        assert dcv_response.check_passed is True
-
-    async def dns_validation__should_be_case_insensitive_for_cname_records(self, mocker):
-        dcv_request = ValidCheckCreator.create_valid_dns_check_request(DnsRecordType.CNAME)
-        dcv_request.dcv_check_parameters.challenge_value = "CNAME-VALUE"
-        self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
-        dcv_request.dcv_check_parameters.challenge_value = "cname-value"
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
 
@@ -938,6 +986,13 @@ class TestMpicDcvChecker:
         redirect_url = f"https://example.com:8080/redirected-1"
         redirect_response = TestMpicDcvChecker.create_mock_http_redirect_response(301, redirect_url)
         return [redirect_response]
+
+    @staticmethod
+    def shuffle_case(string_to_shuffle: str) -> str:
+        return "".join(
+            str(single_character).upper() if random.random() > 0.5 else str(single_character).lower()
+            for single_character in string_to_shuffle
+        )
 
 
 if __name__ == "__main__":
