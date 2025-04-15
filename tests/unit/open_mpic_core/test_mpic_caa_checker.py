@@ -293,6 +293,22 @@ class TestMpicCaaChecker:
         caa_response = await caa_checker.check_caa(caa_request)
         assert caa_response.check_passed is True
 
+    async def check_caa__should_recognize_wildcard_domain_without_requiring_caa_check_parameters_to_be_present(self, mocker):
+        record_name, expected_domain = "foo.example.com", "foo.example.com."
+        records = [
+            MockDnsObjectCreator.create_caa_record(0, "issue", "wrongca1.com"),
+            MockDnsObjectCreator.create_caa_record(0, "issuewild", "ca1.com"),
+        ]
+        test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer_with_multiple_records(
+            record_name, "", DnsRecordType.CAA, *records, mocker=mocker
+        )
+        # throwing base Exception to ensure correct domain in DNS lookup (asterisk is removed prior); previously a bug
+        self.patch_resolver_to_expect_domain(mocker, expected_domain, test_dns_query_answer, Exception)
+        caa_request = CaaCheckRequest(domain_or_ip_target="*.foo.example.com")
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
+        caa_response = await caa_checker.check_caa(caa_request)
+        assert caa_response.check_passed is True
+
     @pytest.mark.parametrize(
         "property_tag, property_value",
         [("contactemail", "contactme@example.com"), ("contactphone", "+1 (555) 555-5555")],
