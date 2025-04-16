@@ -76,6 +76,7 @@ coverage.xml
 .pytest_cache/
 cover/
 testreports/
+.output.txt
 
 # Profiling information
 prof

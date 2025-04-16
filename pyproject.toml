@@ -56,7 +56,7 @@ build.targets.wheel.packages = ["src/open_mpic_core"]
 "./tests/unit/test_util" = "open_mpic_core_test/test_util"  # include tests in the wheel to facilitate integration testing in wrapper projects
 
 [tool.api]
-spec_version = "3.3.0"
+spec_version = "3.3.1"
 spec_repository = "https://github.com/open-mpic/open-mpic-specification"
 
 [tool.hatch.envs.default]
