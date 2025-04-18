@@ -9,6 +9,7 @@ class ErrorMessages(Enum):
     TOO_MANY_FAILED_PERSPECTIVES_ERROR = ('mpic_error:coordinator:too_many_failed_perspectives', 'Too many perspectives failed to complete the check.')
     GENERAL_HTTP_ERROR = ('mpic_error:http', 'An HTTP error occurred: Response status {0}, Response reason: {1}')
     INVALID_REDIRECT_ERROR = ('mpic_error:redirect:invalid', 'Invalid redirect. Redirect code: {0}, target: {1}')
+    COHORT_CREATION_ERROR = ('mpic_error:coordinator:cohort', 'The coordinator could not construct a cohort of size {0}')
 
     def __init__(self, key, message):
         self.key = key

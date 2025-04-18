@@ -14,6 +14,7 @@ from open_mpic_core import MpicRequestValidationException
 from open_mpic_core import MpicValidationError, ErrorMessages
 from open_mpic_core import CheckType
 from open_mpic_core import CohortCreator
+from open_mpic_core import CohortCreationException
 from open_mpic_core import RemoteCheckException
 from open_mpic_core import RemoteCheckCallConfiguration
 from open_mpic_core import RemotePerspective
@@ -73,6 +74,10 @@ class MpicCoordinator:
         perspective_cohorts = self.shuffle_and_group_perspectives(
             self.target_perspectives, perspective_count, mpic_request.domain_or_ip_target
         )
+
+        if len(perspective_cohorts) == 0:
+            raise CohortCreationException(ErrorMessages.COHORT_CREATION_ERROR.message.format(perspective_count))
+        
 
         quorum_count = self.determine_required_quorum_count(orchestration_parameters, perspective_count)
 
