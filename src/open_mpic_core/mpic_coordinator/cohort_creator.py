@@ -41,7 +41,7 @@ class CohortCreator:
                 number_of_cohorts_to_create -= 1
             return cohorts
         elif len(perspectives_per_rir.keys()) < 2:  # else if only one rir, can't meet requirements
-            return []  # TODO throw an error? check this case in the validator?
+            return []  # This case is now checked in the coordinator.
 
         # the below is an upper bound for number of potential cohorts, assuming rir and distance rules can be met
         number_of_potential_cohorts = len(list(chain.from_iterable(perspectives_per_rir.values()))) // cohort_size
