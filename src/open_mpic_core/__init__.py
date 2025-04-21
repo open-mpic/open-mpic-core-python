@@ -43,6 +43,8 @@ from open_mpic_core.mpic_coordinator.domain.mpic_orchestration_parameters import
     MpicRequestOrchestrationParameters,
     MpicEffectiveOrchestrationParameters,
 )
+
+from open_mpic_core.mpic_coordinator.domain.cohort_creation_exception import CohortCreationException
 from open_mpic_core.mpic_coordinator.domain.perspective_response import PerspectiveResponse
 from open_mpic_core.mpic_coordinator.domain.mpic_request import MpicRequest, MpicDcvRequest, MpicCaaRequest
 from open_mpic_core.mpic_coordinator.domain.mpic_response import MpicResponse, MpicCaaResponse, MpicDcvResponse

@@ -21,6 +21,7 @@ from open_mpic_core import (
 )
 from open_mpic_core.common_domain.enum.regional_internet_registry import RegionalInternetRegistry
 
+from open_mpic_core.mpic_coordinator.domain.cohort_creation_exception import CohortCreationException
 from unit.test_util.valid_mpic_request_creator import ValidMpicRequestCreator
 
 
@@ -296,6 +297,48 @@ class TestMpicCoordinator:
         mpic_response = await mpic_coordinator.coordinate_mpic(mpic_request)
         assert mpic_response.is_valid is False
         assert mpic_response.actual_orchestration_parameters.attempt_count == 3
+
+    async def coordinate_mpic__should_raise_cohort_creation_error_if_it_cannot_make_any_cohorts_due_to_too_close_codes(self):
+        mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        # there are 3 rirs of 2 perspectives each in the test setup; expect 3 cohorts of 2 perspectives each
+        mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters(
+            quorum_count=6, perspective_count=6, max_attempts=3
+        )
+        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
+        # Make all the perspectives too close to us-west-1.
+        for index in range(len(mpic_coordinator_config.target_perspectives)):
+            if mpic_coordinator_config.target_perspectives[index].code != 'us-west-1':
+                mpic_coordinator_config.target_perspectives[index].too_close_codes = ['us-west-1']
+
+        print(mpic_coordinator_config)
+        mocked_call_remote_perspective_function = AsyncMock()
+        mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
+            self.create_passing_caa_check_response
+        )
+        mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config)
+        with pytest.raises(CohortCreationException):
+            await mpic_coordinator.coordinate_mpic(mpic_request)
+
+    async def coordinate_mpic__should_raise_cohort_creation_error_if_it_cannot_make_any_cohorts_due_to_rir_diversity(self):
+        mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        # there are 3 rirs of 2 perspectives each in the test setup; expect 3 cohorts of 2 perspectives each
+        mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters(
+            quorum_count=6, perspective_count=6, max_attempts=3
+        )
+        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
+        # Change all the perspectives to RIPE NCC.
+        for index in range(len(mpic_coordinator_config.target_perspectives)):
+            mpic_coordinator_config.target_perspectives[index].rir = RegionalInternetRegistry.RIPE_NCC
+
+        print(mpic_coordinator_config)
+        mocked_call_remote_perspective_function = AsyncMock()
+        mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
+            self.create_passing_caa_check_response
+        )
+        mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config)
+        with pytest.raises(CohortCreationException):
+            await mpic_coordinator.coordinate_mpic(mpic_request)
+
 
     async def coordinate_mpic__should_cycle_through_perspective_cohorts_if_attempts_exceeds_cohort_number(self):
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
