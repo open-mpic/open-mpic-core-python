@@ -191,6 +191,7 @@ class MpicDcvChecker:
         if validation_method != DcvValidationMethod.ACME_TLS_ALPN_01:
             raise ValueError("perform_tls_alpn_validation is not to be called with any validation method other than DcvValidationMethod.ACME_TLS_ALPN_01")
         key_authorization_hash = request.dcv_check_parameters.key_authorization_hash
+        self.logger.info("!!!!! before response builder")
         dcv_check_response = MpicDcvChecker.create_empty_check_response(validation_method)
 
         try:
