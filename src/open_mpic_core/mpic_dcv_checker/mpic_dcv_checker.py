@@ -186,6 +186,7 @@ class MpicDcvChecker:
         return lookup
 
     async def perform_tls_alpn_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:
+        self.logger.info("!!!!! entering alpn block")
         validation_method = request.dcv_check_parameters.validation_method
         if validation_method != DcvValidationMethod.ACME_TLS_ALPN_01:
             raise ValueError("perform_tls_alpn_validation is not to be called with any validation method other than DcvValidationMethod.ACME_TLS_ALPN_01")
@@ -199,7 +200,7 @@ class MpicDcvChecker:
             context.set_alpn_protocols("acme-tls/1")
             with socket.create_connection((hostname, 443)) as sock:
                 with context.wrap_socket(sock, server_hostname=hostname) as ssock:
-                    print(ssock.getpeercert())
+                    self.logger.info(str(ssock.getpeercert()))
                     exit()
 
         except asyncio.TimeoutError as e:
