@@ -194,14 +194,16 @@ class MpicDcvChecker:
         dcv_check_response = MpicDcvChecker.create_empty_check_response(validation_method)
 
         try:
-
+            self.logger.info("!!!!! try alpn block")
             hostname = 'www.python.org'
             context = ssl.create_default_context()
             context.set_alpn_protocols("acme-tls/1")
             with socket.create_connection((hostname, 443)) as sock:
+                self.logger.info("!!!!! first with")
                 with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                    self.logger.info("!!!!! second with")
                     self.logger.info(str(ssock.getpeercert()))
-                    exit()
+                    
 
         except asyncio.TimeoutError as e:
             dcv_check_response.timestamp_ns = time.time_ns()
