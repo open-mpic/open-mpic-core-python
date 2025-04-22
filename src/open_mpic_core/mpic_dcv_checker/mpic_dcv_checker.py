@@ -198,6 +198,7 @@ class MpicDcvChecker:
         try:
             self.logger.info("!!!!! try alpn block")
             hostname = request.domain_or_ip_target
+            self.logger.info(f"hostname: {hostname}")
             context = ssl.create_default_context()
             context.set_alpn_protocols("acme-tls/1")
             with socket.create_connection((hostname, 443)) as sock:
