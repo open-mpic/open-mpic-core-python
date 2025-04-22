@@ -40,6 +40,12 @@ class DcvDnsCheckResponseDetails(BaseModel):
     ad_flag: bool | None = None  # was AD flag set in DNS response
     found_at: str | None = None  # domain where DNS record was found
 
+class DcvTlsAlpnCheckResponseDetails(BaseModel):
+    validation_method: Literal[
+        DcvValidationMethod.ACME_TLS_ALPN_01,
+        ]
+    common_name: str | None = None  # domain where DNS record was found
+
 
 DcvCheckResponseDetails = Union[DcvHttpCheckResponseDetails, DcvDnsCheckResponseDetails]
 
@@ -53,6 +59,7 @@ class DcvCheckResponseDetailsBuilder:
             DcvValidationMethod.DNS_CHANGE: DcvDnsCheckResponseDetails,
             DcvValidationMethod.ACME_HTTP_01: DcvHttpCheckResponseDetails,
             DcvValidationMethod.ACME_DNS_01: DcvDnsCheckResponseDetails,
+            DcvValidationMethod.ACME_TLS_ALPN_01: DcvTlsAlpnCheckResponseDetails,
             DcvValidationMethod.CONTACT_PHONE_TXT: DcvDnsCheckResponseDetails,
             DcvValidationMethod.CONTACT_PHONE_CAA: DcvDnsCheckResponseDetails,
             DcvValidationMethod.CONTACT_EMAIL_TXT: DcvDnsCheckResponseDetails,
