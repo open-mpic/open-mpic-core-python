@@ -47,7 +47,7 @@ class DcvTlsAlpnCheckResponseDetails(BaseModel):
     common_name: str | None = None  # domain where DNS record was found
 
 
-DcvCheckResponseDetails = Union[DcvHttpCheckResponseDetails, DcvDnsCheckResponseDetails]
+DcvCheckResponseDetails = Union[DcvHttpCheckResponseDetails, DcvDnsCheckResponseDetails, DcvTlsAlpnCheckResponseDetails]
 
 
 # utility class
