@@ -1,4 +1,6 @@
 import asyncio
+import socket
+import ssl
 import time
 from contextlib import asynccontextmanager
 
@@ -106,6 +108,8 @@ class MpicDcvChecker:
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE | DcvValidationMethod.ACME_HTTP_01:
                 result = await self.perform_http_based_validation(dcv_request)
+            case DcvValidationMethod.ACME_TLS_ALPN_01:
+                result = await self.perform_tls_alpn_validation(dcv_request)
             case _:  # ACME_DNS_01 | DNS_CHANGE | IP_LOOKUP | CONTACT_EMAIL | CONTACT_PHONE | REVERSE_ADDRESS_LOOKUP
                 result = await self.perform_general_dns_validation(dcv_request)
 
@@ -180,6 +184,42 @@ class MpicDcvChecker:
         else:
             lookup = await dns.asyncresolver.resolve(name_to_resolve, dns_rdata_type)
         return lookup
+
+    async def perform_tls_alpn_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:
+        validation_method = request.dcv_check_parameters.validation_method
+        if validation_method != DcvValidationMethod.ACME_TLS_ALPN_01:
+            raise ValueError("perform_tls_alpn_validation is not to be called with any validation method other than DcvValidationMethod.ACME_TLS_ALPN_01")
+        key_authorization_hash = request.dcv_check_parameters.key_authorization_hash
+        dcv_check_response = MpicDcvChecker.create_empty_check_response(validation_method)
+
+        try:
+
+            hostname = 'www.python.org'
+            context = ssl.create_default_context()
+            context.set_alpn_protocols("acme-tls/1")
+            with socket.create_connection((hostname, 443)) as sock:
+                with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                    print(ssock.getpeercert())
+                    exit()
+
+        except asyncio.TimeoutError as e:
+            dcv_check_response.timestamp_ns = time.time_ns()
+            log_message = f"Timeout connecting to {token_url}: {str(e)}. Trace identifier: {request.trace_identifier}"
+            self.logger.warning(log_message)
+            message = f"Connection timed out while attempting to connect to {token_url}"
+            dcv_check_response.errors = [
+                MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, message)
+            ]
+        except (ClientError, HTTPException, OSError) as e:
+            log_message = f"Error connecting to {token_url}: {str(e)}. Trace identifier: {request.trace_identifier}"
+            self.logger.error(log_message)
+            dcv_check_response.timestamp_ns = time.time_ns()
+            dcv_check_response.errors = [
+                MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, str(e))
+            ]
+
+        return dcv_check_response
+
 
     async def perform_http_based_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:
         validation_method = request.dcv_check_parameters.validation_method
