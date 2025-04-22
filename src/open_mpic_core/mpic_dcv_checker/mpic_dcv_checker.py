@@ -3,6 +3,7 @@ import socket
 import ssl
 import time
 from contextlib import asynccontextmanager
+import traceback
 
 import dns.asyncresolver
 import requests
@@ -215,8 +216,7 @@ class MpicDcvChecker:
                 MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, message)
             ]
         except (ClientError, HTTPException, OSError) as e:
-            log_message = f"Error connecting to {token_url}: {str(e)}. Trace identifier: {request.trace_identifier}"
-            self.logger.error(log_message)
+            self.logger.error(traceback.format_exc())
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [
                 MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, str(e))
