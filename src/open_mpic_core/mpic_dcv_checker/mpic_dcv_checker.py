@@ -203,9 +203,9 @@ class MpicDcvChecker:
             context.set_alpn_protocols(["acme-tls/1"])
             with socket.create_connection((hostname, 443)) as sock:
                 self.logger.info("!!!!! first with")
-                #with context.wrap_socket(sock, server_hostname=hostname) as ssock:
-                #    self.logger.info("!!!!! second with")
-                #    self.logger.info(str(ssock.getpeercert()))
+                with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                    self.logger.info("!!!!! second with")
+                    self.logger.info(str(ssock.getpeercert()))
                     
 
         except asyncio.TimeoutError as e:
