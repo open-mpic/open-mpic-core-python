@@ -201,6 +201,7 @@ class MpicDcvChecker:
             self.logger.info(f"hostname: {hostname}")
             context = ssl.create_default_context()
             context.set_alpn_protocols(["acme-tls/1"])
+            context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
             with socket.create_connection((hostname, 443)) as sock:
                 self.logger.info("!!!!! first with")
@@ -372,7 +373,6 @@ class MpicDcvChecker:
         response_code = dns_response.response.rcode()
         records_as_strings = []
         dns_rdata_type = dns.rdatatype.from_text(dns_record_type)
-        logger.info(dns_response.chaining_result.cnames)
         for response_answer in dns_response.response.answer:
             if response_answer.rdtype == dns_rdata_type:
                 for record_data in response_answer:
