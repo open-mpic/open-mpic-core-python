@@ -372,12 +372,8 @@ class MpicDcvChecker:
         response_code = dns_response.response.rcode()
         records_as_strings = []
         dns_rdata_type = dns.rdatatype.from_text(dns_record_type)
+        logger.info(dns_response.chaining_result.cnames)
         for response_answer in dns_response.response.answer:
-            if response_answer.rdtype == dns.rdatatype.CNAME:
-                for record_data in response_answer:
-                    record_value = b".".join(record_data.target.labels).decode("utf-8")
-                    logger.info(f"CNAME: {record_value}")
-
             if response_answer.rdtype == dns_rdata_type:
                 for record_data in response_answer:
                     if validation_method == DcvValidationMethod.CONTACT_EMAIL_CAA:
