@@ -254,7 +254,7 @@ class MpicDcvChecker:
                     except ValueError as ve:
                         dcv_check_response.timestamp_ns = time.time_ns()
                         dcv_check_response.errors = [
-                            MpicValidationError.create(ErrorMessages.DCV_PARAMETER_ERROR, e.__class__.__name__, key_authorization_hash)
+                            MpicValidationError.create(ErrorMessages.DCV_PARAMETER_ERROR, key_authorization_hash)
                         ]
                         return dcv_check_response
                     if binary_challenge_seen == key_authorization_hash_binary:
