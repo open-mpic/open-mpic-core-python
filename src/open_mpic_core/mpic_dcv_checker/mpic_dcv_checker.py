@@ -11,6 +11,8 @@ import re
 import aiohttp
 import base64
 
+from cryptography import x509
+
 import ipaddress
 
 from yarl import URL
@@ -34,6 +36,9 @@ class MpicDcvChecker:
     WELL_KNOWN_ACME_PATH = ".well-known/acme-challenge"
     CONTACT_EMAIL_TAG = "contactemail"
     CONTACT_PHONE_TAG = "contactphone"
+
+    ACME_TLS_ALPN_OID_DOTTED_STRING = "1.3.6.1.5.5.7.1.31" # See id-pe-acmeIdentifier in https://www.iana.org/assignments/smi-numbers/smi-numbers.xhtml
+    SUBJECT_ALT_NAME_OID_DOTTED_STRING = "2.5.29.17"
 
     def __init__(
         self,
@@ -205,9 +210,58 @@ class MpicDcvChecker:
             context.verify_mode = ssl.CERT_NONE
             with socket.create_connection((hostname, 443)) as sock:
                 self.logger.info("!!!!! first with")
+                # If we made the socket, we can mark the check as completed.
+                dcv_check_response.check_completed = True
                 with context.wrap_socket(sock, server_hostname=hostname) as ssock:
                     self.logger.info("!!!!! second with")
-                    self.logger.info(str(ssock.getpeercert()))
+                    
+                    binary_cert = ssock.getpeercert(binary_form=True)
+                    x509_cert = x509.load_der_x509_certificate(binary_cert)
+                    self.logger.info("x509_cert from binary form.")
+                    subject_alt_name_extension_index = None
+                    acme_tls_alpn_extension_index = None
+                    for i in range(len(x509_cert.extensions)):
+                        extension = x509_cert.extensions[i]
+                        if extension.oid.dotted_string == self.ACME_TLS_ALPN_OID_DOTTED_STRING:
+                            acme_tls_alpn_extension_index = i
+                        elif extension.oid.dotted_string == self.SUBJECT_ALT_NAME_OID_DOTTED_STRING:
+                            subject_alt_name_extension_index = i
+                    self.logger.info("all indexes expanded.")
+                    # We need both of these extensions to proceed.
+                    if subject_alt_name_extension_index is None or acme_tls_alpn_extension_index is None:
+                        # TODO: Error response here.
+                        raise ValueError("Certificate Extension Not Found")
+                    self.logger.info("both extensions found")
+                    subject_alt_name_extension = x509_cert.extensions[subject_alt_name_extension_index]
+                    acme_tls_alpn_extension = x509_cert.extensions[acme_tls_alpn_extension_index]
+                    # We now know we have both extensions present. Begin checking each one.
+                    san_names = subject_alt_name_extension.value._general_names
+                    if len(san_names) != 1:
+                        # TODO: Error response here.
+                        raise ValueError("Certificate does not contain a single SAN as required per RFC 8737")
+                    single_san_name = san_names[0]
+                    if not isinstance(single_san_name, x509.general_name.DNSName):
+                        # Must be a DNS Name.
+                        raise ValueError("SAN was not a dNSName entry")
+                    if single_san_name.value != hostname:
+                        raise ValueError("SAN entry must be equal to the hostname being validated.")
+                    # We have not checked the SAN extension per the RFC.
+                    self.logger.info("san value is hostname")
+                    # Check the id-pe-acmeIdentifier extension.
+                    binary_challenge_seen = acme_tls_alpn_extension.value.value
+                    key_authorization_hash_binary = bytes.fromhex(key_authorization_hash)
+                    if binary_challenge_seen == key_authorization_hash_binary:
+                        # This is the check passed situation.
+                        self.logger.info("key hash test true")
+                        dcv_check_response.timestamp_ns = time.time_ns()
+                        dcv_check_response.check_passed = True
+                    else:
+                        self.logger.info("key hash test false")
+                        # This is where the provided auth did not equal the key authorization hash.
+                        dcv_check_response.timestamp_ns = time.time_ns()
+                        dcv_check_response.check_passed = False
+
+
                     
 
         except asyncio.TimeoutError as e:
