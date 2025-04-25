@@ -261,6 +261,8 @@ class MpicDcvChecker:
                     self.logger.info(binary_challenge_seen)
                     self.logger.info(f"key_authorization_hash_binary")
                     self.logger.info(key_authorization_hash_binary)
+                    # Add the first two ASN.1 encoding bytes to the expected hex string.
+                    key_authorization_hash_binary = b'\x04\x20' + key_authorization_hash_binary
                     if binary_challenge_seen == key_authorization_hash_binary:
                         # This is the check passed situation.
                         self.logger.info("key hash test true")
