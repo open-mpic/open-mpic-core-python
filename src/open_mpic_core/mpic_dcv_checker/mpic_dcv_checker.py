@@ -257,6 +257,10 @@ class MpicDcvChecker:
                             MpicValidationError.create(ErrorMessages.DCV_PARAMETER_ERROR, key_authorization_hash)
                         ]
                         return dcv_check_response
+                    self.logger.info(f"binary_challenge_seen")
+                    self.logger.info(binary_challenge_seen)
+                    self.logger.info(f"key_authorization_hash_binary")
+                    self.logger.info(key_authorization_hash_binary)
                     if binary_challenge_seen == key_authorization_hash_binary:
                         # This is the check passed situation.
                         self.logger.info("key hash test true")
