@@ -29,6 +29,7 @@ dependencies = [
   "pydantic==2.10.6",
   "aiohttp==3.11.13",
   "black==24.8.0",
+  "cryptography==44.0.2",
 ]
 
 [project.optional-dependencies]
