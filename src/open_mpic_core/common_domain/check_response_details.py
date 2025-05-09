@@ -39,7 +39,7 @@ class DcvDnsCheckResponseDetails(BaseModel):
     response_code: int | None = None  # DNS response code
     ad_flag: bool | None = None  # was AD flag set in DNS response
     found_at: str | None = None  # domain where DNS record was found
-
+    cname_chain: list[str] | None = None # List of CNAMEs followed to obtain the final result.
 
 DcvCheckResponseDetails = Union[DcvHttpCheckResponseDetails, DcvDnsCheckResponseDetails]
 
