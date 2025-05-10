@@ -348,6 +348,14 @@ class MpicDcvChecker:
         dcv_check_response.details.ad_flag = (
             dns_response.response.flags & dns.flags.AD == dns.flags.AD
         )  # single ampersand
+        cname_record_sets = dns_response.chaining_result.cnames
+        cname_chain_str = []
+        for cname_record_set in cname_record_sets:
+            # This code will flatten a list of record sets should a CNAME come with multiple records in the record set.
+            # Per the RFCs, there can only ever be one CNAME in a CNAME record set.
+            for cname_record in cname_record_set:
+                cname_chain_str.append( b".".join(cname_record.target.labels).decode("utf-8"))
+        dcv_check_response.details.cname_chain = cname_chain_str
         dcv_check_response.details.found_at = dns_response.qname.to_text(omit_final_dot=True)
 
         # Case-insensitive comparison for all validation methods except ACME and IP Address

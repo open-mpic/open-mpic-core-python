@@ -3,6 +3,7 @@ import base64
 import logging
 import dns
 import random
+import dns.rdatatype
 import pytest
 
 from io import StringIO
@@ -16,6 +17,8 @@ from aiohttp.client_exceptions import ClientConnectionError
 from aiohttp.web import HTTPInternalServerError
 from multidict import CIMultiDictProxy, CIMultiDict
 from dns.rcode import Rcode
+from dns.rdtypes.ANY.CNAME import CNAME
+from dns.message import ChainingResult
 
 from open_mpic_core import (
     DcvCheckRequest,
@@ -430,7 +433,7 @@ class TestMpicDcvChecker:
         # Expected to be received in the Content-Type header.
         # "Café" in ISO-8859-1 is chosen as it is different, for example, when UTF-8 encoded: "43 61 66 C3 A9"
         encoding = "ISO-8859-1"
-        content = b"\x43\x61\x66\xE9"
+        content = b"\x43\x61\x66\xe9"
         expected_challenge_value = "Café"
 
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
@@ -731,6 +734,18 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.details.ad_flag is flag_set
 
+    @pytest.mark.parametrize(
+        "dcv_method",
+        [
+            DcvValidationMethod.DNS_CHANGE,
+        ],
+    )
+    async def dns_based_dcv_checks__should_return_cname_chain(self, dcv_method, mocker):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
+        self.mock_dns_resolve_call_with_cname_chain(dcv_request, mocker)
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        assert "sub.example.com." in dcv_response.details.cname_chain
+
     @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.DNS_CHANGE, DcvValidationMethod.ACME_DNS_01])
     async def dns_based_dcv_checks__should_not_pass_with_errors_given_exception_raised(self, dcv_method, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
@@ -920,6 +935,20 @@ class TestMpicDcvChecker:
     def mock_dns_resolve_call_with_specific_flag(self, dcv_request: DcvCheckRequest, flag, mocker):
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
         test_dns_query_answer.response.flags |= flag
+        self.patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
+
+    def mock_dns_resolve_call_with_cname_chain(self, dcv_request: DcvCheckRequest, mocker):
+        test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
+        test_dns_query_answer.chaining_result = ChainingResult(
+            canonical_name="sub.example.com",
+            answer=None,
+            minimum_ttl=1,
+            cnames=[
+                MockDnsObjectCreator.create_rrset(
+                    dns.rdatatype.CNAME, CNAME(dns.rdataclass.IN, dns.rdatatype.CNAME, target="sub.example.com")
+                )
+            ],
+        )
         self.patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
 
     def mock_dns_resolve_call_getting_multiple_txt_records(self, dcv_request: DcvCheckRequest, mocker):
