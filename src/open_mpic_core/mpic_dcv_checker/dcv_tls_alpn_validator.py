@@ -89,7 +89,9 @@ class DcvTlsAlpnValidator:
                                         ErrorMessages.DCV_PARAMETER_ERROR, key_authorization_hash
                                     )
                                 ]
-                            dcv_check_response.check_passed = binary_challenge_seen == key_authorization_hash_binary
+                            if binary_challenge_seen == key_authorization_hash_binary:
+                                dcv_check_response.check_passed = True
+                                dcv_check_response.details.common_name = hostname
                             self.logger.info(f"key hash test passed? {dcv_check_response.check_passed}")
                 dcv_check_response.timestamp_ns = time.time_ns()
         except asyncio.TimeoutError as e:

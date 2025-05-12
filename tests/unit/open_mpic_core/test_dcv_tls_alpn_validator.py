@@ -52,6 +52,17 @@ class TestDcvTlsAlpnValidator:
         assert response.check_passed is True
         assert not response.errors
 
+    async def perform_tls_alpn_validation__should_include_common_name_in_succesful_response(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_acme_tls_alpn_01_check_request()
+        mock_cert = self._create_mock_certificate(
+            dcv_request.domain_or_ip_target, dcv_request.dcv_check_parameters.key_authorization_hash
+        )
+        self._mock_socket_and_ssl_context(mocker, mock_cert)
+        response = await self.validator.perform_tls_alpn_validation(dcv_request)
+        assert response.check_completed is True
+        assert response.check_passed is True
+        assert response.details.common_name == dcv_request.domain_or_ip_target
+
     async def perform_tls_alpn_validation__should_fail_if_required_extensions_are_missing(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_acme_tls_alpn_01_check_request()
         mock_cert = self._create_mock_certificate_without_extensions()
