@@ -142,4 +142,4 @@ class ValidCheckCreator:
             ):
                 return ValidCheckCreator.create_valid_contact_check_request(validation_method)
             case _:
-                return None
+                raise ValueError(f"Unsupported validation method: {validation_method}")
