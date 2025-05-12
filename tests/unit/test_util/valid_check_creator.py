@@ -4,6 +4,7 @@ from open_mpic_core import (
     CaaCheckParameters,
     DcvAcmeHttp01ValidationParameters,
     DcvAcmeDns01ValidationParameters,
+    DcvAcmeTlsAlpn01ValidationParameters,
     DcvIpAddressValidationParameters,
     DcvContactEmailCaaValidationParameters,
     DcvContactEmailTxtValidationParameters,
@@ -92,9 +93,18 @@ class ValidCheckCreator:
 
     @staticmethod
     def create_valid_acme_dns_01_check_request():
+        challenge = "challenge_111".encode().hex()
         return DcvCheckRequest(
             domain_or_ip_target="example.com",
-            dcv_check_parameters=DcvAcmeDns01ValidationParameters(key_authorization_hash="challenge_111"),
+            dcv_check_parameters=DcvAcmeDns01ValidationParameters(key_authorization_hash=challenge),
+        )
+
+    @staticmethod
+    def create_valid_acme_tls_alpn_01_check_request():
+        challenge = "challenge_111".encode().hex()
+        return DcvCheckRequest(
+            domain_or_ip_target="example.com",
+            dcv_check_parameters=DcvAcmeTlsAlpn01ValidationParameters(key_authorization_hash=challenge),
         )
 
     @staticmethod
@@ -106,16 +116,20 @@ class ValidCheckCreator:
         )
 
     @staticmethod
-    def create_valid_dcv_check_request(validation_method: DcvValidationMethod, record_type=DnsRecordType.TXT):
+    def create_valid_dcv_check_request(validation_method: DcvValidationMethod, record_type=None):
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE:
                 return ValidCheckCreator.create_valid_http_check_request()
             case DcvValidationMethod.DNS_CHANGE:
+                if record_type is None:
+                    record_type = DnsRecordType.TXT
                 return ValidCheckCreator.create_valid_dns_check_request(record_type)
             case DcvValidationMethod.ACME_HTTP_01:
                 return ValidCheckCreator.create_valid_acme_http_01_check_request()
             case DcvValidationMethod.ACME_DNS_01:
                 return ValidCheckCreator.create_valid_acme_dns_01_check_request()
+            case DcvValidationMethod.ACME_TLS_ALPN_01:
+                return ValidCheckCreator.create_valid_acme_tls_alpn_01_check_request()
             case DcvValidationMethod.IP_ADDRESS:
                 return ValidCheckCreator.create_valid_ip_lookup_check_request(record_type)
             case DcvValidationMethod.REVERSE_ADDRESS_LOOKUP:
@@ -127,3 +141,5 @@ class ValidCheckCreator:
                 | DcvValidationMethod.CONTACT_PHONE_TXT
             ):
                 return ValidCheckCreator.create_valid_contact_check_request(validation_method)
+            case _:
+                return None

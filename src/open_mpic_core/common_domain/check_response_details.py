@@ -40,10 +40,9 @@ class DcvDnsCheckResponseDetails(BaseModel):
     ad_flag: bool | None = None  # was AD flag set in DNS response
     found_at: str | None = None  # domain where DNS record was found
 
+
 class DcvTlsAlpnCheckResponseDetails(BaseModel):
-    validation_method: Literal[
-        DcvValidationMethod.ACME_TLS_ALPN_01,
-        ]
+    validation_method: Literal[DcvValidationMethod.ACME_TLS_ALPN_01]
     common_name: str | None = None  # domain where DNS record was found
 
 
