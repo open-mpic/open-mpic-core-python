@@ -5,6 +5,7 @@ import socket
 from unittest.mock import MagicMock
 from io import StringIO
 from cryptography import x509
+from cryptography.x509 import SubjectAlternativeName, Extension
 from cryptography.x509.oid import ExtensionOID
 
 from open_mpic_core import ErrorMessages, TRACE_LEVEL
@@ -52,7 +53,7 @@ class TestDcvTlsAlpnValidator:
         assert response.check_passed is True
         assert not response.errors
 
-    async def perform_tls_alpn_validation__should_include_common_name_in_succesful_response(self, mocker):
+    async def perform_tls_alpn_validation__should_include_common_name_in_successful_response(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_acme_tls_alpn_01_check_request()
         mock_cert = self._create_mock_certificate(
             dcv_request.domain_or_ip_target, dcv_request.dcv_check_parameters.key_authorization_hash
@@ -146,11 +147,12 @@ class TestDcvTlsAlpnValidator:
         mock_cert = MagicMock()
 
         dns_name = x509.general_name.DNSName(hostname)
-        san_extension = MagicMock()
-        san_extension.oid.dotted_string = ExtensionOID.SUBJECT_ALTERNATIVE_NAME.dotted_string
-        san_extension.value._general_names = [dns_name]  # must have exactly one DNS name
+
+        san_extension_value = SubjectAlternativeName(general_names=[dns_name])
+        san_extension = Extension(oid=ExtensionOID.SUBJECT_ALTERNATIVE_NAME, critical=False, value=san_extension_value)
 
         key_auth_hash_binary = bytes.fromhex(key_authorization_hash)
+        assert len(key_auth_hash_binary) == 32, "Key authorization hash must be 32 bytes long"
         acme_extension = MagicMock()
         acme_extension.oid.dotted_string = self.validator.ACME_TLS_ALPN_OID_DOTTED_STRING
         acme_extension.value.value = b"\x04\x20" + key_auth_hash_binary

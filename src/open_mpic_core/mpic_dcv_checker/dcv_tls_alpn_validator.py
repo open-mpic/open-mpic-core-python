@@ -30,30 +30,23 @@ class DcvTlsAlpnValidator:
             self.logger.setLevel(log_level)
 
     async def perform_tls_alpn_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:
-        self.logger.info("!!!!! entering alpn block")
         validation_method = request.dcv_check_parameters.validation_method
         assert validation_method == DcvValidationMethod.ACME_TLS_ALPN_01
         key_authorization_hash = request.dcv_check_parameters.key_authorization_hash
-        self.logger.info("!!!!! before response builder")
         dcv_check_response = DcvUtils.create_empty_check_response(validation_method)
         hostname = request.domain_or_ip_target
 
         try:
-            self.logger.info("!!!!! try alpn block")
-            self.logger.info(f"hostname: {hostname}")
             context = ssl.create_default_context()
             context.set_alpn_protocols([self.ACME_TLS_ALPN_PROTOCOL])
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
 
             with socket.create_connection((hostname, 443)) as generic_tls_connection:
-                self.logger.info("!!!!! first with (created 443 connection)")
                 dcv_check_response.check_completed = True  # If we made the socket, we can mark the check as completed.
                 with context.wrap_socket(generic_tls_connection, server_hostname=hostname) as tls_alpn_connection:
-                    self.logger.info("!!!!! second with (wrapped connection in tls alpn context)")
                     binary_cert = tls_alpn_connection.getpeercert(binary_form=True)
                     x509_cert = x509.load_der_x509_certificate(binary_cert)
-                    self.logger.info("x509_cert from binary form.")
 
                     subject_alt_name_extension = None
                     acme_tls_alpn_extension = None
@@ -61,16 +54,14 @@ class DcvTlsAlpnValidator:
                     for extension in x509_cert.extensions:
                         if extension.oid.dotted_string == self.ACME_TLS_ALPN_OID_DOTTED_STRING:
                             acme_tls_alpn_extension = extension
-                        elif extension.oid.dotted_string == ExtensionOID.SUBJECT_ALTERNATIVE_NAME.dotted_string:
+                        elif extension.oid == ExtensionOID.SUBJECT_ALTERNATIVE_NAME:
                             subject_alt_name_extension = extension
-                    self.logger.info("all indexes expanded.")
                     # We need both of these extensions to proceed.
                     if subject_alt_name_extension is None or acme_tls_alpn_extension is None:
                         dcv_check_response.errors = [
                             MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_EXTENSION_MISSING)
                         ]
                     else:
-                        self.logger.info("both extensions found")
                         # We now know we have both extensions present. Begin checking each one.
                         dcv_check_response.errors = self._validate_san_entry(subject_alt_name_extension, hostname)
                         if len(dcv_check_response.errors) == 0:
@@ -79,8 +70,8 @@ class DcvTlsAlpnValidator:
                             key_authorization_hash_binary = None
                             try:
                                 key_authorization_hash_binary = bytes.fromhex(key_authorization_hash)
-                                self.logger.info(f"binary_challenge_seen: {binary_challenge_seen}")
-                                self.logger.info(f"key_authorization_hash_binary: {key_authorization_hash_binary}")
+                                self.logger.info(f"tls-alpn-01: binary_challenge_seen: {binary_challenge_seen}")
+                                self.logger.info(f"tls-alpn-01: key_authorization_hash_binary: {key_authorization_hash_binary}")
                                 # Add the first two ASN.1 encoding bytes to the expected hex string.
                                 key_authorization_hash_binary = b"\x04\x20" + key_authorization_hash_binary
                             except ValueError:
