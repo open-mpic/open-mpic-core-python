@@ -1,17 +1,12 @@
 import asyncio
-import socket
-import ssl
 import time
 from contextlib import asynccontextmanager
-import traceback
 
 import dns.asyncresolver
 import requests
 import re
 import aiohttp
 import base64
-
-from cryptography import x509
 
 import ipaddress
 
@@ -20,12 +15,12 @@ from aiohttp import ClientError
 from aiohttp.web import HTTPException
 
 from open_mpic_core import DcvCheckRequest, DcvCheckResponse
-from open_mpic_core import RedirectResponse, DcvCheckResponseDetailsBuilder
+from open_mpic_core import RedirectResponse, DcvUtils
 from open_mpic_core import DcvValidationMethod, DnsRecordType
-from open_mpic_core import MpicValidationError
+from open_mpic_core import MpicValidationError, ErrorMessages
 from open_mpic_core import DomainEncoder
+from open_mpic_core import DcvTlsAlpnValidator
 from open_mpic_core import get_logger
-from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
 
 logger = get_logger(__name__)
 
@@ -56,6 +51,8 @@ class MpicDcvChecker:
         self.logger = logger.getChild(self.__class__.__name__)
         if log_level is not None:
             self.logger.setLevel(log_level)
+
+        self.acme_tls_alpn_validator = DcvTlsAlpnValidator(log_level=log_level)
 
     @asynccontextmanager
     async def get_async_http_client(self):
@@ -115,7 +112,7 @@ class MpicDcvChecker:
             case DcvValidationMethod.WEBSITE_CHANGE | DcvValidationMethod.ACME_HTTP_01:
                 result = await self.perform_http_based_validation(dcv_request)
             case DcvValidationMethod.ACME_TLS_ALPN_01:
-                result = await self.perform_tls_alpn_validation(dcv_request)
+                result = await self.acme_tls_alpn_validator.perform_tls_alpn_validation(dcv_request)
             case _:  # ACME_DNS_01 | DNS_CHANGE | IP_LOOKUP | CONTACT_EMAIL | CONTACT_PHONE | REVERSE_ADDRESS_LOOKUP
                 result = await self.perform_general_dns_validation(dcv_request)
 
@@ -143,7 +140,7 @@ class MpicDcvChecker:
         if validation_method == DcvValidationMethod.DNS_CHANGE:
             exact_match = check_parameters.require_exact_match
 
-        dcv_check_response = MpicDcvChecker.create_empty_check_response(validation_method)
+        dcv_check_response = DcvUtils.create_empty_check_response(validation_method)
 
         try:
             # noinspection PyUnresolvedReferences
@@ -191,110 +188,6 @@ class MpicDcvChecker:
             lookup = await dns.asyncresolver.resolve(name_to_resolve, dns_rdata_type)
         return lookup
 
-    async def perform_tls_alpn_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:
-        self.logger.info("!!!!! entering alpn block")
-        validation_method = request.dcv_check_parameters.validation_method
-        if validation_method != DcvValidationMethod.ACME_TLS_ALPN_01:
-            raise ValueError("perform_tls_alpn_validation is not to be called with any validation method other than DcvValidationMethod.ACME_TLS_ALPN_01")
-        key_authorization_hash = request.dcv_check_parameters.key_authorization_hash
-        self.logger.info("!!!!! before response builder")
-        dcv_check_response = MpicDcvChecker.create_empty_check_response(validation_method)
-
-        try:
-            self.logger.info("!!!!! try alpn block")
-            hostname = request.domain_or_ip_target
-            self.logger.info(f"hostname: {hostname}")
-            context = ssl.create_default_context()
-            context.set_alpn_protocols(["acme-tls/1"])
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
-            with socket.create_connection((hostname, 443)) as sock:
-                self.logger.info("!!!!! first with")
-                # If we made the socket, we can mark the check as completed.
-                dcv_check_response.check_completed = True
-                with context.wrap_socket(sock, server_hostname=hostname) as ssock:
-                    self.logger.info("!!!!! second with")
-                    
-                    binary_cert = ssock.getpeercert(binary_form=True)
-                    x509_cert = x509.load_der_x509_certificate(binary_cert)
-                    self.logger.info("x509_cert from binary form.")
-                    subject_alt_name_extension_index = None
-                    acme_tls_alpn_extension_index = None
-                    for i in range(len(x509_cert.extensions)):
-                        extension = x509_cert.extensions[i]
-                        if extension.oid.dotted_string == self.ACME_TLS_ALPN_OID_DOTTED_STRING:
-                            acme_tls_alpn_extension_index = i
-                        elif extension.oid.dotted_string == self.SUBJECT_ALT_NAME_OID_DOTTED_STRING:
-                            subject_alt_name_extension_index = i
-                    self.logger.info("all indexes expanded.")
-                    # We need both of these extensions to proceed.
-                    if subject_alt_name_extension_index is None or acme_tls_alpn_extension_index is None:
-                        # TODO: Error response here.
-                        raise ValueError("Certificate Extension Not Found")
-                    self.logger.info("both extensions found")
-                    subject_alt_name_extension = x509_cert.extensions[subject_alt_name_extension_index]
-                    acme_tls_alpn_extension = x509_cert.extensions[acme_tls_alpn_extension_index]
-                    # We now know we have both extensions present. Begin checking each one.
-                    san_names = subject_alt_name_extension.value._general_names
-                    if len(san_names) != 1:
-                        # TODO: Error response here.
-                        raise ValueError("Certificate does not contain a single SAN as required per RFC 8737")
-                    single_san_name = san_names[0]
-                    if not isinstance(single_san_name, x509.general_name.DNSName):
-                        # Must be a DNS Name.
-                        raise ValueError("SAN was not a dNSName entry")
-                    if single_san_name.value != hostname:
-                        raise ValueError("SAN entry must be equal to the hostname being validated.")
-                    # We have not checked the SAN extension per the RFC.
-                    self.logger.info("san value is hostname")
-                    # Check the id-pe-acmeIdentifier extension.
-                    binary_challenge_seen = acme_tls_alpn_extension.value.value
-                    try:
-                        key_authorization_hash_binary = bytes.fromhex(key_authorization_hash)
-                    except ValueError as ve:
-                        dcv_check_response.timestamp_ns = time.time_ns()
-                        dcv_check_response.errors = [
-                            MpicValidationError.create(ErrorMessages.DCV_PARAMETER_ERROR, key_authorization_hash)
-                        ]
-                        return dcv_check_response
-                    self.logger.info(f"binary_challenge_seen")
-                    self.logger.info(binary_challenge_seen)
-                    self.logger.info(f"key_authorization_hash_binary")
-                    self.logger.info(key_authorization_hash_binary)
-                    # Add the first two ASN.1 encoding bytes to the expected hex string.
-                    key_authorization_hash_binary = b'\x04\x20' + key_authorization_hash_binary
-                    if binary_challenge_seen == key_authorization_hash_binary:
-                        # This is the check passed situation.
-                        self.logger.info("key hash test true")
-                        dcv_check_response.timestamp_ns = time.time_ns()
-                        dcv_check_response.check_passed = True
-                    else:
-                        self.logger.info("key hash test false")
-                        # This is where the provided auth did not equal the key authorization hash.
-                        dcv_check_response.timestamp_ns = time.time_ns()
-                        dcv_check_response.check_passed = False
-
-
-                    
-
-        except asyncio.TimeoutError as e:
-            dcv_check_response.timestamp_ns = time.time_ns()
-            log_message = f"Timeout connecting to {token_url}: {str(e)}. Trace identifier: {request.trace_identifier}"
-            self.logger.warning(log_message)
-            message = f"Connection timed out while attempting to connect to {token_url}"
-            dcv_check_response.errors = [
-                MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, message)
-            ]
-        except (ClientError, HTTPException, OSError) as e:
-            self.logger.error(traceback.format_exc())
-            dcv_check_response.timestamp_ns = time.time_ns()
-            dcv_check_response.errors = [
-                MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, str(e))
-            ]
-
-        return dcv_check_response
-
-
     async def perform_http_based_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:
         validation_method = request.dcv_check_parameters.validation_method
         domain_or_ip_target = request.domain_or_ip_target
@@ -304,14 +197,14 @@ class MpicDcvChecker:
             url_scheme = request.dcv_check_parameters.url_scheme
             token_path = request.dcv_check_parameters.http_token_path
             token_url = f"{url_scheme}://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{token_path}"  # noqa E501 (http)
-            dcv_check_response = MpicDcvChecker.create_empty_check_response(DcvValidationMethod.WEBSITE_CHANGE)
+            dcv_check_response = DcvUtils.create_empty_check_response(DcvValidationMethod.WEBSITE_CHANGE)
         else:
             expected_response_content = request.dcv_check_parameters.key_authorization
             token = request.dcv_check_parameters.token
             token_url = (
                 f"http://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
             )
-            dcv_check_response = MpicDcvChecker.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
+            dcv_check_response = DcvUtils.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
         try:
             async with self.get_async_http_client() as async_http_client:
                 # noinspection PyUnresolvedReferences
@@ -337,16 +230,6 @@ class MpicDcvChecker:
             ]
 
         return dcv_check_response
-
-    @staticmethod
-    def create_empty_check_response(validation_method: DcvValidationMethod) -> DcvCheckResponse:
-        return DcvCheckResponse(
-            check_completed=False,
-            check_passed=False,
-            timestamp_ns=None,
-            errors=None,
-            details=DcvCheckResponseDetailsBuilder.build_response_details(validation_method),
-        )
 
     @staticmethod
     async def evaluate_http_lookup_response(
