@@ -47,16 +47,32 @@ class TestMpicCaaChecker:
         yield
 
     @staticmethod
-    def create_configured_caa_checker(log_level=None, dns_timeout=None):
-        return MpicCaaChecker(["ca1.com", "ca2.net", "ca3.org"], log_level=log_level, dns_timeout=dns_timeout)
+    def create_configured_caa_checker(log_level=None, dns_timeout=None, dns_resolution_lifetime=None):
+        return MpicCaaChecker(
+            default_caa_domain_list=["ca1.com", "ca2.net", "ca3.org"],
+            log_level=log_level,
+            dns_timeout=dns_timeout,
+            dns_resolution_lifetime=dns_resolution_lifetime,
+        )
 
     def constructor__should_set_log_level_if_provided(self):
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker(logging.ERROR)
         assert caa_checker.logger.level == logging.ERROR
 
-    def constructor__should_set_dns_timeout_if_provided(self):
-        caa_checker = TestMpicCaaChecker.create_configured_caa_checker(dns_timeout=10)
-        assert caa_checker.dns_timeout == 10
+    # fmt: off
+    @pytest.mark.parametrize("dns_timeout, dns_resolution_lifetime, expected_timeout, expected_lifetime", [
+        (None, None, 2, 5),  # defaults in dnspython are 2.0 for timeout and 5.0 for lifetime
+        (10, 20, 10, 20)
+    ])
+    # fmt: on
+    def constructor__should_set_resolver_dns_timeout_and_resolution_lifetime_if_provided(
+        self, dns_timeout, dns_resolution_lifetime, expected_timeout, expected_lifetime
+    ):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker(
+            dns_timeout=dns_timeout, dns_resolution_lifetime=dns_resolution_lifetime
+        )
+        assert caa_checker.resolver.timeout == expected_timeout
+        assert caa_checker.resolver.lifetime == expected_lifetime
 
     def mpic_caa_checker__should_be_able_to_log_at_trace_level(self):
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker(TRACE_LEVEL)

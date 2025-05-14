@@ -28,7 +28,13 @@ class MpicCaaLookupException(Exception):  # This is a python exception type used
 
 
 class MpicCaaChecker:
-    def __init__(self, default_caa_domain_list: list[str], log_level: int = None, dns_timeout: int = None, dns_resolution_lifetime: int = None):
+    def __init__(
+        self,
+        default_caa_domain_list: list[str],
+        log_level: int = None,
+        dns_timeout: int = None,
+        dns_resolution_lifetime: int = None,
+    ):
         self.default_caa_domain_list = default_caa_domain_list
 
         self.logger = logger.getChild(self.__class__.__name__)
@@ -38,8 +44,10 @@ class MpicCaaChecker:
         self.dns_timeout = dns_timeout if dns_timeout is not None else None
 
         self.resolver = dns.asyncresolver.get_default_resolver()
-        self.resolver.timeout = dns_timeout if dns_timeout is not None else self.resolver.timeout
-        self.resolver.lifetime = dns_resolution_lifetime if dns_resolution_lifetime is not None else self.resolver.lifetime
+        self.resolver.timeout = float(dns_timeout) if dns_timeout is not None else self.resolver.timeout
+        self.resolver.lifetime = (
+            float(dns_resolution_lifetime) if dns_resolution_lifetime is not None else self.resolver.lifetime
+        )
 
     async def find_caa_records_and_domain(self, caa_request) -> tuple[RRset, Name]:
         rrset = None
@@ -67,7 +75,7 @@ class MpicCaaChecker:
         is_wc_domain = False
         certificate_type = CertificateType.TLS_SERVER
         if caa_request.caa_check_parameters:
-            certificate_type = caa_request.caa_check_parameters.certificate_type   # defaults to TLS_SERVER
+            certificate_type = caa_request.caa_check_parameters.certificate_type  # defaults to TLS_SERVER
             if caa_request.caa_check_parameters.caa_domains:
                 caa_domains = caa_request.caa_check_parameters.caa_domains
 
