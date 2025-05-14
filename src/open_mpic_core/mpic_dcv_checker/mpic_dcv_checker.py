@@ -31,9 +31,7 @@ class MpicDcvChecker:
     WELL_KNOWN_ACME_PATH = ".well-known/acme-challenge"
     CONTACT_EMAIL_TAG = "contactemail"
     CONTACT_PHONE_TAG = "contactphone"
-
-    ACME_TLS_ALPN_OID_DOTTED_STRING = "1.3.6.1.5.5.7.1.31" # See id-pe-acmeIdentifier in https://www.iana.org/assignments/smi-numbers/smi-numbers.xhtml
-    SUBJECT_ALT_NAME_OID_DOTTED_STRING = "2.5.29.17"
+# acme_tls_alpn related constants are in ./dcv_tls_alpn_validator.py
 
     def __init__(
         self,
