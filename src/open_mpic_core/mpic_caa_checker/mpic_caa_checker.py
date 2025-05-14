@@ -28,7 +28,7 @@ class MpicCaaLookupException(Exception):  # This is a python exception type used
 
 
 class MpicCaaChecker:
-    def __init__(self, default_caa_domain_list: list[str], log_level: int = None, dns_timeout: int = None):
+    def __init__(self, default_caa_domain_list: list[str], log_level: int = None, dns_timeout: int = None, dns_resolution_lifetime: int = None):
         self.default_caa_domain_list = default_caa_domain_list
 
         self.logger = logger.getChild(self.__class__.__name__)
@@ -37,14 +37,17 @@ class MpicCaaChecker:
 
         self.dns_timeout = dns_timeout if dns_timeout is not None else None
 
+        self.resolver = dns.asyncresolver.get_default_resolver()
+        self.resolver.timeout = dns_timeout if dns_timeout is not None else self.resolver.timeout
+        self.resolver.lifetime = dns_resolution_lifetime if dns_resolution_lifetime is not None else self.resolver.lifetime
+
     async def find_caa_records_and_domain(self, caa_request) -> tuple[RRset, Name]:
         rrset = None
         domain = dns.name.from_text(caa_request.domain_or_ip_target)
-        lifetime = float(self.dns_timeout) if self.dns_timeout is not None else None
 
         while domain != dns.name.root:
             try:
-                lookup = await dns.asyncresolver.resolve(qname=domain, rdtype=dns.rdatatype.CAA, lifetime=lifetime)
+                lookup = await self.resolver.resolve(domain, dns.rdatatype.CAA)
                 rrset = lookup.rrset
                 break
             except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
