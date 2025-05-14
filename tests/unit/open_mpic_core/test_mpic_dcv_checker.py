@@ -62,6 +62,10 @@ class TestMpicDcvChecker:
         dcv_checker = MpicDcvChecker(log_level=logging.ERROR)
         assert dcv_checker.logger.level == logging.ERROR
 
+    def constructor__should_set_dns_timeout_if_provided(self):
+        dcv_checker = MpicDcvChecker(dns_timeout=10)
+        assert dcv_checker.dns_timeout == 10
+
     def mpic_dcv_checker__should_be_able_to_log_at_trace_level(self):
         dcv_checker = MpicDcvChecker(log_level=TRACE_LEVEL)
         test_message = "This is a trace log message."
@@ -603,10 +607,12 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is True
         if dns_name_prefix is not None and len(dns_name_prefix) > 0:
             mock_dns_resolver_resolve.assert_called_once_with(
-                f"{dns_name_prefix}.{dcv_request.domain_or_ip_target}", dns.rdatatype.TXT
+                qname=f"{dns_name_prefix}.{dcv_request.domain_or_ip_target}", rdtype=dns.rdatatype.TXT, lifetime=None
             )
         else:
-            mock_dns_resolver_resolve.assert_called_once_with(dcv_request.domain_or_ip_target, dns.rdatatype.TXT)
+            mock_dns_resolver_resolve.assert_called_once_with(
+                qname=dcv_request.domain_or_ip_target, rdtype=dns.rdatatype.TXT, lifetime=None
+            )
 
     async def acme_dns_validation__should_auto_insert_acme_challenge_prefix(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_acme_dns_01_check_request()
@@ -614,7 +620,7 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
         mock_dns_resolver_resolve.assert_called_once_with(
-            f"_acme-challenge.{dcv_request.domain_or_ip_target}", dns.rdatatype.TXT
+            qname=f"_acme-challenge.{dcv_request.domain_or_ip_target}", rdtype=dns.rdatatype.TXT, lifetime=None
         )
 
     async def contact_email_txt_lookup__should_auto_insert_validation_prefix(self, mocker):
@@ -623,7 +629,7 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
         mock_dns_resolver_resolve.assert_called_once_with(
-            f"_validation-contactemail.{dcv_request.domain_or_ip_target}", dns.rdatatype.TXT
+            qname=f"_validation-contactemail.{dcv_request.domain_or_ip_target}", rdtype=dns.rdatatype.TXT, lifetime=None
         )
 
     async def contact_phone_txt_lookup__should_auto_insert_validation_prefix(self, mocker):
@@ -632,7 +638,7 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
         mock_dns_resolver_resolve.assert_called_once_with(
-            f"_validation-contactphone.{dcv_request.domain_or_ip_target}", dns.rdatatype.TXT
+            qname=f"_validation-contactphone.{dcv_request.domain_or_ip_target}", rdtype=dns.rdatatype.TXT, lifetime=None
         )
 
     # fmt: off
@@ -896,7 +902,7 @@ class TestMpicDcvChecker:
 
     def patch_resolver_with_answer_or_exception(self, mocker, mocked_response_or_exception):
         # noinspection PyUnusedLocal
-        async def side_effect(domain_name, rdtype):
+        async def side_effect(qname, rdtype, lifetime):
             if isinstance(mocked_response_or_exception, Exception):
                 raise mocked_response_or_exception
             return mocked_response_or_exception
@@ -920,8 +926,8 @@ class TestMpicDcvChecker:
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
 
         # noinspection PyUnusedLocal
-        async def side_effect(domain_name, rdtype):
-            if domain_name == expected_domain:
+        async def side_effect(qname, rdtype, lifetime):
+            if qname == expected_domain:
                 return test_dns_query_answer
             raise self.raise_(dns.resolver.NoAnswer)
 

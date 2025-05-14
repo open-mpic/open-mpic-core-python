@@ -47,12 +47,16 @@ class TestMpicCaaChecker:
         yield
 
     @staticmethod
-    def create_configured_caa_checker(log_level=None):
-        return MpicCaaChecker(["ca1.com", "ca2.net", "ca3.org"], log_level)
+    def create_configured_caa_checker(log_level=None, dns_timeout=None):
+        return MpicCaaChecker(["ca1.com", "ca2.net", "ca3.org"], log_level=log_level, dns_timeout=dns_timeout)
 
     def constructor__should_set_log_level_if_provided(self):
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker(logging.ERROR)
         assert caa_checker.logger.level == logging.ERROR
+
+    def constructor__should_set_dns_timeout_if_provided(self):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker(dns_timeout=10)
+        assert caa_checker.dns_timeout == 10
 
     def mpic_caa_checker__should_be_able_to_log_at_trace_level(self):
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker(TRACE_LEVEL)
@@ -293,7 +297,9 @@ class TestMpicCaaChecker:
         caa_response = await caa_checker.check_caa(caa_request)
         assert caa_response.check_passed is True
 
-    async def check_caa__should_recognize_wildcard_domain_without_requiring_caa_check_parameters_to_be_present(self, mocker):
+    async def check_caa__should_recognize_wildcard_domain_without_requiring_caa_check_parameters_to_be_present(
+        self, mocker
+    ):
         record_name, expected_domain = "foo.example.com", "foo.example.com."
         records = [
             MockDnsObjectCreator.create_caa_record(0, "issue", "wrongca1.com"),
@@ -639,7 +645,7 @@ class TestMpicCaaChecker:
 
     def patch_resolver_with_answer_or_exception(self, mocker, mocked_answer_or_exception):
         # noinspection PyUnusedLocal
-        async def side_effect(domain_name, rdtype):
+        async def side_effect(qname, rdtype, lifetime):
             if isinstance(mocked_answer_or_exception, Exception):
                 raise mocked_answer_or_exception
             return mocked_answer_or_exception
@@ -648,8 +654,8 @@ class TestMpicCaaChecker:
 
     def patch_resolver_to_expect_domain(self, mocker, expected_domain, mocked_answer, exception):
         # noinspection PyUnusedLocal
-        async def side_effect(domain_name, rdtype):
-            if domain_name.to_text() == expected_domain:
+        async def side_effect(qname, rdtype, lifetime):
+            if qname.to_text() == expected_domain:
                 return mocked_answer
             else:
                 raise exception

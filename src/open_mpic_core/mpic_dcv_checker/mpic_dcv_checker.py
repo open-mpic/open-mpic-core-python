@@ -38,6 +38,7 @@ class MpicDcvChecker:
         reuse_http_client: bool = False,
         verify_ssl: bool = False,
         log_level: int = None,
+        dns_timeout: int = None,
     ):
         self.verify_ssl = verify_ssl
         self._reuse_http_client = reuse_http_client
@@ -48,6 +49,8 @@ class MpicDcvChecker:
         self.logger = logger.getChild(self.__class__.__name__)
         if log_level is not None:
             self.logger.setLevel(log_level)
+
+        self.dns_timeout = dns_timeout if dns_timeout is not None else None
 
     @asynccontextmanager
     async def get_async_http_client(self):
@@ -138,9 +141,7 @@ class MpicDcvChecker:
         try:
             # noinspection PyUnresolvedReferences
             async with self.logger.trace_timing(f"DNS lookup for target {name_to_resolve}"):
-                lookup = await MpicDcvChecker.perform_dns_resolution(
-                    name_to_resolve, validation_method, dns_record_type
-                )
+                lookup = await self.perform_dns_resolution(name_to_resolve, validation_method, dns_record_type)
             MpicDcvChecker.evaluate_dns_lookup_response(
                 dcv_check_response, lookup, validation_method, dns_record_type, expected_dns_record_content, exact_match
             )
@@ -159,8 +160,7 @@ class MpicDcvChecker:
         dcv_check_response.timestamp_ns = time.time_ns()
         return dcv_check_response
 
-    @staticmethod
-    async def perform_dns_resolution(name_to_resolve, validation_method, dns_record_type) -> dns.resolver.Answer:
+    async def perform_dns_resolution(self, name_to_resolve, validation_method, dns_record_type) -> dns.resolver.Answer:
         walk_domain_tree = validation_method in [
             DcvValidationMethod.CONTACT_EMAIL_CAA,
             DcvValidationMethod.CONTACT_PHONE_CAA,
@@ -168,17 +168,19 @@ class MpicDcvChecker:
 
         dns_rdata_type = dns.rdatatype.from_text(dns_record_type)
         lookup = None
+        lifetime = float(self.dns_timeout) if self.dns_timeout is not None else None
+
         if walk_domain_tree:
             domain = dns.name.from_text(name_to_resolve)
 
             while domain != dns.name.root:
                 try:
-                    lookup = await dns.asyncresolver.resolve(domain, dns_rdata_type)
+                    lookup = await dns.asyncresolver.resolve(qname=domain, rdtype=dns_rdata_type, lifetime=lifetime)
                     break
                 except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
                     domain = domain.parent()
         else:
-            lookup = await dns.asyncresolver.resolve(name_to_resolve, dns_rdata_type)
+            lookup = await dns.asyncresolver.resolve(qname=name_to_resolve, rdtype=dns_rdata_type, lifetime=lifetime)
         return lookup
 
     async def perform_http_based_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:
