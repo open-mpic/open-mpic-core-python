@@ -114,7 +114,12 @@ class MpicDcvChecker:
                 DcvValidationMethod.ACME_HTTP_01,
                 DcvValidationMethod.ACME_TLS_ALPN_01
             ]:
-                raise ValueError(f'{validation_method} cannot be used for validating wildcard domain name')
+               result = MpicDcvChecker.create_empty_check_response(validation_method)
+               result.timestamp_ns = time.time_ns()
+               result.errors = [
+                MpicValidationError.create(ErrorMessages.DCV_UNSUITABLE_TYPE_ERROR, validation_method, 'wildcard domain')
+            ]
+               return result
         # encode domain if needed
         dcv_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(dcv_request.domain_or_ip_target)
 
