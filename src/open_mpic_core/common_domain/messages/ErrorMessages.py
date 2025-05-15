@@ -15,7 +15,8 @@ class ErrorMessages(Enum):
     TLS_ALPN_ERROR_CERTIFICATE_EXTENSION_MISSING = ('mpic_error:dcv_checker:tls_alpn:certificate:extension_missing', 'The TLS ALPN certificate was missing an extension.')
     TLS_ALPN_ERROR_CERTIFICATE_ALPN_EXTENSION_NONCRITICAL = ('mpic_error:dcv_checker:tls_alpn:certificate:noncritical_alpn_extension', 'The TLS ALPN certificate has non-critical id-pe-acmeIdentifier extension')
     TLS_ALPN_ERROR_CERTIFICATE_NO_SINGLE_SAN = ('mpic_error:dcv_checker:tls_alpn:certificate:no_single_san', 'The TLS ALPN certificate must have a single SAN entry.')
-    TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_DNSNAME = ('mpic_error:dcv_checker:tls_alpn:certificate:san_not_dnsname', 'The TLS ALPN certificate SAN was not a DNSName.')
+    TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_DNSNAME = ('mpic_error:dcv_checker:tls_alpn:certificate:san_not_dnsname', 'Target was a domain name,The TLS ALPN certificate SAN was not a DNSName.')
+    TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_IPADDR = ('mpic_error:dcv_checker:tls_alpn:certificate:san_type_not_match', 'Target was raw IP address, but The TLS ALPN certificate SAN was not a IPAddress.')
     TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_HOSTNAME = ('mpic_error:dcv_checker:tls_alpn:certificate:san_not_hostname', 'The TLS ALPN certificate SAN was not equal to the hostname being validated.')
 
     def __init__(self, key, message):

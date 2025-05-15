@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 import time
 import socket
 import ssl
@@ -35,7 +36,14 @@ class DcvTlsAlpnValidator:
         key_authorization_hash = request.dcv_check_parameters.key_authorization_hash
         dcv_check_response = DcvUtils.create_empty_check_response(validation_method)
         hostname = request.domain_or_ip_target
-
+        isip = False
+        try:
+            san_target = ipaddress.ip_address(hostname)
+            sni_target = san_target.reverse_pointer # this python std funcion doesn't have tarling dot
+            isip = True
+        except ValueError:
+            sni_target = hostname
+            san_target = hostname
         try:
             context = ssl.create_default_context()
             context.set_alpn_protocols([self.ACME_TLS_ALPN_PROTOCOL])
@@ -44,7 +52,7 @@ class DcvTlsAlpnValidator:
 
             with socket.create_connection((hostname, 443)) as generic_tls_connection:
                 dcv_check_response.check_completed = True  # If we made the socket, we can mark the check as completed.
-                with context.wrap_socket(generic_tls_connection, server_hostname=hostname) as tls_alpn_connection:
+                with context.wrap_socket(generic_tls_connection, server_hostname=sni_target) as tls_alpn_connection:
                     binary_cert = tls_alpn_connection.getpeercert(binary_form=True)
                     x509_cert = x509.load_der_x509_certificate(binary_cert)
 
@@ -63,7 +71,7 @@ class DcvTlsAlpnValidator:
                         ]
                     else:
                         # We now know we have both extensions present. Begin checking each one.
-                        dcv_check_response.errors = self._validate_san_entry(subject_alt_name_extension, hostname)
+                        dcv_check_response.errors = self._validate_san_entry(subject_alt_name_extension, san_target)
                         if acme_tls_alpn_extension.critical != True:
                             # id-pe-acmeIdentifier extension needs to be critical
                                 dcv_check_response.errors.append(
@@ -107,16 +115,22 @@ class DcvTlsAlpnValidator:
 
         return dcv_check_response
 
-    def _validate_san_entry(self, certificate_extension: x509.Extension, hostname: str) -> list:
+    def _validate_san_entry(self, certificate_extension: x509.Extension, san_target: str|ipaddress.IPv4Address|ipaddress.IPv6Address) -> list:
         errors = []
         # noinspection PyProtectedMember
         san_names = certificate_extension.value._general_names
         if len(san_names) != 1:
             errors = [MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_NO_SINGLE_SAN)]
         single_san_name = san_names[0]
-        if not isinstance(single_san_name, x509.general_name.DNSName):
-            errors = [MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_DNSNAME)]
-        elif single_san_name.value != hostname:
-            errors = [MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_HOSTNAME)]
+        if type(san_target) == str:
+            if not isinstance(single_san_name, x509.general_name.DNSName):
+                errors = [MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_DNSNAME)]
+            elif single_san_name.value != san_target:
+                errors = [MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_HOSTNAME)]
+        else:
+            if not isinstance(single_san_name, x509.general_name.IPAddress):
+                errors = [MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_IPADDR)]
+            elif single_san_name.value != san_target:
+                errors = [MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_HOSTNAME)]
         self.logger.info("san value is hostname")
         return errors

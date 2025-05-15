@@ -1,3 +1,4 @@
+import ipaddress
 import logging
 import pytest
 import ssl
@@ -53,6 +54,17 @@ class TestDcvTlsAlpnValidator:
         assert response.check_passed is True
         assert not response.errors
 
+    async def perform_tls_alpn_validation__should_pass_with_valid_certificate_for_ip(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_acme_tls_alpn_01_check_request("2001:0DB8::19ca:3311")
+        mock_cert = self._create_mock_certificate_with_ip_san(
+            dcv_request.domain_or_ip_target, dcv_request.dcv_check_parameters.key_authorization_hash
+        )
+        self._mock_socket_and_ssl_context(mocker, mock_cert)
+        response = await self.validator.perform_tls_alpn_validation(dcv_request)
+        assert response.check_completed is True
+        assert response.check_passed is True
+        assert not response.errors
+
     async def perform_tls_alpn_validation__should_include_common_name_in_successful_response(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_acme_tls_alpn_01_check_request()
         mock_cert = self._create_mock_certificate(
@@ -85,6 +97,18 @@ class TestDcvTlsAlpnValidator:
         assert response.check_passed is False
         assert len(response.errors) > 0
         assert response.errors[0].error_message == ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_DNSNAME.message
+
+    async def perform_tls_alpn_validation__should_fali_with_ip_in_DNSname(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_acme_tls_alpn_01_check_request("1.2.3.4")
+        mock_cert = self._create_mock_certificate(
+            dcv_request.domain_or_ip_target, dcv_request.dcv_check_parameters.key_authorization_hash
+        )
+        self._mock_socket_and_ssl_context(mocker, mock_cert)
+        response = await self.validator.perform_tls_alpn_validation(dcv_request)
+        assert response.check_completed is True
+        assert response.check_passed is False
+        assert len(response.errors) > 0
+        assert response.errors[0].error_message == ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_IPADDR.message
 
     async def perform_tls_alpn_validation__should_fail_given_multiple_san_entries(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_acme_tls_alpn_01_check_request()
@@ -202,6 +226,14 @@ class TestDcvTlsAlpnValidator:
         san_extension = mock_cert.extensions[0]
         invalid_san = x509.general_name.DNSName("invalid.example.com")
         san_extension.value._general_names = [invalid_san]
+        return mock_cert
+    
+    def _create_mock_certificate_with_ip_san(self, ipstring, key_authorization_hash):
+        mock_cert = self._create_mock_certificate('foo.baa', key_authorization_hash)
+        # Create a SAN entry that does not match the hostname
+        san_extension = mock_cert.extensions[0]
+        ip_san = x509.general_name.IPAddress(ipaddress.ip_address(ipstring))
+        san_extension.value._general_names = [ip_san]
         return mock_cert
     
     def _create_mock_certificate_with_noncritical_alpn_extension(self, hostname, key_authorization_hash):

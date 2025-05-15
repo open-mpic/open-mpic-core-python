@@ -102,11 +102,11 @@ class ValidCheckCreator:
         )
 
     @staticmethod
-    def create_valid_acme_tls_alpn_01_check_request():
+    def create_valid_acme_tls_alpn_01_check_request(target = "example.com"):
         challenge = "example-token.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
         hash_bytes_hex = hashlib.sha256(challenge.encode("utf-8")).digest().hex()
         return DcvCheckRequest(
-            domain_or_ip_target="example.com",
+            domain_or_ip_target=target,
             dcv_check_parameters=DcvAcmeTlsAlpn01ValidationParameters(key_authorization_hash=hash_bytes_hex),
         )
 
