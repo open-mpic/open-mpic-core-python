@@ -112,6 +112,29 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is True
 
     @pytest.mark.parametrize(
+        "dcv_method, record_type",
+        [
+            (DcvValidationMethod.WEBSITE_CHANGE, None),
+            (DcvValidationMethod.IP_ADDRESS, DnsRecordType.A),
+            (DcvValidationMethod.IP_ADDRESS, DnsRecordType.AAAA),
+            (DcvValidationMethod.ACME_HTTP_01, None),
+        ],
+    )
+    async def check_dcv__should_block_inappropriate_method_wildcard(
+        self, dcv_method, record_type, mocker
+    ):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type)
+        dcv_request.domain_or_ip_target = "*.example.org"
+        if dcv_method in (DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01):
+            self.mock_request_specific_http_response(dcv_request, mocker)
+        else:
+            self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        dcv_response.timestamp_ns = None  # ignore timestamp for comparison
+        assert dcv_response.check_passed is False
+        assert dcv_response.errors[0].error_type == ErrorMessages.DCV_UNSUITABLE_TYPE_ERROR.key
+
+    @pytest.mark.parametrize(
         "dcv_method, record_type, is_case_insensitive",
         [
             (DcvValidationMethod.WEBSITE_CHANGE, None, True),
