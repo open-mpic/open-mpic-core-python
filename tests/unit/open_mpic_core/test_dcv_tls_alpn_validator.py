@@ -110,6 +110,18 @@ class TestDcvTlsAlpnValidator:
         assert len(response.errors) > 0
         assert response.errors[0].error_message == ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_HOSTNAME.message
 
+    async def perform_tls_alpn_validation__should_fail_given_noncritical_alpn_extension(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_acme_tls_alpn_01_check_request()
+        mock_cert = self._create_mock_certificate_with_noncritical_alpn_extension(
+            dcv_request.domain_or_ip_target, dcv_request.dcv_check_parameters.key_authorization_hash
+        )
+        self._mock_socket_and_ssl_context(mocker, mock_cert)
+        response = await self.validator.perform_tls_alpn_validation(dcv_request)
+        assert response.check_completed is True
+        assert response.check_passed is False
+        assert len(response.errors) > 0
+        assert response.errors[0].error_message == ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_ALPN_EXTENSION_NONCRITICAL.message
+
     async def perform_tls_alpn_validation__should_fail_given_invalid_key_authorization_hash(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_acme_tls_alpn_01_check_request()
         hostname = dcv_request.domain_or_ip_target
@@ -155,6 +167,7 @@ class TestDcvTlsAlpnValidator:
         assert len(key_auth_hash_binary) == 32, "Key authorization hash must be 32 bytes long"
         acme_extension = MagicMock()
         acme_extension.oid.dotted_string = self.validator.ACME_TLS_ALPN_OID_DOTTED_STRING
+        acme_extension.critical = True
         acme_extension.value.value = b"\x04\x20" + key_auth_hash_binary
 
         mock_cert.extensions = [san_extension, acme_extension]
@@ -189,6 +202,12 @@ class TestDcvTlsAlpnValidator:
         san_extension = mock_cert.extensions[0]
         invalid_san = x509.general_name.DNSName("invalid.example.com")
         san_extension.value._general_names = [invalid_san]
+        return mock_cert
+    
+    def _create_mock_certificate_with_noncritical_alpn_extension(self, hostname, key_authorization_hash):
+        mock_cert = self._create_mock_certificate(hostname, key_authorization_hash)
+        alpn_extension = mock_cert.extensions[1]
+        alpn_extension.critical = False
         return mock_cert
 
     def _mock_socket_and_ssl_context(self, mocker, mock_cert):

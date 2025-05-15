@@ -64,8 +64,13 @@ class DcvTlsAlpnValidator:
                     else:
                         # We now know we have both extensions present. Begin checking each one.
                         dcv_check_response.errors = self._validate_san_entry(subject_alt_name_extension, hostname)
+                        if acme_tls_alpn_extension.critical != True:
+                            # id-pe-acmeIdentifier extension needs to be critical
+                                dcv_check_response.errors.append(
+                                    MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_ALPN_EXTENSION_NONCRITICAL)
+                                    )
                         if len(dcv_check_response.errors) == 0:
-                            # Check the id-pe-acmeIdentifier extension.
+                            # Check the id-pe-acmeIdentifier extension's value.
                             binary_challenge_seen = acme_tls_alpn_extension.value.value
                             key_authorization_hash_binary = None
                             try:
