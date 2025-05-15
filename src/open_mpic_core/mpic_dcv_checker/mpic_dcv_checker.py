@@ -32,6 +32,13 @@ class MpicDcvChecker:
     CONTACT_EMAIL_TAG = "contactemail"
     CONTACT_PHONE_TAG = "contactphone"
 
+    UNSUITABLE_FOR_WILDCARD = [
+        DcvValidationMethod.WEBSITE_CHANGE,
+        DcvValidationMethod.ACME_HTTP_01,
+        DcvValidationMethod.IP_ADDRESS,
+        DcvValidationMethod.ACME_TLS_ALPN_01
+    ]
+
     def __init__(
         self,
         http_client_timeout: float = 30,
@@ -99,6 +106,15 @@ class MpicDcvChecker:
         # noinspection PyUnresolvedReferences
         self.logger.trace(f"Checking DCV for {dcv_request.domain_or_ip_target} with method {validation_method}.")
 
+        # some validation methods are banned from using for wildcard validation
+        if dcv_request.domain_or_ip_target.startswith("*."):
+            if validation_method in [
+                DcvValidationMethod.IP_ADDRESS,
+                DcvValidationMethod.WEBSITE_CHANGE,
+                DcvValidationMethod.ACME_HTTP_01,
+                DcvValidationMethod.ACME_TLS_ALPN_01
+            ]:
+                raise ValueError(f'{validation_method} cannot be used for validating wildcard domain name')
         # encode domain if needed
         dcv_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(dcv_request.domain_or_ip_target)
 
