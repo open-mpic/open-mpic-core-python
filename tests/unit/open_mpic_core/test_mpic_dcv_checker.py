@@ -124,7 +124,6 @@ class TestMpicDcvChecker:
         else:
             self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
-        dcv_response.timestamp_ns = None  # ignore timestamp for comparison
         assert dcv_response.check_passed is True
 
     @pytest.mark.parametrize(
@@ -193,7 +192,6 @@ class TestMpicDcvChecker:
         )
         self.patch_resolver_with_answer_or_exception(mocker, dns_response)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
-        dcv_response.timestamp_ns = None  # ignore timestamp for comparison
         assert dcv_response.check_passed is False
 
     # fmt: off
@@ -215,7 +213,6 @@ class TestMpicDcvChecker:
         )
         self.patch_resolver_with_answer_or_exception(mocker, dns_response)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
-        dcv_response.timestamp_ns = None  # ignore timestamp for comparison
         assert dcv_response.check_passed is True
 
     # fmt: off
