@@ -32,8 +32,8 @@ class MpicCaaChecker:
         self,
         default_caa_domain_list: list[str],
         log_level: int = None,
-        dns_timeout: int = None,
-        dns_resolution_lifetime: int = None,
+        dns_timeout: float = None,
+        dns_resolution_lifetime: float = None,
     ):
         self.default_caa_domain_list = default_caa_domain_list
 
@@ -42,9 +42,9 @@ class MpicCaaChecker:
             self.logger.setLevel(log_level)
 
         self.resolver = dns.asyncresolver.get_default_resolver()
-        self.resolver.timeout = float(dns_timeout) if dns_timeout is not None else self.resolver.timeout
+        self.resolver.timeout = dns_timeout if dns_timeout is not None else self.resolver.timeout
         self.resolver.lifetime = (
-            float(dns_resolution_lifetime) if dns_resolution_lifetime is not None else self.resolver.lifetime
+            dns_resolution_lifetime if dns_resolution_lifetime is not None else self.resolver.lifetime
         )
 
     async def find_caa_records_and_domain(self, caa_request) -> tuple[RRset, Name]:

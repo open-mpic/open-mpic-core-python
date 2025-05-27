@@ -38,8 +38,8 @@ class MpicDcvChecker:
         reuse_http_client: bool = False,
         verify_ssl: bool = False,
         log_level: int = None,
-        dns_timeout: int = None,
-        dns_resolution_lifetime: int = None,
+        dns_timeout: float = None,
+        dns_resolution_lifetime: float = None,
     ):
         self.verify_ssl = verify_ssl
         self._reuse_http_client = reuse_http_client
@@ -52,9 +52,9 @@ class MpicDcvChecker:
             self.logger.setLevel(log_level)
 
         self.resolver = dns.asyncresolver.get_default_resolver()
-        self.resolver.timeout = float(dns_timeout) if dns_timeout is not None else self.resolver.timeout
+        self.resolver.timeout = dns_timeout if dns_timeout is not None else self.resolver.timeout
         self.resolver.lifetime = (
-            float(dns_resolution_lifetime) if dns_resolution_lifetime is not None else self.resolver.lifetime
+            dns_resolution_lifetime if dns_resolution_lifetime is not None else self.resolver.lifetime
         )
 
     @asynccontextmanager
