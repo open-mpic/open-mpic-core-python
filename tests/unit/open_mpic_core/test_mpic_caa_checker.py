@@ -6,6 +6,8 @@ import pytest
 
 from unittest.mock import AsyncMock
 
+from dns.asyncresolver import reset_default_resolver
+
 from open_mpic_core import CaaCheckParameters
 from open_mpic_core import CaaCheckRequest, CaaCheckResponse, CaaCheckResponseDetails
 from open_mpic_core import CertificateType
@@ -68,6 +70,7 @@ class TestMpicCaaChecker:
     def constructor__should_set_resolver_dns_timeout_and_resolution_lifetime_if_provided(
         self, dns_timeout, dns_resolution_lifetime, expected_timeout, expected_lifetime
     ):
+        reset_default_resolver()
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker(
             dns_timeout=dns_timeout, dns_resolution_lifetime=dns_resolution_lifetime
         )

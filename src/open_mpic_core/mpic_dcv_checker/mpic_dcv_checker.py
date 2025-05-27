@@ -39,6 +39,7 @@ class MpicDcvChecker:
         verify_ssl: bool = False,
         log_level: int = None,
         dns_timeout: int = None,
+        dns_resolution_lifetime: int = None,
     ):
         self.verify_ssl = verify_ssl
         self._reuse_http_client = reuse_http_client
@@ -50,7 +51,11 @@ class MpicDcvChecker:
         if log_level is not None:
             self.logger.setLevel(log_level)
 
-        self.dns_timeout = dns_timeout if dns_timeout is not None else None
+        self.resolver = dns.asyncresolver.get_default_resolver()
+        self.resolver.timeout = float(dns_timeout) if dns_timeout is not None else self.resolver.timeout
+        self.resolver.lifetime = (
+            float(dns_resolution_lifetime) if dns_resolution_lifetime is not None else self.resolver.lifetime
+        )
 
     @asynccontextmanager
     async def get_async_http_client(self):
@@ -168,19 +173,18 @@ class MpicDcvChecker:
 
         dns_rdata_type = dns.rdatatype.from_text(dns_record_type)
         lookup = None
-        lifetime = float(self.dns_timeout) if self.dns_timeout is not None else None
 
         if walk_domain_tree:
             domain = dns.name.from_text(name_to_resolve)
 
             while domain != dns.name.root:
                 try:
-                    lookup = await dns.asyncresolver.resolve(qname=domain, rdtype=dns_rdata_type, lifetime=lifetime)
+                    lookup = await self.resolver.resolve(qname=domain, rdtype=dns_rdata_type)
                     break
                 except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
                     domain = domain.parent()
         else:
-            lookup = await dns.asyncresolver.resolve(qname=name_to_resolve, rdtype=dns_rdata_type, lifetime=lifetime)
+            lookup = await self.resolver.resolve(qname=name_to_resolve, rdtype=dns_rdata_type)
         return lookup
 
     async def perform_http_based_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:

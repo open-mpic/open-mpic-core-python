@@ -77,7 +77,6 @@ class MpicCoordinator:
 
         if len(perspective_cohorts) == 0:
             raise CohortCreationException(ErrorMessages.COHORT_CREATION_ERROR.message.format(perspective_count))
-        
 
         quorum_count = self.determine_required_quorum_count(orchestration_parameters, perspective_count)
 
@@ -90,6 +89,7 @@ class MpicCoordinator:
         attempts = 1
         previous_attempt_results = None
         cohort_cycle = cycle(perspective_cohorts)
+
         while attempts <= max_attempts:
             perspectives_to_use = next(cohort_cycle)
 
@@ -218,7 +218,7 @@ class MpicCoordinator:
         except Exception as exc:
             error_message = str(exc) if str(exc) else exc.__class__.__name__
             raise RemoteCheckException(
-                f"Check failed for perspective {call_config.perspective.code}: {error_message}",
+                f"Check failed for perspective {call_config.perspective.code}, target {call_config.check_request.domain_or_ip_target}: {error_message}",
                 call_config=call_config,
             ) from exc
         return PerspectiveResponse(perspective_code=call_config.perspective.code, check_response=response)
@@ -231,9 +231,7 @@ class MpicCoordinator:
         check_type = remote_check_exception.call_config.check_type
         check_error_response = None
 
-        errors = [
-            MpicValidationError.create(ErrorMessages.COORDINATOR_REMOTE_CHECK_ERROR, remote_check_exception)
-        ]
+        errors = [MpicValidationError.create(ErrorMessages.COORDINATOR_REMOTE_CHECK_ERROR, remote_check_exception)]
 
         match check_type:
             case CheckType.CAA:

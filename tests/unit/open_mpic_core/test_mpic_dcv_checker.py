@@ -10,6 +10,8 @@ from io import StringIO
 from typing import List
 
 from unittest.mock import MagicMock, AsyncMock
+
+from dns.asyncresolver import reset_default_resolver
 from yarl import URL
 from asyncio import StreamReader
 from aiohttp import ClientResponse
@@ -62,9 +64,19 @@ class TestMpicDcvChecker:
         dcv_checker = MpicDcvChecker(log_level=logging.ERROR)
         assert dcv_checker.logger.level == logging.ERROR
 
-    def constructor__should_set_dns_timeout_if_provided(self):
-        dcv_checker = MpicDcvChecker(dns_timeout=10)
-        assert dcv_checker.dns_timeout == 10
+    # fmt: off
+    @pytest.mark.parametrize("dns_timeout, dns_resolution_lifetime, expected_timeout, expected_lifetime", [
+        (None, None, 2, 5),  # defaults in dnspython are 2.0 for timeout and 5.0 for lifetime
+        (10, 20, 10, 20)
+    ])
+    # fmt: on
+    def constructor__should_set_resolver_dns_timeout_and_resolution_lifetime_if_provided(
+        self, dns_timeout, dns_resolution_lifetime, expected_timeout, expected_lifetime
+    ):
+        reset_default_resolver()
+        dcv_checker = MpicDcvChecker(dns_timeout=dns_timeout, dns_resolution_lifetime=dns_resolution_lifetime)
+        assert dcv_checker.resolver.timeout == expected_timeout
+        assert dcv_checker.resolver.lifetime == expected_lifetime
 
     def mpic_dcv_checker__should_be_able_to_log_at_trace_level(self):
         dcv_checker = MpicDcvChecker(log_level=TRACE_LEVEL)
@@ -607,11 +619,11 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is True
         if dns_name_prefix is not None and len(dns_name_prefix) > 0:
             mock_dns_resolver_resolve.assert_called_once_with(
-                qname=f"{dns_name_prefix}.{dcv_request.domain_or_ip_target}", rdtype=dns.rdatatype.TXT, lifetime=None
+                qname=f"{dns_name_prefix}.{dcv_request.domain_or_ip_target}", rdtype=dns.rdatatype.TXT
             )
         else:
             mock_dns_resolver_resolve.assert_called_once_with(
-                qname=dcv_request.domain_or_ip_target, rdtype=dns.rdatatype.TXT, lifetime=None
+                qname=dcv_request.domain_or_ip_target, rdtype=dns.rdatatype.TXT
             )
 
     async def acme_dns_validation__should_auto_insert_acme_challenge_prefix(self, mocker):
@@ -620,7 +632,7 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
         mock_dns_resolver_resolve.assert_called_once_with(
-            qname=f"_acme-challenge.{dcv_request.domain_or_ip_target}", rdtype=dns.rdatatype.TXT, lifetime=None
+            qname=f"_acme-challenge.{dcv_request.domain_or_ip_target}", rdtype=dns.rdatatype.TXT
         )
 
     async def contact_email_txt_lookup__should_auto_insert_validation_prefix(self, mocker):
@@ -629,7 +641,7 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
         mock_dns_resolver_resolve.assert_called_once_with(
-            qname=f"_validation-contactemail.{dcv_request.domain_or_ip_target}", rdtype=dns.rdatatype.TXT, lifetime=None
+            qname=f"_validation-contactemail.{dcv_request.domain_or_ip_target}", rdtype=dns.rdatatype.TXT
         )
 
     async def contact_phone_txt_lookup__should_auto_insert_validation_prefix(self, mocker):
@@ -638,7 +650,7 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
         mock_dns_resolver_resolve.assert_called_once_with(
-            qname=f"_validation-contactphone.{dcv_request.domain_or_ip_target}", rdtype=dns.rdatatype.TXT, lifetime=None
+            qname=f"_validation-contactphone.{dcv_request.domain_or_ip_target}", rdtype=dns.rdatatype.TXT
         )
 
     # fmt: off
@@ -897,17 +909,17 @@ class TestMpicDcvChecker:
             side_effect=lambda *args, **kwargs: AsyncMock(__aenter__=AsyncMock(side_effect=ClientConnectionError())),
         )
 
-    def patch_resolver_resolve_with_side_effect(self, mocker, side_effect):
-        return mocker.patch("dns.asyncresolver.resolve", new_callable=AsyncMock, side_effect=side_effect)
+    def patch_resolver_resolve_with_side_effect(self, mocker, resolver, side_effect):
+        return mocker.patch.object(resolver, "resolve", new_callable=AsyncMock, side_effect=side_effect)
 
     def patch_resolver_with_answer_or_exception(self, mocker, mocked_response_or_exception):
         # noinspection PyUnusedLocal
-        async def side_effect(qname, rdtype, lifetime):
+        async def side_effect(qname, rdtype):
             if isinstance(mocked_response_or_exception, Exception):
                 raise mocked_response_or_exception
             return mocked_response_or_exception
 
-        return self.patch_resolver_resolve_with_side_effect(mocker, side_effect)
+        return self.patch_resolver_resolve_with_side_effect(mocker, self.dcv_checker.resolver, side_effect)
 
     def mock_request_specific_dns_resolve_call(self, dcv_request: DcvCheckRequest, mocker) -> MagicMock:
         dns_name_prefix = dcv_request.dcv_check_parameters.dns_name_prefix
@@ -926,14 +938,16 @@ class TestMpicDcvChecker:
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
 
         # noinspection PyUnusedLocal
-        async def side_effect(qname, rdtype, lifetime):
+        async def side_effect(qname, rdtype):
             if qname == expected_domain:
                 return test_dns_query_answer
             raise self.raise_(dns.resolver.NoAnswer)
 
-        return self.patch_resolver_resolve_with_side_effect(mocker, side_effect)
+        return self.patch_resolver_resolve_with_side_effect(mocker, self.dcv_checker.resolver, side_effect)
 
-    def mock_dns_resolve_call_with_specific_response_code(self, dcv_request: DcvCheckRequest, response_code, mocker):
+    def mock_dns_resolve_call_with_specific_response_code(
+        self, dcv_request: DcvCheckRequest, response_code, mocker
+    ):
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
         test_dns_query_answer.response.rcode = lambda: response_code
         self.patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
