@@ -36,11 +36,9 @@ class DcvTlsAlpnValidator:
         key_authorization_hash = request.dcv_check_parameters.key_authorization_hash
         dcv_check_response = DcvUtils.create_empty_check_response(validation_method)
         hostname = request.domain_or_ip_target
-        isip = False
         try:
             san_target = ipaddress.ip_address(hostname)
-            sni_target = san_target.reverse_pointer # this python std funcion doesn't have tarling dot
-            isip = True
+            sni_target = san_target.reverse_pointer # this python std function doesn't have trailing dot
         except ValueError:
             sni_target = hostname
             san_target = hostname
