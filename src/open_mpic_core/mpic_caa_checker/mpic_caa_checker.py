@@ -28,12 +28,24 @@ class MpicCaaLookupException(Exception):  # This is a python exception type used
 
 
 class MpicCaaChecker:
-    def __init__(self, default_caa_domain_list: list[str], log_level: int = None):
+    def __init__(
+        self,
+        default_caa_domain_list: list[str],
+        log_level: int = None,
+        dns_timeout: float = None,
+        dns_resolution_lifetime: float = None,
+    ):
         self.default_caa_domain_list = default_caa_domain_list
 
         self.logger = logger.getChild(self.__class__.__name__)
         if log_level is not None:
             self.logger.setLevel(log_level)
+
+        self.resolver = dns.asyncresolver.get_default_resolver()
+        self.resolver.timeout = dns_timeout if dns_timeout is not None else self.resolver.timeout
+        self.resolver.lifetime = (
+            dns_resolution_lifetime if dns_resolution_lifetime is not None else self.resolver.lifetime
+        )
 
     async def find_caa_records_and_domain(self, caa_request) -> tuple[RRset, Name]:
         rrset = None
@@ -41,13 +53,13 @@ class MpicCaaChecker:
 
         while domain != dns.name.root:
             try:
-                lookup = await dns.asyncresolver.resolve(domain, dns.rdatatype.CAA)
+                lookup = await self.resolver.resolve(domain, dns.rdatatype.CAA)
                 rrset = lookup.rrset
                 break
             except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
                 domain = domain.parent()
             except Exception as e:
-                self.logger.error(f"Exception during CAA lookup: {e}. Trace identifier: {caa_request.trace_identifier}")
+                self.logger.error(f"Exception during CAA lookup for {caa_request.domain_or_ip_target}: {e}. Trace identifier: {caa_request.trace_identifier}")
                 raise MpicCaaLookupException(f"{e}") from e
 
         return rrset, domain
@@ -61,7 +73,7 @@ class MpicCaaChecker:
         is_wc_domain = False
         certificate_type = CertificateType.TLS_SERVER
         if caa_request.caa_check_parameters:
-            certificate_type = caa_request.caa_check_parameters.certificate_type   # defaults to TLS_SERVER
+            certificate_type = caa_request.caa_check_parameters.certificate_type  # defaults to TLS_SERVER
             if caa_request.caa_check_parameters.caa_domains:
                 caa_domains = caa_request.caa_check_parameters.caa_domains
 
@@ -93,7 +105,7 @@ class MpicCaaChecker:
             caa_found = rrset is not None
         except (MpicCaaLookupException, ValueError) as e:
             caa_lookup_error = True
-            error_message = f"Error during CAA lookup: {e}"
+            error_message = f"Error during CAA lookup for {caa_request.domain_or_ip_target}: {e}. Trace identifier: {caa_request.trace_identifier}"
             caa_check_response.errors = [MpicValidationError.create(ErrorMessages.CAA_LOOKUP_ERROR, error_message)]
             caa_check_response.details.found_at = None
             caa_check_response.details.records_seen = None
@@ -123,9 +135,9 @@ class MpicCaaChecker:
 
     @staticmethod
     def is_valid_for_issuance(caa_domains, certificate_type: CertificateType, is_wc_domain, rrset) -> bool:
-        issue_tags = []
-        issue_wild_tags = []
-        issue_mail_tags = []
+        issue_tag_values = []
+        issuewild_tag_values = []
+        issuemail_tag_values = []
         has_unknown_critical_flags = False
 
         # Note: a record with critical flag and 'issue' tag will be considered valid for issuance
@@ -134,11 +146,11 @@ class MpicCaaChecker:
             tag_lower = tag.lower()
             val = resource_record.value.decode("utf-8")
             if tag_lower == ISSUE_TAG:
-                issue_tags.append(val)
+                issue_tag_values.append(val)
             elif tag_lower == ISSUEWILD_TAG:
-                issue_wild_tags.append(val)
+                issuewild_tag_values.append(val)
             elif tag_lower == ISSUEMAIL_TAG:
-                issue_mail_tags.append(val)
+                issuemail_tag_values.append(val)
             elif (
                 not (tag_lower in [CONTACTEMAIL_TAG, CONTACTPHONE_TAG, IODEF_TAG])
                 and resource_record.flags & 0b10000000
@@ -148,16 +160,16 @@ class MpicCaaChecker:
         if has_unknown_critical_flags:
             valid_for_issuance = False
         elif certificate_type == CertificateType.S_MIME:
-            if len(issue_mail_tags) > 0:
-                valid_for_issuance = MpicCaaChecker.do_caa_values_permit_issuance(issue_mail_tags, caa_domains)
+            if len(issuemail_tag_values) > 0:
+                valid_for_issuance = MpicCaaChecker.do_caa_values_permit_issuance(issuemail_tag_values, caa_domains)
             else:
                 # No issue mail tags
                 valid_for_issuance = True
         elif certificate_type == CertificateType.TLS_SERVER:
-            if is_wc_domain and len(issue_wild_tags) > 0:
-                valid_for_issuance = MpicCaaChecker.do_caa_values_permit_issuance(issue_wild_tags, caa_domains)
-            elif len(issue_tags) > 0:
-                valid_for_issuance = MpicCaaChecker.do_caa_values_permit_issuance(issue_tags, caa_domains)
+            if is_wc_domain and len(issuewild_tag_values) > 0:
+                valid_for_issuance = MpicCaaChecker.do_caa_values_permit_issuance(issuewild_tag_values, caa_domains)
+            elif len(issue_tag_values) > 0:
+                valid_for_issuance = MpicCaaChecker.do_caa_values_permit_issuance(issue_tag_values, caa_domains)
             else:
                 # We had no unknown critical tags, and we found no issue tags. Issuance can proceed.
                 valid_for_issuance = True
