@@ -55,6 +55,7 @@ class DcvTlsAlpnValidator:
             )
             binary_cert = writer.get_extra_info('peercert')
             print("got cert via asyncio")
+            print(binary_cert)
             #binary_cert = tls_alpn_connection.getpeercert(binary_form=True)
             x509_cert = x509.load_der_x509_certificate(binary_cert)
 
