@@ -54,8 +54,8 @@ class DcvTlsAlpnValidator:
                 ssl=context # pass in the context.
             )
             binary_cert = writer.get_extra_info('peercert')
-            print("got cert via asyncio")
-            print(binary_cert)
+            print("got cert via asyncio", flush=True)
+            print(binary_cert, flush=True)
             #binary_cert = tls_alpn_connection.getpeercert(binary_form=True)
             x509_cert = x509.load_der_x509_certificate(binary_cert)
 
