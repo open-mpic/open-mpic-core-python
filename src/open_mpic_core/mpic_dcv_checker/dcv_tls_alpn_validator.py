@@ -24,7 +24,7 @@ class DcvTlsAlpnValidator:
 
     def __init__(
         self,
-        log_level: int = None,
+        log_level: int | None = None,
     ):
         self.logger = logger.getChild(self.__class__.__name__)
         if log_level is not None:
@@ -48,53 +48,56 @@ class DcvTlsAlpnValidator:
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
 
-            with socket.create_connection((hostname, 443)) as generic_tls_connection:
-                dcv_check_response.check_completed = True  # If we made the socket, we can mark the check as completed.
-                with context.wrap_socket(generic_tls_connection, server_hostname=sni_target) as tls_alpn_connection:
-                    binary_cert = tls_alpn_connection.getpeercert(binary_form=True)
-                    x509_cert = x509.load_der_x509_certificate(binary_cert)
+            reader, writer = await asyncio.open_connection(
+                hostname, # use the real host name
+                443,
+                ssl=context # pass in the context.
+            )
+            binary_cert = writer.get_extra_info('peercert')
+            #binary_cert = tls_alpn_connection.getpeercert(binary_form=True)
+            x509_cert = x509.load_der_x509_certificate(binary_cert)
 
-                    subject_alt_name_extension = None
-                    acme_tls_alpn_extension = None
+            subject_alt_name_extension = None
+            acme_tls_alpn_extension = None
 
-                    for extension in x509_cert.extensions:
-                        if extension.oid.dotted_string == self.ACME_TLS_ALPN_OID_DOTTED_STRING:
-                            acme_tls_alpn_extension = extension
-                        elif extension.oid == ExtensionOID.SUBJECT_ALTERNATIVE_NAME:
-                            subject_alt_name_extension = extension
-                    # We need both of these extensions to proceed.
-                    if subject_alt_name_extension is None or acme_tls_alpn_extension is None:
+            for extension in x509_cert.extensions:
+                if extension.oid.dotted_string == self.ACME_TLS_ALPN_OID_DOTTED_STRING:
+                    acme_tls_alpn_extension = extension
+                elif extension.oid == ExtensionOID.SUBJECT_ALTERNATIVE_NAME:
+                    subject_alt_name_extension = extension
+            # We need both of these extensions to proceed.
+            if subject_alt_name_extension is None or acme_tls_alpn_extension is None:
+                dcv_check_response.errors = [
+                    MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_EXTENSION_MISSING)
+                ]
+            else:
+                # We now know we have both extensions present. Begin checking each one.
+                dcv_check_response.errors = self._validate_san_entry(subject_alt_name_extension, san_target)
+                if acme_tls_alpn_extension.critical != True:
+                    # id-pe-acmeIdentifier extension needs to be critical
+                        dcv_check_response.errors.append(
+                            MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_ALPN_EXTENSION_NONCRITICAL)
+                            )
+                if len(dcv_check_response.errors) == 0:
+                    # Check the id-pe-acmeIdentifier extension's value.
+                    binary_challenge_seen = acme_tls_alpn_extension.value.value
+                    key_authorization_hash_binary = None
+                    try:
+                        key_authorization_hash_binary = bytes.fromhex(key_authorization_hash)
+                        self.logger.info(f"tls-alpn-01: binary_challenge_seen: {binary_challenge_seen}")
+                        self.logger.info(f"tls-alpn-01: key_authorization_hash_binary: {key_authorization_hash_binary}")
+                        # Add the first two ASN.1 encoding bytes to the expected hex string.
+                        key_authorization_hash_binary = b"\x04\x20" + key_authorization_hash_binary
+                    except ValueError:
                         dcv_check_response.errors = [
-                            MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_EXTENSION_MISSING)
+                            MpicValidationError.create(
+                                ErrorMessages.DCV_PARAMETER_ERROR, key_authorization_hash
+                            )
                         ]
-                    else:
-                        # We now know we have both extensions present. Begin checking each one.
-                        dcv_check_response.errors = self._validate_san_entry(subject_alt_name_extension, san_target)
-                        if acme_tls_alpn_extension.critical != True:
-                            # id-pe-acmeIdentifier extension needs to be critical
-                                dcv_check_response.errors.append(
-                                    MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_ALPN_EXTENSION_NONCRITICAL)
-                                    )
-                        if len(dcv_check_response.errors) == 0:
-                            # Check the id-pe-acmeIdentifier extension's value.
-                            binary_challenge_seen = acme_tls_alpn_extension.value.value
-                            key_authorization_hash_binary = None
-                            try:
-                                key_authorization_hash_binary = bytes.fromhex(key_authorization_hash)
-                                self.logger.info(f"tls-alpn-01: binary_challenge_seen: {binary_challenge_seen}")
-                                self.logger.info(f"tls-alpn-01: key_authorization_hash_binary: {key_authorization_hash_binary}")
-                                # Add the first two ASN.1 encoding bytes to the expected hex string.
-                                key_authorization_hash_binary = b"\x04\x20" + key_authorization_hash_binary
-                            except ValueError:
-                                dcv_check_response.errors = [
-                                    MpicValidationError.create(
-                                        ErrorMessages.DCV_PARAMETER_ERROR, key_authorization_hash
-                                    )
-                                ]
-                            if binary_challenge_seen == key_authorization_hash_binary:
-                                dcv_check_response.check_passed = True
-                                dcv_check_response.details.common_name = hostname
-                            self.logger.info(f"key hash test passed? {dcv_check_response.check_passed}")
+                    if binary_challenge_seen == key_authorization_hash_binary:
+                        dcv_check_response.check_passed = True
+                        dcv_check_response.details.common_name = hostname
+                    self.logger.info(f"key hash test passed? {dcv_check_response.check_passed}")
                 dcv_check_response.timestamp_ns = time.time_ns()
         except asyncio.TimeoutError as e:
             dcv_check_response.timestamp_ns = time.time_ns()
