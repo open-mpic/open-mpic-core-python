@@ -22,15 +22,10 @@ from dns.rcode import Rcode
 from dns.rdtypes.ANY.CNAME import CNAME
 from dns.message import ChainingResult
 
-from open_mpic_core import (
-    DcvCheckRequest,
-    DcvValidationMethod,
-    DnsRecordType,
-    MpicValidationError,
-    MpicDcvChecker,
-    ErrorMessages,
-    TRACE_LEVEL,
-)
+from open_mpic_core import MpicDcvChecker, DcvCheckRequest, DcvCheckResponse
+from open_mpic_core import DcvTlsAlpnValidator, DcvCheckResponseDetailsBuilder
+from open_mpic_core import DcvValidationMethod, DnsRecordType
+from open_mpic_core import MpicValidationError, ErrorMessages, TRACE_LEVEL
 
 from unit.test_util.mock_dns_object_creator import MockDnsObjectCreator
 from unit.test_util.valid_check_creator import ValidCheckCreator
@@ -113,6 +108,7 @@ class TestMpicDcvChecker:
             (DcvValidationMethod.ACME_HTTP_01, None),
             (DcvValidationMethod.ACME_DNS_01, None),
             (DcvValidationMethod.REVERSE_ADDRESS_LOOKUP, None),
+            (DcvValidationMethod.ACME_TLS_ALPN_01, None),
         ],
     )
     async def check_dcv__should_perform_appropriate_check_and_allow_issuance_given_target_record_found(
@@ -120,9 +116,11 @@ class TestMpicDcvChecker:
     ):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type)
         if dcv_method in (DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01):
-            self.mock_request_specific_http_response(dcv_request, mocker)
+            self._mock_request_specific_http_response(dcv_request, mocker)
+        elif dcv_method == DcvValidationMethod.ACME_TLS_ALPN_01:
+            self._mock_successful_tls_alpn_validation_entirely(dcv_request, mocker)
         else:
-            self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+            self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is True
 
@@ -156,9 +154,9 @@ class TestMpicDcvChecker:
 
         # set up mocks prior which will return the original challenge value in the dcv_request
         if dcv_method in (DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01):
-            self.mock_request_specific_http_response(dcv_request, mocker)
+            self._mock_request_specific_http_response(dcv_request, mocker)
         else:
-            self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+            self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
 
         # set up the challenge value casing to be different from the original
         if dcv_method == DcvValidationMethod.ACME_HTTP_01:
@@ -190,7 +188,7 @@ class TestMpicDcvChecker:
         dns_response = MockDnsObjectCreator.create_dns_query_answer(
             dcv_request.domain_or_ip_target, "", record_type, mock_record_data_with_value, mocker
         )
-        self.patch_resolver_with_answer_or_exception(mocker, dns_response)
+        self._patch_resolver_with_answer_or_exception(mocker, dns_response)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False
 
@@ -211,7 +209,7 @@ class TestMpicDcvChecker:
         dns_response = MockDnsObjectCreator.create_dns_query_answer(
             dcv_request.domain_or_ip_target, "", record_type, mock_record_data_with_value, mocker
         )
-        self.patch_resolver_with_answer_or_exception(mocker, dns_response)
+        self._patch_resolver_with_answer_or_exception(mocker, dns_response)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is True
 
@@ -227,11 +225,11 @@ class TestMpicDcvChecker:
         if dcv_method == DcvValidationMethod.WEBSITE_CHANGE:
             dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
             dcv_request.domain_or_ip_target = encoded_domain  # do this first for mocking
-            self.mock_request_specific_http_response(dcv_request, mocker)
+            self._mock_request_specific_http_response(dcv_request, mocker)
         else:
             dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
             dcv_request.domain_or_ip_target = encoded_domain  # do this first for mocking
-            self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+            self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
 
         dcv_request.domain_or_ip_target = domain  # set to original to see if the mock triggers as expected
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
@@ -251,16 +249,16 @@ class TestMpicDcvChecker:
         if dcv_method == DcvValidationMethod.WEBSITE_CHANGE:
             dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE)
             if should_complete_check:
-                self.mock_request_specific_http_response(dcv_request, mocker)
+                self._mock_request_specific_http_response(dcv_request, mocker)
             else:
-                self.mock_error_http_response(mocker)
+                self._mock_error_http_response(mocker)
         else:
             dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.ACME_DNS_01)
             if should_complete_check:
-                self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+                self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
             else:
                 timeout_error = dns.exception.Timeout()
-                self.patch_resolver_with_answer_or_exception(mocker, timeout_error)
+                self._patch_resolver_with_answer_or_exception(mocker, timeout_error)
 
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is should_complete_check
@@ -272,10 +270,10 @@ class TestMpicDcvChecker:
 
         if dcv_method == DcvValidationMethod.ACME_HTTP_01:
             dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
-            self.mock_request_specific_http_response(dcv_request, mocker)
+            self._mock_request_specific_http_response(dcv_request, mocker)
         else:
             dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
-            self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+            self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
 
         await tracing_dcv_checker.check_dcv(dcv_request)
         log_contents = self.log_output.getvalue()
@@ -285,7 +283,7 @@ class TestMpicDcvChecker:
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE)
         dcv_request.trace_identifier = "test_trace_identifier"
 
-        self.mock_error_http_response(mocker)
+        self._mock_error_http_response(mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False
         log_contents = self.log_output.getvalue()
@@ -294,14 +292,14 @@ class TestMpicDcvChecker:
     @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01])
     async def http_based_dcv_checks__should_pass_given_token_file_found_with_expected_content(self, dcv_method, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
-        self.mock_request_specific_http_response(dcv_request, mocker)
+        self._mock_request_specific_http_response(dcv_request, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is True
 
     @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01])
     async def http_based_dcv_checks__should_return_timestamp_and_response_url_and_status_code(self, dcv_method, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
-        self.mock_request_specific_http_response(dcv_request, mocker)
+        self._mock_request_specific_http_response(dcv_request, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         match dcv_method:
             case DcvValidationMethod.WEBSITE_CHANGE:
@@ -317,16 +315,16 @@ class TestMpicDcvChecker:
 
     @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01])
     async def http_based_dcv_checks__should_not_pass_given_token_file_not_found(self, dcv_method, mocker):
-        fail_response = TestMpicDcvChecker.create_mock_http_response(404, "Not Found", {"reason": "Not Found"})
-        self.mock_request_agnostic_http_response(fail_response, mocker)
+        fail_response = TestMpicDcvChecker._create_mock_http_response(404, "Not Found", {"reason": "Not Found"})
+        self._mock_request_agnostic_http_response(fail_response, mocker)
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False
 
     @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01])
     async def http_based_dcv_checks__should_return_error_details_given_token_file_not_found(self, dcv_method, mocker):
-        fail_response = TestMpicDcvChecker.create_mock_http_response(404, "Not Found", {"reason": "Not Found"})
-        self.mock_request_agnostic_http_response(fail_response, mocker)
+        fail_response = TestMpicDcvChecker._create_mock_http_response(404, "Not Found", {"reason": "Not Found"})
+        self._mock_request_agnostic_http_response(fail_response, mocker)
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False
@@ -358,7 +356,7 @@ class TestMpicDcvChecker:
     @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01])
     async def http_based_dcv_checks__should_not_pass_given_non_matching_response_content(self, dcv_method, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
-        self.mock_request_specific_http_response(dcv_request, mocker)
+        self._mock_request_specific_http_response(dcv_request, mocker)
         if dcv_method == DcvValidationMethod.WEBSITE_CHANGE:
             dcv_request.dcv_check_parameters.challenge_value = "expecting-this-value-now-instead"
         else:
@@ -384,7 +382,7 @@ class TestMpicDcvChecker:
             case _:
                 dcv_request.dcv_check_parameters.token = "test-path"
                 url_scheme = "http"
-        self.mock_request_specific_http_response(dcv_request, mocker)
+        self._mock_request_specific_http_response(dcv_request, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         expected_url = f"{url_scheme}://{dcv_request.domain_or_ip_target}/{expected_segment}/test-path"
         assert dcv_response.details.response_url == expected_url
@@ -400,9 +398,9 @@ class TestMpicDcvChecker:
             case _:
                 expected_challenge = dcv_request.dcv_check_parameters.key_authorization
 
-        history = self.create_http_redirect_history()
-        mock_response = TestMpicDcvChecker.create_mock_http_response(200, expected_challenge, {"history": history})
-        self.mock_request_agnostic_http_response(mock_response, mocker)
+        history = self._create_http_redirect_history()
+        mock_response = TestMpicDcvChecker._create_mock_http_response(200, expected_challenge, {"history": history})
+        self._mock_request_agnostic_http_response(mock_response, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         redirects = dcv_response.details.response_history
         assert len(redirects) == 2
@@ -414,8 +412,8 @@ class TestMpicDcvChecker:
     @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01])
     async def http_based_dcv_checks__should_include_base64_encoded_response_page_in_details(self, dcv_method, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
-        mock_response = TestMpicDcvChecker.create_mock_http_response_with_content_and_encoding(b"aaa", "utf-8")
-        self.mock_request_agnostic_http_response(mock_response, mocker)
+        mock_response = TestMpicDcvChecker._create_mock_http_response_with_content_and_encoding(b"aaa", "utf-8")
+        self._mock_request_agnostic_http_response(mock_response, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.details.response_page == base64.b64encode(b"aaa").decode()
 
@@ -424,8 +422,8 @@ class TestMpicDcvChecker:
         self, dcv_method, mocker
     ):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
-        mock_response = TestMpicDcvChecker.create_mock_http_response_with_content_and_encoding(b"a" * 1000, "utf-8")
-        self.mock_request_agnostic_http_response(mock_response, mocker)
+        mock_response = TestMpicDcvChecker._create_mock_http_response_with_content_and_encoding(b"a" * 1000, "utf-8")
+        self._mock_request_agnostic_http_response(mock_response, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         hundred_a_chars_b64 = base64.b64encode(
             b"a" * 100
@@ -435,8 +433,8 @@ class TestMpicDcvChecker:
     async def http_based_dcv_checks__should_read_more_than_100_bytes_if_challenge_value_requires_it(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE)
         dcv_request.dcv_check_parameters.challenge_value = "".join(["a"] * 150)  # 150 'a' characters
-        mock_response = TestMpicDcvChecker.create_mock_http_response_with_content_and_encoding(b"a" * 1000, "utf-8")
-        self.mock_request_agnostic_http_response(mock_response, mocker)
+        mock_response = TestMpicDcvChecker._create_mock_http_response_with_content_and_encoding(b"a" * 1000, "utf-8")
+        self._mock_request_agnostic_http_response(mock_response, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         hundred_fifty_a_chars_b64 = base64.b64encode(b"a" * 150).decode()  # store 150 chars in base64 encoded string
         assert len(dcv_response.details.response_page) == len(hundred_fifty_a_chars_b64)
@@ -450,8 +448,8 @@ class TestMpicDcvChecker:
         expected_challenge_value = "Café"
 
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
-        mock_response = TestMpicDcvChecker.create_mock_http_response_with_content_and_encoding(content, encoding)
-        self.mock_request_agnostic_http_response(mock_response, mocker)
+        mock_response = TestMpicDcvChecker._create_mock_http_response_with_content_and_encoding(content, encoding)
+        self._mock_request_agnostic_http_response(mock_response, mocker)
         match dcv_method:
             case DcvValidationMethod.WEBSITE_CHANGE:
                 dcv_request.dcv_check_parameters.challenge_value = expected_challenge_value
@@ -468,7 +466,7 @@ class TestMpicDcvChecker:
             "User-Agent": "test-agent",
         }
         dcv_request.dcv_check_parameters.http_headers = headers
-        requests_get_mock = self.mock_request_specific_http_response(dcv_request, mocker)
+        requests_get_mock = self._mock_request_specific_http_response(dcv_request, mocker)
         await self.dcv_checker.check_dcv(dcv_request)
 
         assert requests_get_mock.call_args.kwargs["headers"] == headers
@@ -492,12 +490,12 @@ class TestMpicDcvChecker:
                 expected_challenge = dcv_request.dcv_check_parameters.key_authorization
 
         if code_or_port == "unacceptable_code":
-            history = self.create_http_redirect_history_with_disallowed_code()
+            history = self._create_http_redirect_history_with_disallowed_code()
         else:
-            history = self.create_http_redirect_history_with_disallowed_port()
+            history = self._create_http_redirect_history_with_disallowed_port()
 
-        mock_response = TestMpicDcvChecker.create_mock_http_response(200, expected_challenge, {"history": history})
-        self.mock_request_agnostic_http_response(mock_response, mocker)
+        mock_response = TestMpicDcvChecker._create_mock_http_response(200, expected_challenge, {"history": history})
+        self._mock_request_agnostic_http_response(mock_response, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False
 
@@ -505,7 +503,7 @@ class TestMpicDcvChecker:
     async def website_change_validation__should_use_specified_url_scheme(self, url_scheme, mocker):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
         dcv_request.dcv_check_parameters.url_scheme = url_scheme
-        self.mock_request_specific_http_response(dcv_request, mocker)
+        self._mock_request_specific_http_response(dcv_request, mocker)
         dcv_response = await self.dcv_checker.perform_http_based_validation(dcv_request)
         assert dcv_response.check_passed is True
         assert dcv_response.details.response_url.startswith(f"{url_scheme}://")
@@ -519,7 +517,7 @@ class TestMpicDcvChecker:
     ):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
         dcv_request.dcv_check_parameters.challenge_value = challenge_value
-        self.mock_request_specific_http_response(dcv_request, mocker)
+        self._mock_request_specific_http_response(dcv_request, mocker)
         dcv_request.dcv_check_parameters.challenge_value = "challenge-value"
         dcv_response = await self.dcv_checker.perform_http_based_validation(dcv_request)
         assert dcv_response.check_passed is check_passed
@@ -527,14 +525,14 @@ class TestMpicDcvChecker:
     async def website_change_validation__should_set_is_valid_true_with_regex_match(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
         dcv_request.dcv_check_parameters.match_regex = "^challenge_[0-9]*$"
-        self.mock_request_specific_http_response(dcv_request, mocker)
+        self._mock_request_specific_http_response(dcv_request, mocker)
         dcv_response = await self.dcv_checker.perform_http_based_validation(dcv_request)
         assert dcv_response.check_passed is True
 
     async def website_change_validation__should_set_is_valid_false_with_regex_not_matching(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
         dcv_request.dcv_check_parameters.match_regex = "^challenge_[2-9]*$"
-        self.mock_request_specific_http_response(dcv_request, mocker)
+        self._mock_request_specific_http_response(dcv_request, mocker)
         dcv_response = await self.dcv_checker.perform_http_based_validation(dcv_request)
         assert dcv_response.check_passed is False
 
@@ -544,8 +542,8 @@ class TestMpicDcvChecker:
             ""  # blank out challenge value to delegate all matching to regex
         )
         dcv_request.dcv_check_parameters.match_regex = "^" + "a" * 150 + "$"  # 150 'a' characters
-        mock_response = TestMpicDcvChecker.create_mock_http_response_with_content_and_encoding(b"a" * 150, "utf-8")
-        self.mock_request_agnostic_http_response(mock_response, mocker)
+        mock_response = TestMpicDcvChecker._create_mock_http_response_with_content_and_encoding(b"a" * 150, "utf-8")
+        self._mock_request_agnostic_http_response(mock_response, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is True
         hundred_fifty_a_chars_b64 = base64.b64encode(b"a" * 150).decode()  # store 150 chars in base64 encoded string
@@ -555,10 +553,10 @@ class TestMpicDcvChecker:
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
         dcv_request.dcv_check_parameters.challenge_value = ""
         dcv_request.dcv_check_parameters.match_regex = r"ABC123[\s]+(example.com|example.org|example.net)[\s]+XYZ789"
-        mock_response = TestMpicDcvChecker.create_mock_http_response_with_content_and_encoding(
+        mock_response = TestMpicDcvChecker._create_mock_http_response_with_content_and_encoding(
             b"ABC123\n\n\n\n\t example.com\n\n\n\t  XYZ789", "utf-8"
         )
-        self.mock_request_agnostic_http_response(mock_response, mocker)
+        self._mock_request_agnostic_http_response(mock_response, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is True
 
@@ -570,7 +568,7 @@ class TestMpicDcvChecker:
     ):
         dcv_request = ValidCheckCreator.create_valid_acme_http_01_check_request()
         dcv_request.dcv_check_parameters.key_authorization = key_authorization
-        self.mock_request_specific_http_response(dcv_request, mocker)
+        self._mock_request_specific_http_response(dcv_request, mocker)
         dcv_request.dcv_check_parameters.key_authorization = "challenge_111"
         dcv_response = await self.dcv_checker.perform_http_based_validation(dcv_request)
         assert dcv_response.check_passed is check_passed
@@ -578,7 +576,7 @@ class TestMpicDcvChecker:
     @pytest.mark.parametrize("record_type", [DnsRecordType.TXT, DnsRecordType.CNAME, DnsRecordType.CAA])
     async def dns_validation__should_pass_given_expected_dns_record_found(self, record_type, mocker):
         dcv_request = ValidCheckCreator.create_valid_dns_check_request(record_type)
-        self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+        self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
 
@@ -587,14 +585,14 @@ class TestMpicDcvChecker:
         dcv_request = ValidCheckCreator.create_valid_dns_check_request(record_type)
         # create string with null byte and utf-8 character
         dcv_request.dcv_check_parameters.challenge_value = "Mötley\0Crüe"
-        self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+        self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
 
     async def dns_validation__should_allow_finding_expected_challenge_as_substring_by_default(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.DNS_CHANGE)
         dcv_request.dcv_check_parameters.challenge_value = "eXtRaStUfFchallenge-valueMoReStUfF"
-        self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+        self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
         dcv_request.dcv_check_parameters.challenge_value = "challenge-value"
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
@@ -602,7 +600,7 @@ class TestMpicDcvChecker:
     async def dns_validation__should_allow_finding_expected_challenge_exactly_if_specified(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.DNS_CHANGE)
         dcv_request.dcv_check_parameters.challenge_value = "challenge-value"
-        self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+        self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
         dcv_request.dcv_check_parameters.require_exact_match = True
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
@@ -611,7 +609,7 @@ class TestMpicDcvChecker:
     async def dns_validation__should_use_dns_name_prefix_if_provided(self, dns_name_prefix, mocker):
         dcv_request = ValidCheckCreator.create_valid_dns_check_request()
         dcv_request.dcv_check_parameters.dns_name_prefix = dns_name_prefix
-        mock_dns_resolver_resolve = self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+        mock_dns_resolver_resolve = self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
         if dns_name_prefix is not None and len(dns_name_prefix) > 0:
@@ -625,7 +623,7 @@ class TestMpicDcvChecker:
 
     async def acme_dns_validation__should_auto_insert_acme_challenge_prefix(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_acme_dns_01_check_request()
-        mock_dns_resolver_resolve = self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+        mock_dns_resolver_resolve = self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
         mock_dns_resolver_resolve.assert_called_once_with(
@@ -634,7 +632,7 @@ class TestMpicDcvChecker:
 
     async def contact_email_txt_lookup__should_auto_insert_validation_prefix(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_contact_check_request(DcvValidationMethod.CONTACT_EMAIL_TXT)
-        mock_dns_resolver_resolve = self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+        mock_dns_resolver_resolve = self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
         mock_dns_resolver_resolve.assert_called_once_with(
@@ -643,7 +641,7 @@ class TestMpicDcvChecker:
 
     async def contact_phone_txt_lookup__should_auto_insert_validation_prefix(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_contact_check_request(DcvValidationMethod.CONTACT_PHONE_TXT)
-        mock_dns_resolver_resolve = self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+        mock_dns_resolver_resolve = self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
         mock_dns_resolver_resolve.assert_called_once_with(
@@ -668,7 +666,7 @@ class TestMpicDcvChecker:
         test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer(
             dcv_request.domain_or_ip_target, check_parameters.dns_name_prefix, DnsRecordType.CAA, record_data, mocker
         )
-        self.patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
+        self._patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is expected_result
 
@@ -679,7 +677,7 @@ class TestMpicDcvChecker:
         self, dcv_method, mocker
     ):
         dcv_request = ValidCheckCreator.create_valid_contact_check_request(dcv_method)
-        self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+        self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
         current_target = dcv_request.domain_or_ip_target
         dcv_request.domain_or_ip_target = f"sub2.sub1.{current_target}"
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
@@ -688,7 +686,7 @@ class TestMpicDcvChecker:
 
     async def contact_info_caa_lookup__should_not_pass_if_no_records_found_in_domain_tree(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_contact_check_request(DcvValidationMethod.CONTACT_EMAIL_CAA)
-        self.mock_request_specific_dns_resolve_call(dcv_request, mocker)
+        self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
         dcv_request.domain_or_ip_target = "sub2.sub1.sub0.nonexistent.com"
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is False
@@ -696,19 +694,19 @@ class TestMpicDcvChecker:
     @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.DNS_CHANGE, DcvValidationMethod.ACME_DNS_01])
     async def dns_based_dcv_checks__should_not_pass_given_non_matching_dns_record(self, dcv_method, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
-        test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
+        test_dns_query_answer = self._create_basic_dns_response_for_mock(dcv_request, mocker)
         test_dns_query_answer.response.answer[0].items.clear()
         test_dns_query_answer.response.answer[0].add(
             MockDnsObjectCreator.create_record_by_type(DnsRecordType.TXT, {"value": "not-the-expected-value"})
         )
-        self.patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
+        self._patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False
 
     @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.DNS_CHANGE, DcvValidationMethod.ACME_DNS_01])
     async def dns_based_dcv_checks__should_return_timestamp_and_list_of_records_seen(self, dcv_method, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
-        self.mock_dns_resolve_call_getting_multiple_txt_records(dcv_request, mocker)
+        self._mock_dns_resolve_call_getting_multiple_txt_records(dcv_request, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         if dcv_method == DcvValidationMethod.DNS_CHANGE:
             expected_value_1 = dcv_request.dcv_check_parameters.challenge_value
@@ -728,7 +726,7 @@ class TestMpicDcvChecker:
     )
     async def dns_based_dcv_checks__should_return_response_code(self, dcv_method, response_code, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
-        self.mock_dns_resolve_call_with_specific_response_code(dcv_request, response_code, mocker)
+        self._mock_dns_resolve_call_with_specific_response_code(dcv_request, response_code, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.details.response_code == response_code
 
@@ -745,7 +743,7 @@ class TestMpicDcvChecker:
         self, dcv_method, flag, flag_set, mocker
     ):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
-        self.mock_dns_resolve_call_with_specific_flag(dcv_request, flag, mocker)
+        self._mock_dns_resolve_call_with_specific_flag(dcv_request, flag, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.details.ad_flag is flag_set
 
@@ -765,7 +763,7 @@ class TestMpicDcvChecker:
     async def dns_based_dcv_checks__should_not_pass_with_errors_given_exception_raised(self, dcv_method, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
         no_answer_error = dns.resolver.NoAnswer()
-        self.patch_resolver_with_answer_or_exception(mocker, no_answer_error)
+        self._patch_resolver_with_answer_or_exception(mocker, no_answer_error)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         errors = [
             MpicValidationError.create(
@@ -796,7 +794,7 @@ class TestMpicDcvChecker:
         return _raise()
 
     @staticmethod
-    def create_base_client_response_for_mock(event_loop):
+    def _create_base_client_response_for_mock(event_loop):
         return ClientResponse(
             method="GET",
             url=URL("http://example.com"),
@@ -810,9 +808,9 @@ class TestMpicDcvChecker:
         )
 
     @staticmethod
-    def create_mock_http_response(status_code: int, content: str, kwargs: dict = None):
+    def _create_mock_http_response(status_code: int, content: str, kwargs: dict = None):
         event_loop = asyncio.get_event_loop()
-        response = TestMpicDcvChecker.create_base_client_response_for_mock(event_loop)
+        response = TestMpicDcvChecker._create_base_client_response_for_mock(event_loop)
         response.status = status_code
 
         default_headers = {"Content-Type": "text/plain; charset=utf-8", "Content-Length": str(len(content))}
@@ -834,9 +832,9 @@ class TestMpicDcvChecker:
         return response
 
     @staticmethod
-    def create_mock_http_redirect_response(status_code: int, redirect_url: str):
+    def _create_mock_http_redirect_response(status_code: int, redirect_url: str):
         event_loop = asyncio.get_event_loop()
-        response = TestMpicDcvChecker.create_base_client_response_for_mock(event_loop)
+        response = TestMpicDcvChecker._create_base_client_response_for_mock(event_loop)
         response.status = status_code
         # Set both the Location header and the URL property
         redirect_url = URL(redirect_url)
@@ -844,9 +842,9 @@ class TestMpicDcvChecker:
         return response
 
     @staticmethod
-    def create_mock_http_response_with_content_and_encoding(content: bytes, encoding: str):
+    def _create_mock_http_response_with_content_and_encoding(content: bytes, encoding: str):
         event_loop = asyncio.get_event_loop()
-        response = TestMpicDcvChecker.create_base_client_response_for_mock(event_loop)
+        response = TestMpicDcvChecker._create_base_client_response_for_mock(event_loop)
         response.status = 200
         response._headers = CIMultiDictProxy(CIMultiDict({"Content-Type": f"text/plain; charset={encoding}"}))
         response.content = StreamReader(loop=event_loop)
@@ -854,7 +852,7 @@ class TestMpicDcvChecker:
         response.content.feed_eof()
         return response
 
-    def mock_request_specific_http_response(self, dcv_request: DcvCheckRequest, mocker):
+    def _mock_request_specific_http_response(self, dcv_request: DcvCheckRequest, mocker):
         match dcv_request.dcv_check_parameters.validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE:
                 url_scheme = dcv_request.dcv_check_parameters.url_scheme
@@ -866,8 +864,8 @@ class TestMpicDcvChecker:
                 expected_url = f"http://{dcv_request.domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
                 expected_challenge = dcv_request.dcv_check_parameters.key_authorization
 
-        success_response = TestMpicDcvChecker.create_mock_http_response(200, expected_challenge)
-        not_found_response = TestMpicDcvChecker.create_mock_http_response(404, "Not Found", {"reason": "Not Found"})
+        success_response = TestMpicDcvChecker._create_mock_http_response(200, expected_challenge)
+        not_found_response = TestMpicDcvChecker._create_mock_http_response(404, "Not Found", {"reason": "Not Found"})
 
         # noinspection PyProtectedMember
         return mocker.patch(
@@ -879,7 +877,7 @@ class TestMpicDcvChecker:
             ),
         )
 
-    def mock_series_of_http_responses(self, responses: List[ClientResponse], mocker):
+    def _mock_series_of_http_responses(self, responses: List[ClientResponse], mocker):
         responses_iter = iter(responses)
 
         return mocker.patch(
@@ -889,13 +887,13 @@ class TestMpicDcvChecker:
             ),
         )
 
-    def mock_request_agnostic_http_response(self, mock_response: ClientResponse, mocker):
+    def _mock_request_agnostic_http_response(self, mock_response: ClientResponse, mocker):
         return mocker.patch(
             "aiohttp.ClientSession.get",
             side_effect=lambda *args, **kwargs: AsyncMock(__aenter__=AsyncMock(return_value=mock_response)),
         )
 
-    def mock_error_http_response(self, mocker):
+    def _mock_error_http_response(self, mocker):
         # noinspection PyUnusedLocal
         async def side_effect(url, headers):
             raise ClientConnectionError()
@@ -909,7 +907,7 @@ class TestMpicDcvChecker:
     def patch_resolver_resolve_with_side_effect(self, mocker, resolver, side_effect):
         return mocker.patch.object(resolver, "resolve", new_callable=AsyncMock, side_effect=side_effect)
 
-    def patch_resolver_with_answer_or_exception(self, mocker, mocked_response_or_exception):
+    def _patch_resolver_with_answer_or_exception(self, mocker, mocked_response_or_exception):
         # noinspection PyUnusedLocal
         async def side_effect(qname, rdtype):
             if isinstance(mocked_response_or_exception, Exception):
@@ -918,7 +916,7 @@ class TestMpicDcvChecker:
 
         return self.patch_resolver_resolve_with_side_effect(mocker, self.dcv_checker.resolver, side_effect)
 
-    def mock_request_specific_dns_resolve_call(self, dcv_request: DcvCheckRequest, mocker) -> MagicMock:
+    def _mock_request_specific_dns_resolve_call(self, dcv_request: DcvCheckRequest, mocker) -> MagicMock:
         dns_name_prefix = dcv_request.dcv_check_parameters.dns_name_prefix
         if dns_name_prefix is not None and len(dns_name_prefix) > 0:
             expected_domain = f"{dns_name_prefix}.{dcv_request.domain_or_ip_target}"
@@ -932,7 +930,7 @@ class TestMpicDcvChecker:
                 expected_domain = f"_validation-contactemail.{dcv_request.domain_or_ip_target}"
             case DcvValidationMethod.CONTACT_PHONE_CAA | DcvValidationMethod.CONTACT_EMAIL_CAA:
                 expected_domain = dns.name.from_text(expected_domain)  # CAA -- using dns names instead of strings
-        test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
+        test_dns_query_answer = self._create_basic_dns_response_for_mock(dcv_request, mocker)
 
         # noinspection PyUnusedLocal
         async def side_effect(qname, rdtype):
@@ -940,19 +938,21 @@ class TestMpicDcvChecker:
                 return test_dns_query_answer
             raise self.raise_(dns.resolver.NoAnswer)
 
+
         return self.patch_resolver_resolve_with_side_effect(mocker, self.dcv_checker.resolver, side_effect)
 
     def mock_dns_resolve_call_with_specific_response_code(
         self, dcv_request: DcvCheckRequest, response_code, mocker
     ):
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
-        test_dns_query_answer.response.rcode = lambda: response_code
-        self.patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
 
-    def mock_dns_resolve_call_with_specific_flag(self, dcv_request: DcvCheckRequest, flag, mocker):
-        test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
+        test_dns_query_answer.response.rcode = lambda: response_code
+        self._patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
+
+    def _mock_dns_resolve_call_with_specific_flag(self, dcv_request: DcvCheckRequest, flag, mocker):
+        test_dns_query_answer = self._create_basic_dns_response_for_mock(dcv_request, mocker)
         test_dns_query_answer.response.flags |= flag
-        self.patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
+        self._patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
 
     def mock_dns_resolve_call_with_cname_chain(self, dcv_request: DcvCheckRequest, mocker):
         test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
@@ -987,9 +987,9 @@ class TestMpicDcvChecker:
             *[txt_record_1, txt_record_2, txt_record_3],
             mocker=mocker,
         )
-        self.patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
+        self._patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
 
-    def create_basic_dns_response_for_mock(self, dcv_request: DcvCheckRequest, mocker) -> dns.resolver.Answer:
+    def _create_basic_dns_response_for_mock(self, dcv_request: DcvCheckRequest, mocker) -> dns.resolver.Answer:
         check_parameters = dcv_request.dcv_check_parameters
         match check_parameters.validation_method:
             case (
@@ -1016,22 +1016,33 @@ class TestMpicDcvChecker:
         )
         return test_dns_query_answer
 
-    def create_http_redirect_history(self):
+    def _create_http_redirect_history(self):
         redirect_url_1 = f"https://example.com/redirected-1"
-        redirect_response_1 = TestMpicDcvChecker.create_mock_http_redirect_response(301, redirect_url_1)
+        redirect_response_1 = TestMpicDcvChecker._create_mock_http_redirect_response(301, redirect_url_1)
         redirect_url_2 = f"https://example.com/redirected-2"
-        redirect_response_2 = TestMpicDcvChecker.create_mock_http_redirect_response(302, redirect_url_2)
+        redirect_response_2 = TestMpicDcvChecker._create_mock_http_redirect_response(302, redirect_url_2)
         return [redirect_response_1, redirect_response_2]
 
-    def create_http_redirect_history_with_disallowed_code(self):
+    def _create_http_redirect_history_with_disallowed_code(self):
         redirect_url = f"https://example.com/redirected-1"
-        redirect_response = TestMpicDcvChecker.create_mock_http_redirect_response(303, redirect_url)
+        redirect_response = TestMpicDcvChecker._create_mock_http_redirect_response(303, redirect_url)
         return [redirect_response]
 
-    def create_http_redirect_history_with_disallowed_port(self):
+    def _create_http_redirect_history_with_disallowed_port(self):
         redirect_url = f"https://example.com:8080/redirected-1"
-        redirect_response = TestMpicDcvChecker.create_mock_http_redirect_response(301, redirect_url)
+        redirect_response = TestMpicDcvChecker._create_mock_http_redirect_response(301, redirect_url)
         return [redirect_response]
+
+    def _mock_successful_tls_alpn_validation_entirely(self, dcv_request, mocker):
+        response = DcvCheckResponse(
+            check_passed=True,
+            check_completed=True,
+            details=DcvCheckResponseDetailsBuilder.build_response_details(DcvValidationMethod.ACME_TLS_ALPN_01),
+        )
+        response.details.common_name = dcv_request.domain_or_ip_target
+        mocker.patch.object(
+            DcvTlsAlpnValidator, "perform_tls_alpn_validation", return_value=response
+        )
 
     @staticmethod
     def shuffle_case(string_to_shuffle: str) -> str:
