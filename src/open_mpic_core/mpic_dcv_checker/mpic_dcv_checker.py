@@ -39,6 +39,8 @@ class MpicDcvChecker:
         reuse_http_client: bool = False,
         verify_ssl: bool = False,
         log_level: int = None,
+        dns_timeout: float = None,
+        dns_resolution_lifetime: float = None,
     ):
         self.verify_ssl = verify_ssl
         self._reuse_http_client = reuse_http_client
@@ -50,6 +52,12 @@ class MpicDcvChecker:
         if log_level is not None:
             self.logger.setLevel(log_level)
 
+
+        self.resolver = dns.asyncresolver.get_default_resolver()
+        self.resolver.timeout = dns_timeout if dns_timeout is not None else self.resolver.timeout
+        self.resolver.lifetime = (
+            dns_resolution_lifetime if dns_resolution_lifetime is not None else self.resolver.lifetime
+        )
         self.acme_tls_alpn_validator = DcvTlsAlpnValidator(log_level=log_level)
 
     @asynccontextmanager
@@ -143,9 +151,7 @@ class MpicDcvChecker:
         try:
             # noinspection PyUnresolvedReferences
             async with self.logger.trace_timing(f"DNS lookup for target {name_to_resolve}"):
-                lookup = await MpicDcvChecker.perform_dns_resolution(
-                    name_to_resolve, validation_method, dns_record_type
-                )
+                lookup = await self.perform_dns_resolution(name_to_resolve, validation_method, dns_record_type)
             MpicDcvChecker.evaluate_dns_lookup_response(
                 dcv_check_response, lookup, validation_method, dns_record_type, expected_dns_record_content, exact_match
             )
@@ -164,8 +170,7 @@ class MpicDcvChecker:
         dcv_check_response.timestamp_ns = time.time_ns()
         return dcv_check_response
 
-    @staticmethod
-    async def perform_dns_resolution(name_to_resolve, validation_method, dns_record_type) -> dns.resolver.Answer:
+    async def perform_dns_resolution(self, name_to_resolve, validation_method, dns_record_type) -> dns.resolver.Answer:
         walk_domain_tree = validation_method in [
             DcvValidationMethod.CONTACT_EMAIL_CAA,
             DcvValidationMethod.CONTACT_PHONE_CAA,
@@ -173,17 +178,18 @@ class MpicDcvChecker:
 
         dns_rdata_type = dns.rdatatype.from_text(dns_record_type)
         lookup = None
+
         if walk_domain_tree:
             domain = dns.name.from_text(name_to_resolve)
 
             while domain != dns.name.root:
                 try:
-                    lookup = await dns.asyncresolver.resolve(domain, dns_rdata_type)
+                    lookup = await self.resolver.resolve(qname=domain, rdtype=dns_rdata_type)
                     break
                 except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
                     domain = domain.parent()
         else:
-            lookup = await dns.asyncresolver.resolve(name_to_resolve, dns_rdata_type)
+            lookup = await self.resolver.resolve(qname=name_to_resolve, rdtype=dns_rdata_type)
         return lookup
 
     async def perform_http_based_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:
@@ -343,6 +349,14 @@ class MpicDcvChecker:
         dcv_check_response.details.ad_flag = (
             dns_response.response.flags & dns.flags.AD == dns.flags.AD
         )  # single ampersand
+        cname_record_sets = dns_response.chaining_result.cnames
+        cname_chain_str = []
+        for cname_record_set in cname_record_sets:
+            # This code will flatten a list of record sets should a CNAME come with multiple records in the record set.
+            # Per the RFCs, there can only ever be one CNAME in a CNAME record set.
+            for cname_record in cname_record_set:
+                cname_chain_str.append( b".".join(cname_record.target.labels).decode("utf-8"))
+        dcv_check_response.details.cname_chain = cname_chain_str
         dcv_check_response.details.found_at = dns_response.qname.to_text(omit_final_dot=True)
 
         # Case-insensitive comparison for all validation methods except ACME and IP Address

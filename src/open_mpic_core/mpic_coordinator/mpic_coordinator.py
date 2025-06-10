@@ -94,6 +94,7 @@ class MpicCoordinator:
         attempts = 1
         previous_attempt_results = None
         cohort_cycle = cycle(perspective_cohorts)
+
         while attempts <= max_attempts:
             perspectives_to_use = next(cohort_cycle)
 
@@ -220,7 +221,7 @@ class MpicCoordinator:
         except Exception as exc:
             error_message = str(exc) if str(exc) else exc.__class__.__name__
             raise RemoteCheckException(
-                f"Check failed for perspective {call_config.perspective.code}: {error_message}",
+                f"Check failed for perspective {call_config.perspective.code}, target {call_config.check_request.domain_or_ip_target}: {error_message}",
                 call_config=call_config,
             ) from exc
         return PerspectiveResponse(perspective_code=call_config.perspective.code, check_response=response)
