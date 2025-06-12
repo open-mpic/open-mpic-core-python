@@ -5,6 +5,9 @@ import socket
 import ssl
 import traceback
 
+import functools
+import contextlib
+
 from aiohttp import ClientError
 from aiohttp.web import HTTPException
 from cryptography import x509
@@ -15,6 +18,31 @@ from open_mpic_core import MpicValidationError, ErrorMessages
 from open_mpic_core import get_logger
 
 logger = get_logger(__name__)
+
+
+
+@contextlib.contextmanager
+def getpeercert_with_binary_info():
+    """
+    Context manager that temporarily modifies SSL's getpeercert to add binary info binary_form=True
+    """
+    original_getpeercert = ssl.SSLObject.getpeercert
+    
+    @functools.wraps(original_getpeercert)
+    def patched_getpeercert(self, binary_form=False):
+        # Always call with binary_form=True and return the result
+        res = original_getpeercert(self, binary_form=binary_form)
+        if binary_form == False:
+            res["binary_form"] = original_getpeercert(self, binary_form=True)
+        return res
+    
+    try:
+        # Apply the patch
+        ssl.SSLObject.getpeercert = patched_getpeercert
+        yield
+    finally:
+        # Always restore original, even if an exception occurs
+        ssl.SSLObject.getpeercert = original_getpeercert
 
 
 class DcvTlsAlpnValidator:
@@ -47,13 +75,14 @@ class DcvTlsAlpnValidator:
             context.set_alpn_protocols([self.ACME_TLS_ALPN_PROTOCOL])
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
+            with getpeercert_with_binary_info():
 
-            reader, writer = await asyncio.open_connection(
-                hostname, # use the real host name
-                443,
-                ssl=context # pass in the context.
-            )
-            binary_cert = writer.get_extra_info('peercert')
+                reader, writer = await asyncio.open_connection(
+                    hostname, # use the real host name
+                    443,
+                    ssl=context # pass in the context.
+                )
+                binary_cert = writer.get_extra_info('peercert')['binary_form']
             print("got cert via asyncio", flush=True)
             print(binary_cert, flush=True)
             #binary_cert = tls_alpn_connection.getpeercert(binary_form=True)
