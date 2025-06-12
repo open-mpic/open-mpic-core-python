@@ -3,6 +3,7 @@ import ipaddress
 import time
 import socket
 import ssl
+from ssl import TLSVersion
 import traceback
 
 import functools
@@ -11,7 +12,7 @@ import contextlib
 from aiohttp import ClientError
 from aiohttp.web import HTTPException
 from cryptography import x509
-from cryptography.x509.oid import ExtensionOID
+from cryptography.x509.oid import ExtensionOID, NameOID
 
 from open_mpic_core import DcvCheckRequest, DcvCheckResponse, DcvValidationMethod, DcvUtils
 from open_mpic_core import MpicValidationError, ErrorMessages
@@ -20,14 +21,13 @@ from open_mpic_core import get_logger
 logger = get_logger(__name__)
 
 
-
 @contextlib.contextmanager
 def getpeercert_with_binary_info():
     """
     Context manager that temporarily modifies SSL's getpeercert to add binary info binary_form=True
     """
     original_getpeercert = ssl.SSLObject.getpeercert
-    
+
     @functools.wraps(original_getpeercert)
     def patched_getpeercert(self, binary_form=False):
         # Always call with binary_form=True and return the result
@@ -35,7 +35,7 @@ def getpeercert_with_binary_info():
         if binary_form == False:
             res["binary_form"] = original_getpeercert(self, binary_form=True)
         return res
-    
+
     try:
         # Apply the patch
         ssl.SSLObject.getpeercert = patched_getpeercert
@@ -43,6 +43,10 @@ def getpeercert_with_binary_info():
     finally:
         # Always restore original, even if an exception occurs
         ssl.SSLObject.getpeercert = original_getpeercert
+
+
+DCV_TLS_ALPN_ASN_1_OCTET_STRING_TYPE = b"\x04"
+DCV_TLS_ALPN_ASN_1_OCTET_STRING_LENGTH = b"\x20"
 
 
 class DcvTlsAlpnValidator:
@@ -66,7 +70,7 @@ class DcvTlsAlpnValidator:
         hostname = request.domain_or_ip_target
         try:
             san_target = ipaddress.ip_address(hostname)
-            sni_target = san_target.reverse_pointer # this python std function doesn't have trailing dot
+            sni_target = san_target.reverse_pointer  # this python std function doesn't have trailing dot
         except ValueError:
             sni_target = hostname
             san_target = hostname
@@ -75,20 +79,19 @@ class DcvTlsAlpnValidator:
             context.set_alpn_protocols([self.ACME_TLS_ALPN_PROTOCOL])
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
+            context.minimum_version = TLSVersion.TLSv1_2
             with getpeercert_with_binary_info():
 
                 reader, writer = await asyncio.open_connection(
-                    sni_target, # use the real host name
-                    443,
-                    ssl=context # pass in the context.
+                    sni_target, 443, ssl=context  # use the real host name  # pass in the context.
                 )
-                binary_cert = writer.get_extra_info('peercert')['binary_form']
-            #binary_cert = tls_alpn_connection.getpeercert(binary_form=True)
+                binary_cert = writer.get_extra_info("peercert")["binary_form"]
+            # binary_cert = tls_alpn_connection.getpeercert(binary_form=True)
             x509_cert = x509.load_der_x509_certificate(binary_cert)
 
             subject_alt_name_extension = None
             acme_tls_alpn_extension = None
-
+            
             for extension in x509_cert.extensions:
                 if extension.oid.dotted_string == self.ACME_TLS_ALPN_OID_DOTTED_STRING:
                     acme_tls_alpn_extension = extension
@@ -104,29 +107,43 @@ class DcvTlsAlpnValidator:
                 dcv_check_response.errors = self._validate_san_entry(subject_alt_name_extension, san_target)
                 if acme_tls_alpn_extension.critical != True:
                     # id-pe-acmeIdentifier extension needs to be critical
-                        dcv_check_response.errors.append(
-                            MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_ALPN_EXTENSION_NONCRITICAL)
-                            )
+                    dcv_check_response.errors.append(
+                        MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_ALPN_EXTENSION_NONCRITICAL)
+                    )
                 if len(dcv_check_response.errors) == 0:
                     # Check the id-pe-acmeIdentifier extension's value.
                     binary_challenge_seen = acme_tls_alpn_extension.value.value
                     key_authorization_hash_binary = None
                     try:
                         key_authorization_hash_binary = bytes.fromhex(key_authorization_hash)
+                        # Add the first two ASN.1 encoding bytes to the expected hex string.
+                        key_authorization_hash_binary = (
+                            DCV_TLS_ALPN_ASN_1_OCTET_STRING_TYPE
+                            + DCV_TLS_ALPN_ASN_1_OCTET_STRING_LENGTH
+                            + key_authorization_hash_binary
+                        )
                         self.logger.info(f"tls-alpn-01: binary_challenge_seen: {binary_challenge_seen}")
                         self.logger.info(f"tls-alpn-01: key_authorization_hash_binary: {key_authorization_hash_binary}")
-                        # Add the first two ASN.1 encoding bytes to the expected hex string.
-                        key_authorization_hash_binary = b"\x04\x20" + key_authorization_hash_binary
+                        
                     except ValueError:
                         dcv_check_response.errors = [
-                            MpicValidationError.create(
-                                ErrorMessages.DCV_PARAMETER_ERROR, key_authorization_hash
-                            )
+                            MpicValidationError.create(ErrorMessages.DCV_PARAMETER_ERROR, key_authorization_hash)
                         ]
-                    if binary_challenge_seen == key_authorization_hash_binary:
-                        dcv_check_response.check_passed = True
-                        dcv_check_response.details.common_name = hostname
-                    self.logger.info(f"key hash test passed? {dcv_check_response.check_passed}")
+                    else:
+                        # Only assign the check_passed attribute if we properly parsed the challenge.
+                        dcv_check_response.check_passed = binary_challenge_seen == key_authorization_hash_binary
+                    
+                    # Obtain the certs common name for logging.
+                    common_name_attributes = x509_cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+                    common_name = None
+                    if len(common_name_attributes) > 0:
+                        common_name = common_name_attributes[0]
+                        print(dir(common_name))
+                        print(str(common_name))
+                        common_name = str(common_name)
+                    dcv_check_response.details.common_name = common_name # Cert common name for logging info.
+                    
+                    self.logger.info(f"tls-alpn-01: passed? {dcv_check_response.check_passed}")
                 dcv_check_response.timestamp_ns = time.time_ns()
         except asyncio.TimeoutError as e:
             dcv_check_response.timestamp_ns = time.time_ns()
@@ -145,7 +162,9 @@ class DcvTlsAlpnValidator:
 
         return dcv_check_response
 
-    def _validate_san_entry(self, certificate_extension: x509.Extension, san_target: str|ipaddress.IPv4Address|ipaddress.IPv6Address) -> list:
+    def _validate_san_entry(
+        self, certificate_extension: x509.Extension, san_target: str | ipaddress.IPv4Address | ipaddress.IPv6Address
+    ) -> list:
         errors = []
         # noinspection PyProtectedMember
         san_names = certificate_extension.value._general_names

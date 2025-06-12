@@ -43,7 +43,7 @@ class DcvDnsCheckResponseDetails(BaseModel):
 
 class DcvTlsAlpnCheckResponseDetails(BaseModel):
     validation_method: Literal[DcvValidationMethod.ACME_TLS_ALPN_01]
-    common_name: str | None = None  # domain where DNS record was found
+    common_name: str | None = None  # common name seen in certificate.
 
 
 DcvCheckResponseDetails = Union[DcvHttpCheckResponseDetails, DcvDnsCheckResponseDetails, DcvTlsAlpnCheckResponseDetails]
