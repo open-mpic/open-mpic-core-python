@@ -59,6 +59,7 @@ class MpicCoordinator:
         if log_level is not None:
             self.logger.setLevel(log_level)
 
+    # noinspection PyInconsistentReturns,PyTypeChecker
     async def coordinate_mpic(self, mpic_request: MpicRequest) -> MpicResponse:
         # noinspection PyUnresolvedReferences
         self.logger.trace(f"Coordinating MPIC request with trace ID {mpic_request.trace_identifier}")
@@ -80,7 +81,11 @@ class MpicCoordinator:
 
         quorum_count = self.determine_required_quorum_count(orchestration_parameters, perspective_count)
 
-        if orchestration_parameters is not None and orchestration_parameters.max_attempts is not None:
+        if (
+            orchestration_parameters is not None
+            and orchestration_parameters.max_attempts is not None
+            and orchestration_parameters.max_attempts > 0
+        ):
             max_attempts = orchestration_parameters.max_attempts
             if self.global_max_attempts is not None and max_attempts > self.global_max_attempts:
                 max_attempts = self.global_max_attempts
@@ -154,9 +159,7 @@ class MpicCoordinator:
     # If more than 2 perspectives are needed (count), it will enforce a minimum of 2 RIRs per cohort.
     def shuffle_and_group_perspectives(self, target_perspectives, cohort_size, domain_or_ip_target):
         if cohort_size > len(target_perspectives):
-            raise ValueError(
-                f"Count ({cohort_size}) must be <= the number of available perspectives ({len(target_perspectives)})"
-            )
+            raise CohortCreationException(ErrorMessages.COHORT_CREATION_ERROR.message.format(cohort_size))
 
         random_seed = hashlib.sha256((self.hash_secret + domain_or_ip_target.lower()).encode("utf-8")).digest()
         perspectives_per_rir = CohortCreator.shuffle_available_perspectives_per_rir(target_perspectives, random_seed)

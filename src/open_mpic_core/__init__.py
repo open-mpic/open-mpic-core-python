@@ -20,6 +20,7 @@ from open_mpic_core.common_domain.check_parameters import (
     DcvContactPhoneCaaValidationParameters,
     DcvIpAddressValidationParameters,
     DcvReverseAddressLookupValidationParameters,
+    DcvAcmeTlsAlpn01ValidationParameters,
     DcvValidationParameters,
 )
 from open_mpic_core.common_domain.check_request import CheckRequest, CaaCheckRequest, DcvCheckRequest
@@ -31,6 +32,7 @@ from open_mpic_core.common_domain.check_response_details import (
     DcvCheckResponseDetailsBuilder,
     DcvDnsCheckResponseDetails,
     DcvHttpCheckResponseDetails,
+    DcvTlsAlpnCheckResponseDetails
 )
 from open_mpic_core.common_domain.check_response import CheckResponse, CaaCheckResponse, DcvCheckResponse
 
@@ -57,6 +59,9 @@ from open_mpic_core.mpic_coordinator.mpic_request_validator import MpicRequestVa
 from open_mpic_core.mpic_coordinator.mpic_response_builder import MpicResponseBuilder
 from open_mpic_core.mpic_coordinator.cohort_creator import CohortCreator
 from open_mpic_core.mpic_coordinator.mpic_coordinator import MpicCoordinator, MpicCoordinatorConfiguration
+
+from open_mpic_core.mpic_dcv_checker.dcv_utils import DcvUtils
+from open_mpic_core.mpic_dcv_checker.dcv_tls_alpn_validator import DcvTlsAlpnValidator
 
 from open_mpic_core.mpic_caa_checker.mpic_caa_checker import MpicCaaChecker
 from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import MpicDcvChecker

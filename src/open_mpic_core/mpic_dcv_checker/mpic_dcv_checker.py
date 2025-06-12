@@ -15,12 +15,12 @@ from aiohttp import ClientError
 from aiohttp.web import HTTPException
 
 from open_mpic_core import DcvCheckRequest, DcvCheckResponse
-from open_mpic_core import RedirectResponse, DcvCheckResponseDetailsBuilder
+from open_mpic_core import RedirectResponse, DcvUtils
 from open_mpic_core import DcvValidationMethod, DnsRecordType
-from open_mpic_core import MpicValidationError
+from open_mpic_core import MpicValidationError, ErrorMessages
 from open_mpic_core import DomainEncoder
+from open_mpic_core import DcvTlsAlpnValidator
 from open_mpic_core import get_logger
-from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
 
 logger = get_logger(__name__)
 
@@ -31,6 +31,7 @@ class MpicDcvChecker:
     WELL_KNOWN_ACME_PATH = ".well-known/acme-challenge"
     CONTACT_EMAIL_TAG = "contactemail"
     CONTACT_PHONE_TAG = "contactphone"
+# acme_tls_alpn related constants are in ./dcv_tls_alpn_validator.py
 
     def __init__(
         self,
@@ -51,11 +52,13 @@ class MpicDcvChecker:
         if log_level is not None:
             self.logger.setLevel(log_level)
 
+
         self.resolver = dns.asyncresolver.get_default_resolver()
         self.resolver.timeout = dns_timeout if dns_timeout is not None else self.resolver.timeout
         self.resolver.lifetime = (
             dns_resolution_lifetime if dns_resolution_lifetime is not None else self.resolver.lifetime
         )
+        self.acme_tls_alpn_validator = DcvTlsAlpnValidator(log_level=log_level)
 
     @asynccontextmanager
     async def get_async_http_client(self):
@@ -114,6 +117,8 @@ class MpicDcvChecker:
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE | DcvValidationMethod.ACME_HTTP_01:
                 result = await self.perform_http_based_validation(dcv_request)
+            case DcvValidationMethod.ACME_TLS_ALPN_01:
+                result = await self.acme_tls_alpn_validator.perform_tls_alpn_validation(dcv_request)
             case _:  # ACME_DNS_01 | DNS_CHANGE | IP_LOOKUP | CONTACT_EMAIL | CONTACT_PHONE | REVERSE_ADDRESS_LOOKUP
                 result = await self.perform_general_dns_validation(dcv_request)
 
@@ -141,7 +146,7 @@ class MpicDcvChecker:
         if validation_method == DcvValidationMethod.DNS_CHANGE:
             exact_match = check_parameters.require_exact_match
 
-        dcv_check_response = MpicDcvChecker.create_empty_check_response(validation_method)
+        dcv_check_response = DcvUtils.create_empty_check_response(validation_method)
 
         try:
             # noinspection PyUnresolvedReferences
@@ -196,14 +201,14 @@ class MpicDcvChecker:
             url_scheme = request.dcv_check_parameters.url_scheme
             token_path = request.dcv_check_parameters.http_token_path
             token_url = f"{url_scheme}://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{token_path}"  # noqa E501 (http)
-            dcv_check_response = MpicDcvChecker.create_empty_check_response(DcvValidationMethod.WEBSITE_CHANGE)
+            dcv_check_response = DcvUtils.create_empty_check_response(DcvValidationMethod.WEBSITE_CHANGE)
         else:
             expected_response_content = request.dcv_check_parameters.key_authorization
             token = request.dcv_check_parameters.token
             token_url = (
                 f"http://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
             )
-            dcv_check_response = MpicDcvChecker.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
+            dcv_check_response = DcvUtils.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
         try:
             async with self.get_async_http_client() as async_http_client:
                 # noinspection PyUnresolvedReferences
@@ -229,16 +234,6 @@ class MpicDcvChecker:
             ]
 
         return dcv_check_response
-
-    @staticmethod
-    def create_empty_check_response(validation_method: DcvValidationMethod) -> DcvCheckResponse:
-        return DcvCheckResponse(
-            check_completed=False,
-            check_passed=False,
-            timestamp_ns=None,
-            errors=None,
-            details=DcvCheckResponseDetailsBuilder.build_response_details(validation_method),
-        )
 
     @staticmethod
     async def evaluate_http_lookup_response(

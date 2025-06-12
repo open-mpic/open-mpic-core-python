@@ -108,12 +108,18 @@ class DcvAcmeDns01ValidationParameters(DcvValidationParameters):
     dns_name_prefix: Literal["_acme-challenge"] = "_acme-challenge"
 
 
+class DcvAcmeTlsAlpn01ValidationParameters(DcvValidationParameters):
+    validation_method: Literal[DcvValidationMethod.ACME_TLS_ALPN_01] = DcvValidationMethod.ACME_TLS_ALPN_01
+    key_authorization_hash: str
+
+
 DcvCheckParameters = Annotated[
     Union[
         DcvWebsiteChangeValidationParameters,
         DcvDnsChangeValidationParameters,
         DcvAcmeHttp01ValidationParameters,
         DcvAcmeDns01ValidationParameters,
+        DcvAcmeTlsAlpn01ValidationParameters,
         DcvContactEmailTxtValidationParameters,
         DcvContactEmailCaaValidationParameters,
         DcvContactPhoneTxtValidationParameters,

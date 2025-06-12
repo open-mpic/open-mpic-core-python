@@ -27,8 +27,9 @@ dependencies = [
   "requests>=2.32.3",
   "dnspython==2.7.0",
   "pydantic==2.10.6",
-  "aiohttp==3.11.13",
+  "aiohttp==3.12.12",
   "black==24.8.0",
+  "cryptography==44.0.2",
 ]
 
 [project.optional-dependencies]
