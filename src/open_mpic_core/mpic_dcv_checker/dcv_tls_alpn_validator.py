@@ -80,10 +80,11 @@ class DcvTlsAlpnValidator:
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
             context.minimum_version = TLSVersion.TLSv1_2
+            context.set_servername_callback
             with getpeercert_with_binary_info():
 
                 reader, writer = await asyncio.open_connection(
-                    sni_target, 443, ssl=context  # use the real host name  # pass in the context.
+                    hostname, 443, ssl=context, server_hostname=sni_target  # use the real host name  # pass in the context.
                 )
                 binary_cert = writer.get_extra_info("peercert")["binary_form"]
             # binary_cert = tls_alpn_connection.getpeercert(binary_form=True)
