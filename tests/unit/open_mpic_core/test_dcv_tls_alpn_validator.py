@@ -244,19 +244,21 @@ class TestDcvTlsAlpnValidator:
 
     def _mock_socket_and_ssl_context(self, mocker, mock_cert):
         # Mock socket.create_connection
-        mock_socket = MagicMock()
-        mocker.patch('socket.create_connection', return_value=mock_socket)
+        mock_writer = MagicMock()
+        mock_reader = MagicMock()
+        mocker.patch('asyncio.open_connection', return_value=(mock_reader, mock_writer))
 
+        mock_writer.get_extra_info.return_value = {"binary_form": mock_cert}
         # Mock SSL context and wrapped socket
-        mock_ssl_socket = MagicMock()
-        mock_ssl_socket.getpeercert.return_value = b'mock_binary_cert'
+        #mock_ssl_socket = MagicMock()
+        #mock_ssl_socket.getpeercert.return_value = b'mock_binary_cert'
 
-        # Mock SSL context's wrap_socket method
-        mock_context = MagicMock()
-        mock_context.wrap_socket.return_value.__enter__.return_value = mock_ssl_socket
-        mocker.patch('ssl.create_default_context', return_value=mock_context)
+        ## Mock SSL context's wrap_socket method
+        #mock_context = MagicMock()
+        #mock_context.wrap_socket.return_value.__enter__.return_value = mock_ssl_socket
+        #mocker.patch('ssl.create_default_context', return_value=mock_context)
 
         # Mock x509.load_der_x509_certificate to return our mock certificate
-        mocker.patch('cryptography.x509.load_der_x509_certificate', return_value=mock_cert)
+        #mocker.patch('cryptography.x509.load_der_x509_certificate', return_value=mock_cert)
 
-        return mock_socket
+        return mock_writer
