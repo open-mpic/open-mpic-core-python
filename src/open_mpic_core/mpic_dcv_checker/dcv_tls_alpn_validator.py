@@ -137,10 +137,8 @@ class DcvTlsAlpnValidator:
                     common_name_attributes = x509_cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
                     common_name = None
                     if len(common_name_attributes) > 0:
-                        common_name = common_name_attributes[0]
-                        print(dir(common_name), flush=True)
-                        print(str(common_name), flush=True)
-                        common_name = str(common_name)
+                        common_name = str(common_name_attributes[0].value)
+                        print(common_name, flush=True)
                     dcv_check_response.details.common_name = common_name # Cert common name for logging info.
                     
                     self.logger.info(f"tls-alpn-01: passed? {dcv_check_response.check_passed}")
