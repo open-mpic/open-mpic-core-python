@@ -122,8 +122,8 @@ class DcvTlsAlpnValidator:
                             + DCV_TLS_ALPN_ASN_1_OCTET_STRING_LENGTH
                             + key_authorization_hash_binary
                         )
-                        self.logger.info(f"tls-alpn-01: binary_challenge_seen: {binary_challenge_seen}")
-                        self.logger.info(f"tls-alpn-01: key_authorization_hash_binary: {key_authorization_hash_binary}")
+                        self.logger.debug(f"tls-alpn-01: binary_challenge_seen: {binary_challenge_seen}")
+                        self.logger.debug(f"tls-alpn-01: key_authorization_hash_binary: {key_authorization_hash_binary}")
                         
                     except ValueError:
                         dcv_check_response.errors = [
@@ -138,10 +138,10 @@ class DcvTlsAlpnValidator:
                     common_name = None
                     if len(common_name_attributes) > 0:
                         common_name = str(common_name_attributes[0].value)
-                        print(common_name, flush=True)
+                        self.logger.debug(f"common name: {common_name}")
                     dcv_check_response.details.common_name = common_name # Cert common name for logging info.
                     
-                    self.logger.info(f"tls-alpn-01: passed? {dcv_check_response.check_passed}")
+                    self.logger.debug(f"tls-alpn-01: passed? {dcv_check_response.check_passed}")
                 dcv_check_response.timestamp_ns = time.time_ns()
         except asyncio.TimeoutError as e:
             dcv_check_response.timestamp_ns = time.time_ns()
