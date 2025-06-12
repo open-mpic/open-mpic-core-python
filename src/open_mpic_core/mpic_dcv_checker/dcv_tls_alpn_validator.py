@@ -138,8 +138,8 @@ class DcvTlsAlpnValidator:
                     common_name = None
                     if len(common_name_attributes) > 0:
                         common_name = common_name_attributes[0]
-                        print(dir(common_name))
-                        print(str(common_name))
+                        print(dir(common_name), flush=True)
+                        print(str(common_name), flush=True)
                         common_name = str(common_name)
                     dcv_check_response.details.common_name = common_name # Cert common name for logging info.
                     
