@@ -78,13 +78,11 @@ class DcvTlsAlpnValidator:
             with getpeercert_with_binary_info():
 
                 reader, writer = await asyncio.open_connection(
-                    hostname, # use the real host name
+                    sni_target, # use the real host name
                     443,
                     ssl=context # pass in the context.
                 )
                 binary_cert = writer.get_extra_info('peercert')['binary_form']
-            print("got cert via asyncio", flush=True)
-            print(binary_cert, flush=True)
             #binary_cert = tls_alpn_connection.getpeercert(binary_form=True)
             x509_cert = x509.load_der_x509_certificate(binary_cert)
 
