@@ -1,7 +1,6 @@
 import asyncio
 import ipaddress
 import time
-import socket
 import ssl
 from ssl import TLSVersion
 import traceback
@@ -28,13 +27,11 @@ def getpeercert_with_binary_info():
     """
     original_getpeercert = ssl.SSLObject.getpeercert
 
+    # noinspection PyUnusedLocal
     @functools.wraps(original_getpeercert)
     def patched_getpeercert(self, binary_form=False):
         # Always call with binary_form=True and return the result
-        res = original_getpeercert(self, binary_form=binary_form)
-        if binary_form == False:
-            res["binary_form"] = original_getpeercert(self, binary_form=True)
-        return res
+        return original_getpeercert(self, binary_form=True)
 
     try:
         # Apply the patch
@@ -80,14 +77,14 @@ class DcvTlsAlpnValidator:
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
             context.minimum_version = TLSVersion.TLSv1_2
-            context.set_servername_callback
-            with getpeercert_with_binary_info():
-
+            with getpeercert_with_binary_info():  # monkeypatch overrides default behavior and gets binary cert info
                 reader, writer = await asyncio.open_connection(
                     hostname, 443, ssl=context, server_hostname=sni_target  # use the real host name  # pass in the context.
                 )
-                binary_cert = writer.get_extra_info("peercert")["binary_form"]
-            # binary_cert = tls_alpn_connection.getpeercert(binary_form=True)
+                binary_cert = writer.get_extra_info("peercert")
+
+            dcv_check_response.check_completed = True  # check will be considered "complete" whether it passes or fails
+
             x509_cert = x509.load_der_x509_certificate(binary_cert)
 
             subject_alt_name_extension = None
@@ -106,7 +103,7 @@ class DcvTlsAlpnValidator:
             else:
                 # We now know we have both extensions present. Begin checking each one.
                 dcv_check_response.errors = self._validate_san_entry(subject_alt_name_extension, san_target)
-                if acme_tls_alpn_extension.critical != True:
+                if not acme_tls_alpn_extension.critical:
                     # id-pe-acmeIdentifier extension needs to be critical
                     dcv_check_response.errors.append(
                         MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_ALPN_EXTENSION_NONCRITICAL)
@@ -114,7 +111,6 @@ class DcvTlsAlpnValidator:
                 if len(dcv_check_response.errors) == 0:
                     # Check the id-pe-acmeIdentifier extension's value.
                     binary_challenge_seen = acme_tls_alpn_extension.value.value
-                    key_authorization_hash_binary = None
                     try:
                         key_authorization_hash_binary = bytes.fromhex(key_authorization_hash)
                         # Add the first two ASN.1 encoding bytes to the expected hex string.
