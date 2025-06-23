@@ -79,7 +79,7 @@ class TestMpicCoordinator:
         target_perspectives = coordinator_config.target_perspectives
         excessive_count = len(target_perspectives) + 1
         mpic_coordinator = MpicCoordinator(self.create_passing_caa_check_response, coordinator_config)
-        with pytest.raises(ValueError):
+        with pytest.raises(CohortCreationException):
             mpic_coordinator.shuffle_and_group_perspectives(target_perspectives, excessive_count, "test_target")
 
     def shuffle_and_group_perspectives__should_return_list_of_cohorts_of_requested_size(self):
@@ -310,7 +310,6 @@ class TestMpicCoordinator:
             if mpic_coordinator_config.target_perspectives[index].code != 'us-west-1':
                 mpic_coordinator_config.target_perspectives[index].too_close_codes = ['us-west-1']
 
-        print(mpic_coordinator_config)
         mocked_call_remote_perspective_function = AsyncMock()
         mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
             self.create_passing_caa_check_response
@@ -330,7 +329,6 @@ class TestMpicCoordinator:
         for index in range(len(mpic_coordinator_config.target_perspectives)):
             mpic_coordinator_config.target_perspectives[index].rir = RegionalInternetRegistry.RIPE_NCC
 
-        print(mpic_coordinator_config)
         mocked_call_remote_perspective_function = AsyncMock()
         mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
             self.create_passing_caa_check_response
@@ -338,7 +336,6 @@ class TestMpicCoordinator:
         mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config)
         with pytest.raises(CohortCreationException):
             await mpic_coordinator.coordinate_mpic(mpic_request)
-
 
     async def coordinate_mpic__should_cycle_through_perspective_cohorts_if_attempts_exceeds_cohort_number(self):
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()

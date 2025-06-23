@@ -1,6 +1,7 @@
 import pytest
 
 from open_mpic_core import DcvDnsCheckResponseDetails, DcvHttpCheckResponseDetails
+from open_mpic_core.common_domain.check_response_details import DcvTlsAlpnCheckResponseDetails
 
 
 class TestCheckResponseDetails:
@@ -24,6 +25,7 @@ class TestCheckResponseDetails:
          DcvHttpCheckResponseDetails),
         ('{"validation_method": "acme-http-01", "response_history": [], "response_url": "example.com", "response_status_code": 200, "response_page": "foo"}',
          DcvHttpCheckResponseDetails),
+        ('{"validation_method": "acme-tls-alpn-01", "common_name": "example.com"}', DcvTlsAlpnCheckResponseDetails),
     ])
     # fmt: on
     def check_response_details__should_automatically_deserialize_into_correct_object_based_on_discriminator(self, details_as_json, expected_class):

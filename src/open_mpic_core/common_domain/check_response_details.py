@@ -41,7 +41,12 @@ class DcvDnsCheckResponseDetails(BaseModel):
     found_at: str | None = None  # domain where DNS record was found
     cname_chain: list[str] | None = None # List of CNAMEs followed to obtain the final result.
 
-DcvCheckResponseDetails = Union[DcvHttpCheckResponseDetails, DcvDnsCheckResponseDetails]
+class DcvTlsAlpnCheckResponseDetails(BaseModel):
+    validation_method: Literal[DcvValidationMethod.ACME_TLS_ALPN_01]
+    common_name: str | None = None  # common name seen in certificate.
+
+
+DcvCheckResponseDetails = Union[DcvHttpCheckResponseDetails, DcvDnsCheckResponseDetails, DcvTlsAlpnCheckResponseDetails]
 
 
 # utility class
@@ -53,6 +58,7 @@ class DcvCheckResponseDetailsBuilder:
             DcvValidationMethod.DNS_CHANGE: DcvDnsCheckResponseDetails,
             DcvValidationMethod.ACME_HTTP_01: DcvHttpCheckResponseDetails,
             DcvValidationMethod.ACME_DNS_01: DcvDnsCheckResponseDetails,
+            DcvValidationMethod.ACME_TLS_ALPN_01: DcvTlsAlpnCheckResponseDetails,
             DcvValidationMethod.CONTACT_PHONE_TXT: DcvDnsCheckResponseDetails,
             DcvValidationMethod.CONTACT_PHONE_CAA: DcvDnsCheckResponseDetails,
             DcvValidationMethod.CONTACT_EMAIL_TXT: DcvDnsCheckResponseDetails,
