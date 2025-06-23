@@ -755,7 +755,7 @@ class TestMpicDcvChecker:
     )
     async def dns_based_dcv_checks__should_return_cname_chain(self, dcv_method, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
-        self.mock_dns_resolve_call_with_cname_chain(dcv_request, mocker)
+        self._mock_dns_resolve_call_with_cname_chain(dcv_request, mocker)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert "sub.example.com." in dcv_response.details.cname_chain
 
@@ -941,10 +941,10 @@ class TestMpicDcvChecker:
 
         return self.patch_resolver_resolve_with_side_effect(mocker, self.dcv_checker.resolver, side_effect)
 
-    def mock_dns_resolve_call_with_specific_response_code(
+    def _mock_dns_resolve_call_with_specific_response_code(
         self, dcv_request: DcvCheckRequest, response_code, mocker
     ):
-        test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
+        test_dns_query_answer = self._create_basic_dns_response_for_mock(dcv_request, mocker)
 
         test_dns_query_answer.response.rcode = lambda: response_code
         self._patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
@@ -954,8 +954,8 @@ class TestMpicDcvChecker:
         test_dns_query_answer.response.flags |= flag
         self._patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
 
-    def mock_dns_resolve_call_with_cname_chain(self, dcv_request: DcvCheckRequest, mocker):
-        test_dns_query_answer = self.create_basic_dns_response_for_mock(dcv_request, mocker)
+    def _mock_dns_resolve_call_with_cname_chain(self, dcv_request: DcvCheckRequest, mocker):
+        test_dns_query_answer = self._create_basic_dns_response_for_mock(dcv_request, mocker)
         test_dns_query_answer.chaining_result = ChainingResult(
             canonical_name="sub.example.com",
             answer=None,
@@ -966,9 +966,9 @@ class TestMpicDcvChecker:
                 )
             ],
         )
-        self.patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
+        self._patch_resolver_with_answer_or_exception(mocker, test_dns_query_answer)
 
-    def mock_dns_resolve_call_getting_multiple_txt_records(self, dcv_request: DcvCheckRequest, mocker):
+    def _mock_dns_resolve_call_getting_multiple_txt_records(self, dcv_request: DcvCheckRequest, mocker):
         check_parameters = dcv_request.dcv_check_parameters
         match check_parameters.validation_method:
             case DcvValidationMethod.DNS_CHANGE:
