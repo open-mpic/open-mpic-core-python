@@ -34,11 +34,11 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
-    "pytest==8.2.2",
-    "pytest-cov==5.0.0",
-    "pytest-mock==3.14.0",
+    "pytest==8.4.1",
+    "pytest-cov==6.2.1",
+    "pytest-mock==3.14.1",
     "pytest-html==4.1.1",
-    "pytest-asyncio==0.25.1",
+    "pytest-asyncio==1.0.0",
     "pytest-profiling==1.8.1",
 ]
 
