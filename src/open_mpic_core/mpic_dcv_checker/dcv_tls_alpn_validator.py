@@ -169,7 +169,7 @@ class DcvTlsAlpnValidator:
         if type(san_target) == str:
             if not isinstance(single_san_name, x509.general_name.DNSName):
                 errors = [MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_DNSNAME)]
-            elif single_san_name.value != san_target:
+            elif single_san_name.value.lower() != san_target.lower(): # Comparison is case insensitive per RFC4343 rules.
                 errors = [MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_HOSTNAME)]
         else:
             if not isinstance(single_san_name, x509.general_name.IPAddress):
