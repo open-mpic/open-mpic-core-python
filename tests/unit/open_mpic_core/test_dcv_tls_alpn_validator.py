@@ -6,7 +6,7 @@ import socket
 from unittest.mock import MagicMock
 from io import StringIO
 from cryptography import x509
-from cryptography.x509 import SubjectAlternativeName, Extension
+from cryptography.x509 import SubjectAlternativeName, Extension, NameAttribute
 from cryptography.x509.oid import ExtensionOID
 
 from open_mpic_core import ErrorMessages, TRACE_LEVEL
@@ -162,8 +162,8 @@ class TestDcvTlsAlpnValidator:
 
     async def perform_tls_alpn_validation__should_handle_connection_errors(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_acme_tls_alpn_01_check_request()
-        # Mock socket to raise an exception
-        mocker.patch('socket.create_connection', side_effect=socket.timeout("Connection timed out"))
+        # Mock asyncio to raise an exception (haven't checked if this specific exception could be raised, but whatever)
+        mocker.patch('asyncio.open_connection', side_effect=socket.timeout("Connection timed out"))
         response = await self.validator.perform_tls_alpn_validation(dcv_request)
         assert response.check_completed is False
         assert response.check_passed is False
@@ -195,6 +195,9 @@ class TestDcvTlsAlpnValidator:
         acme_extension.value.value = b"\x04\x20" + key_auth_hash_binary
 
         mock_cert.extensions = [san_extension, acme_extension]
+
+        # mock common name as require by test case
+        mock_cert.subject = x509.Name(attributes=[x509.NameAttribute(x509.NameOID.COMMON_NAME, hostname)])
 
         return mock_cert
 
