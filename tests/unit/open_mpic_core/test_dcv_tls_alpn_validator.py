@@ -98,7 +98,7 @@ class TestDcvTlsAlpnValidator:
         assert len(response.errors) > 0
         assert response.errors[0].error_message == ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_DNSNAME.message
 
-    async def perform_tls_alpn_validation__should_fali_with_ip_in_DNSname(self, mocker):
+    async def perform_tls_alpn_validation__should_fail_with_ip_in_dns_name(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_acme_tls_alpn_01_check_request("1.2.3.4")
         mock_cert = self._create_mock_certificate(
             dcv_request.domain_or_ip_target, dcv_request.dcv_check_parameters.key_authorization_hash

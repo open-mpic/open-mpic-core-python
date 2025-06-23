@@ -1046,10 +1046,17 @@ class TestMpicDcvChecker:
 
     @staticmethod
     def shuffle_case(string_to_shuffle: str) -> str:
-        return "".join(
+        result = "".join(
             str(single_character).upper() if random.random() > 0.5 else str(single_character).lower()
             for single_character in string_to_shuffle
         )
+        # if result is all a single case, change first alphabetic character to the opposite case
+        if result.islower() or result.isupper():
+            for i, char in enumerate(result):
+                if char.isalpha():
+                    result = result[:i] + char.swapcase() + result[i + 1 :]
+                    break
+        return result
 
 
 if __name__ == "__main__":
