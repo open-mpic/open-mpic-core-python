@@ -41,6 +41,7 @@ class DcvDnsCheckResponseDetails(BaseModel):
     found_at: str | None = None  # domain where DNS record was found
     cname_chain: list[str] | None = None # List of CNAMEs followed to obtain the final result.
 
+
 class DcvTlsAlpnCheckResponseDetails(BaseModel):
     validation_method: Literal[DcvValidationMethod.ACME_TLS_ALPN_01]
     common_name: str | None = None  # common name seen in certificate.

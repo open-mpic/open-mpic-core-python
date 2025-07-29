@@ -52,7 +52,6 @@ class MpicDcvChecker:
         if log_level is not None:
             self.logger.setLevel(log_level)
 
-
         self.resolver = dns.asyncresolver.get_default_resolver()
         self.resolver.timeout = dns_timeout if dns_timeout is not None else self.resolver.timeout
         self.resolver.lifetime = (
@@ -78,8 +77,11 @@ class MpicDcvChecker:
                     await self._async_http_client.close()
 
                 connector = aiohttp.TCPConnector(ssl=self.verify_ssl, limit=0)  # no limit on simultaneous connections
+                dummy_cookie_jar = aiohttp.DummyCookieJar()  # disable cookie processing
                 self._async_http_client = aiohttp.ClientSession(
-                    connector=connector, timeout=aiohttp.ClientTimeout(total=self._http_client_timeout)
+                    connector=connector,
+                    timeout=aiohttp.ClientTimeout(total=self._http_client_timeout),
+                    cookie_jar=dummy_cookie_jar
                 )
                 self._http_client_loop = current_loop
             yield self._async_http_client
