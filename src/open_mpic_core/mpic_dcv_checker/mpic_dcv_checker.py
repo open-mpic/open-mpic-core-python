@@ -79,14 +79,14 @@ class MpicDcvChecker:
 
                 connector = aiohttp.TCPConnector(ssl=self.verify_ssl, limit=0)  # no limit on simultaneous connections
                 self._async_http_client = aiohttp.ClientSession(
-                    connector=connector, timeout=aiohttp.ClientTimeout(total=self._http_client_timeout)
+                    connector=connector, timeout=aiohttp.ClientTimeout(total=self._http_client_timeout), trust_env=True
                 )
                 self._http_client_loop = current_loop
             yield self._async_http_client
         else:  # implementations such as AWS Lambda will need a new client for each invocation
             connector = aiohttp.TCPConnector(ssl=self.verify_ssl, limit=0)
             client = aiohttp.ClientSession(
-                connector=connector, timeout=aiohttp.ClientTimeout(total=self._http_client_timeout)
+                connector=connector, timeout=aiohttp.ClientTimeout(total=self._http_client_timeout), trust_env=True
             )
             try:
                 yield client
