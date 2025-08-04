@@ -285,26 +285,31 @@ class MpicDcvChecker:
                     # read up to 100 bytes, unless challenge_value or match_regex is larger
                     bytes_to_read = max(100, len(challenge_value), len(match_regex))
 
-            with await http_response.content.read(bytes_to_read) as content:
+            content = await http_response.content.read(bytes_to_read)
+            if content is None or len(content) == 0:
+                result = ""
+            else:
                 http_response._body = content  # explicitly set to take advantage of encoding detection capabilities
+                # response_text = await http_response.text()
+                # result = response_text.strip()
                 result = content.decode(http_response.get_encoding()).strip()
 
-                if validation_method == DcvValidationMethod.ACME_HTTP_01:
-                    # ACME requires an exact match
-                    dcv_check_response.check_passed = challenge_value == result
-                else:
-                    # Case-insensitive substring check for WEBSITE_CHANGE; also checks regex if provided
-                    dcv_check_response.check_passed = challenge_value.lower() in result.lower()
-                    if match_regex is not None and len(match_regex) > 0:
-                        match = re.search(match_regex, result)
-                        dcv_check_response.check_passed = challenge_value.lower() in result.lower() and match is not None
-                dcv_check_response.details.response_status_code = http_response.status
-                dcv_check_response.details.response_url = target_url
-                dcv_check_response.details.response_history = response_history
-                dcv_check_response.details.response_page = base64.b64encode(content).decode()
+            if validation_method == DcvValidationMethod.ACME_HTTP_01:
+                # ACME requires an exact match
+                dcv_check_response.check_passed = challenge_value == result
+            else:
+                # Case-insensitive substring check for WEBSITE_CHANGE; also checks regex if provided
+                dcv_check_response.check_passed = challenge_value.lower() in result.lower()
+                if match_regex is not None and len(match_regex) > 0:
+                    match = re.search(match_regex, result)
+                    dcv_check_response.check_passed = challenge_value.lower() in result.lower() and match is not None
+            dcv_check_response.details.response_status_code = http_response.status
+            dcv_check_response.details.response_url = target_url
+            dcv_check_response.details.response_history = response_history
+            dcv_check_response.details.response_page = base64.b64encode(content).decode()
 
-                # explicitly close connection since we just read part of it
-                http_response.close()
+            # explicitly close connection since we just read part of it
+            http_response.close()
 
         return dcv_check_response
 
