@@ -290,8 +290,6 @@ class MpicDcvChecker:
                 result = ""
             else:
                 http_response._body = content  # explicitly set to take advantage of encoding detection capabilities
-                # response_text = await http_response.text()
-                # result = response_text.strip()
                 result = content.decode(http_response.get_encoding()).strip()
 
             if validation_method == DcvValidationMethod.ACME_HTTP_01:

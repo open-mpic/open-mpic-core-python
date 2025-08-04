@@ -439,13 +439,19 @@ class TestMpicDcvChecker:
         hundred_fifty_a_chars_b64 = base64.b64encode(b"a" * 150).decode()  # store 150 chars in base64 encoded string
         assert len(dcv_response.details.response_page) == len(hundred_fifty_a_chars_b64)
 
-    @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01])
-    async def http_based_dcv_checks__should_leverage_requests_decoding_capabilities(self, dcv_method, mocker):
+    # fmt: off
+    @pytest.mark.parametrize("dcv_method, content, expected_challenge_value", [
+        (DcvValidationMethod.WEBSITE_CHANGE, b"\x43\x61\x66\xe9", "Café"),  # "Café" in ISO-8859-1
+        (DcvValidationMethod.ACME_HTTP_01, b"\x43\x61\x66\xe9", "Café"),  # "Café" in ISO-8859-1
+        (DcvValidationMethod.ACME_HTTP_01, None, "")
+    ])
+    # fmt: on
+    async def http_based_dcv_checks__should_leverage_requests_decoding_capabilities(
+        self, dcv_method, content, expected_challenge_value, mocker
+    ):
         # Expected to be received in the Content-Type header.
         # "Café" in ISO-8859-1 is chosen as it is different, for example, when UTF-8 encoded: "43 61 66 C3 A9"
         encoding = "ISO-8859-1"
-        content = b"\x43\x61\x66\xe9"
-        expected_challenge_value = "Café"
 
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
         mock_response = TestMpicDcvChecker._create_mock_http_response_with_content_and_encoding(content, encoding)
@@ -938,12 +944,9 @@ class TestMpicDcvChecker:
                 return test_dns_query_answer
             raise self.raise_(dns.resolver.NoAnswer)
 
-
         return self.patch_resolver_resolve_with_side_effect(mocker, self.dcv_checker.resolver, side_effect)
 
-    def _mock_dns_resolve_call_with_specific_response_code(
-        self, dcv_request: DcvCheckRequest, response_code, mocker
-    ):
+    def _mock_dns_resolve_call_with_specific_response_code(self, dcv_request: DcvCheckRequest, response_code, mocker):
         test_dns_query_answer = self._create_basic_dns_response_for_mock(dcv_request, mocker)
 
         test_dns_query_answer.response.rcode = lambda: response_code
@@ -1040,9 +1043,7 @@ class TestMpicDcvChecker:
             details=DcvCheckResponseDetailsBuilder.build_response_details(DcvValidationMethod.ACME_TLS_ALPN_01),
         )
         response.details.common_name = dcv_request.domain_or_ip_target
-        mocker.patch.object(
-            DcvTlsAlpnValidator, "perform_tls_alpn_validation", return_value=response
-        )
+        mocker.patch.object(DcvTlsAlpnValidator, "perform_tls_alpn_validation", return_value=response)
 
     @staticmethod
     def shuffle_case(string_to_shuffle: str) -> str:
