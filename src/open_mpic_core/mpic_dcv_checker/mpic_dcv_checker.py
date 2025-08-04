@@ -76,19 +76,26 @@ class MpicDcvChecker:
                 if self._async_http_client and not self._async_http_client.closed:
                     await self._async_http_client.close()
 
-                connector = aiohttp.TCPConnector(ssl=self.verify_ssl, limit=0)  # no limit on simultaneous connections
+                # limit simultaneous connections to 100 in pool (default is 100)
+                # force_close=True closes connection after each request; DCV checks don't need multiple requests
+                connector = aiohttp.TCPConnector(ssl=self.verify_ssl, limit=100, force_close=True)
                 dummy_cookie_jar = aiohttp.DummyCookieJar()  # disable cookie processing
                 self._async_http_client = aiohttp.ClientSession(
                     connector=connector,
                     timeout=aiohttp.ClientTimeout(total=self._http_client_timeout),
-                    cookie_jar=dummy_cookie_jar
+                    trust_env=True,
+                    cookie_jar=dummy_cookie_jar,
                 )
                 self._http_client_loop = current_loop
             yield self._async_http_client
         else:  # implementations such as AWS Lambda will need a new client for each invocation
             connector = aiohttp.TCPConnector(ssl=self.verify_ssl, limit=0)
+            dummy_cookie_jar = aiohttp.DummyCookieJar()  # disable cookie processing
             client = aiohttp.ClientSession(
-                connector=connector, timeout=aiohttp.ClientTimeout(total=self._http_client_timeout)
+                connector=connector,
+                timeout=aiohttp.ClientTimeout(total=self._http_client_timeout),
+                trust_env=True,
+                cookie_jar=dummy_cookie_jar,
             )
             try:
                 yield client
@@ -279,10 +286,7 @@ class MpicDcvChecker:
                     bytes_to_read = max(100, len(challenge_value), len(match_regex))
 
             content = await http_response.content.read(bytes_to_read)
-            # set internal _content to leverage decoding capabilities of ClientResponse.text without reading the entire response
-            http_response._body = content
-            response_text = await http_response.text()
-            result = response_text.strip()
+            result = content.decode(http_response.get_encoding()).strip()
 
             if validation_method == DcvValidationMethod.ACME_HTTP_01:
                 # ACME requires an exact match
@@ -297,6 +301,9 @@ class MpicDcvChecker:
             dcv_check_response.details.response_url = target_url
             dcv_check_response.details.response_history = response_history
             dcv_check_response.details.response_page = base64.b64encode(content).decode()
+
+            # explicitly clear response -- shouldn't be necessary
+            http_response.close()
 
         return dcv_check_response
 
