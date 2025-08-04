@@ -286,6 +286,7 @@ class MpicDcvChecker:
                     bytes_to_read = max(100, len(challenge_value), len(match_regex))
 
             content = await http_response.content.read(bytes_to_read)
+            http_response._body = content  # explicitly set to take advantage of encoding detection capabilities
             result = content.decode(http_response.get_encoding()).strip()
 
             if validation_method == DcvValidationMethod.ACME_HTTP_01:
@@ -302,7 +303,7 @@ class MpicDcvChecker:
             dcv_check_response.details.response_history = response_history
             dcv_check_response.details.response_page = base64.b64encode(content).decode()
 
-            # explicitly clear response -- shouldn't be necessary
+            # explicitly close connection since we just read part of it
             http_response.close()
 
         return dcv_check_response
