@@ -89,7 +89,7 @@ class MpicDcvChecker:
                 self._http_client_loop = current_loop
             yield self._async_http_client
         else:  # implementations such as AWS Lambda will need a new client for each invocation
-            connector = aiohttp.TCPConnector(ssl=self.verify_ssl, limit=0)
+            connector = aiohttp.TCPConnector(ssl=self.verify_ssl, limit=100, force_close=True)
             dummy_cookie_jar = aiohttp.DummyCookieJar()  # disable cookie processing
             client = aiohttp.ClientSession(
                 connector=connector,
