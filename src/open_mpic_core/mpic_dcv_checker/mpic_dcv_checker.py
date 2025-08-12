@@ -36,14 +36,12 @@ class MpicDcvChecker:
     def __init__(
         self,
         http_client_timeout: float = 30,
-        reuse_http_client: bool = False,
         verify_ssl: bool = False,
         log_level: int = None,
         dns_timeout: float = None,
         dns_resolution_lifetime: float = None,
     ):
         self.verify_ssl = verify_ssl
-        self._reuse_http_client = reuse_http_client  # FIXME remove this...
         self._async_http_client = None
         self._http_client_loop = None  # track which loop the http client was created on
 
