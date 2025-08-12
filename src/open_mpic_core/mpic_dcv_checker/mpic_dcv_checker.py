@@ -73,18 +73,6 @@ class MpicDcvChecker:
             if not client.closed:
                 await client.close()
 
-    # FIXME remove this...
-    async def shutdown(self):
-        """Close the async HTTP client.
-
-        Will need to call this as part of shutdown in wrapping code.
-        For example, FastAPI's lifespan (https://fastapi.tiangolo.com/advanced/events/)
-        :return:
-        """
-        if self._async_http_client and not self._async_http_client.closed:
-            await self._async_http_client.close()
-            self._async_http_client = None
-
     async def check_dcv(self, dcv_request: DcvCheckRequest) -> DcvCheckResponse:
         validation_method = dcv_request.dcv_check_parameters.validation_method
         # noinspection PyUnresolvedReferences
