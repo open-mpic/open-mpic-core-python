@@ -31,7 +31,7 @@ class MpicDcvChecker:
     WELL_KNOWN_ACME_PATH = ".well-known/acme-challenge"
     CONTACT_EMAIL_TAG = "contactemail"
     CONTACT_PHONE_TAG = "contactphone"
-# acme_tls_alpn related constants are in ./dcv_tls_alpn_validator.py
+    # acme_tls_alpn related constants are in ./dcv_tls_alpn_validator.py
 
     def __init__(
         self,
@@ -43,15 +43,13 @@ class MpicDcvChecker:
         dns_resolution_lifetime: float = None,
     ):
         self.verify_ssl = verify_ssl
-        self._reuse_http_client = reuse_http_client
+        self._reuse_http_client = reuse_http_client  # FIXME remove this...
         self._async_http_client = None
         self._http_client_loop = None  # track which loop the http client was created on
-        self._http_client_timeout = http_client_timeout
 
         self.logger = logger.getChild(self.__class__.__name__)
         if log_level is not None:
             self.logger.setLevel(log_level)
-
 
         self.resolver = dns.asyncresolver.get_default_resolver()
         self.resolver.timeout = dns_timeout if dns_timeout is not None else self.resolver.timeout
@@ -59,49 +57,25 @@ class MpicDcvChecker:
             dns_resolution_lifetime if dns_resolution_lifetime is not None else self.resolver.lifetime
         )
         self.acme_tls_alpn_validator = DcvTlsAlpnValidator(log_level=log_level)
+        self._http_client_timeout = http_client_timeout
 
     @asynccontextmanager
     async def get_async_http_client(self):
-        current_loop = asyncio.get_running_loop()
+        connector = aiohttp.TCPConnector(ssl=self.verify_ssl, limit=0)
+        dummy_cookie_jar = aiohttp.DummyCookieJar()  # disable cookie processing
+        client = aiohttp.ClientSession(
+            connector=connector,
+            timeout=aiohttp.ClientTimeout(total=self._http_client_timeout),
+            trust_env=True,
+            cookie_jar=dummy_cookie_jar,
+        )
+        try:
+            yield client
+        finally:
+            if not client.closed:
+                await client.close()
 
-        if self._reuse_http_client:  # implementations such as FastAPI may want this for efficiency
-            reason_for_new_client = None
-            # noinspection PyProtectedMember
-            if self._async_http_client is None or self._async_http_client.closed:
-                reason_for_new_client = "Creating new async HTTP client because there isn't an active one"
-            elif self._http_client_loop is not current_loop:
-                reason_for_new_client = "Creating new async HTTP client due to a mismatch in running event loops"
-
-            if reason_for_new_client is not None:
-                self.logger.debug(reason_for_new_client)
-                if self._async_http_client and not self._async_http_client.closed:
-                    await self._async_http_client.close()
-
-                connector = aiohttp.TCPConnector(ssl=self.verify_ssl, limit=0)  # no limit on simultaneous connections
-                dummy_cookie_jar = aiohttp.DummyCookieJar()  # disable cookie processing
-                self._async_http_client = aiohttp.ClientSession(
-                    connector=connector,
-                    timeout=aiohttp.ClientTimeout(total=self._http_client_timeout),
-                    trust_env=True,
-                    cookie_jar=dummy_cookie_jar,
-                )
-                self._http_client_loop = current_loop
-            yield self._async_http_client
-        else:  # implementations such as AWS Lambda will need a new client for each invocation
-            connector = aiohttp.TCPConnector(ssl=self.verify_ssl, limit=0)
-            dummy_cookie_jar = aiohttp.DummyCookieJar()  # disable cookie processing
-            client = aiohttp.ClientSession(
-                connector=connector,
-                timeout=aiohttp.ClientTimeout(total=self._http_client_timeout),
-                trust_env=True,
-                cookie_jar=dummy_cookie_jar,
-            )
-            try:
-                yield client
-            finally:
-                if not client.closed:
-                    await client.close()
-
+    # FIXME remove this...
     async def shutdown(self):
         """Close the async HTTP client.
 
@@ -116,7 +90,12 @@ class MpicDcvChecker:
     async def check_dcv(self, dcv_request: DcvCheckRequest) -> DcvCheckResponse:
         validation_method = dcv_request.dcv_check_parameters.validation_method
         # noinspection PyUnresolvedReferences
-        self.logger.trace(f"Checking DCV for {dcv_request.domain_or_ip_target} with method {validation_method}.")
+        self.logger.trace(
+            "Checking DCV for %s with method %s. Trace identifier: %s",
+            dcv_request.domain_or_ip_target,
+            validation_method,
+            dcv_request.trace_identifier,
+        )
 
         # encode domain if needed
         dcv_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(dcv_request.domain_or_ip_target)
@@ -131,7 +110,8 @@ class MpicDcvChecker:
                 result = await self.perform_general_dns_validation(dcv_request)
 
         # noinspection PyUnresolvedReferences
-        self.logger.trace(f"Completed DCV for {dcv_request.domain_or_ip_target} with method {validation_method}")
+
+        self.logger.trace("Completed DCV for %s with method %s", dcv_request.domain_or_ip_target, validation_method)
         return result
 
     async def perform_general_dns_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:
@@ -158,7 +138,9 @@ class MpicDcvChecker:
 
         try:
             # noinspection PyUnresolvedReferences
-            async with self.logger.trace_timing(f"DNS lookup for target {name_to_resolve}"):
+            async with self.logger.trace_timing(
+                f"DNS lookup for target {name_to_resolve}. Trace identifier: {request.trace_identifier}"
+            ):
                 lookup = await self.perform_dns_resolution(name_to_resolve, validation_method, dns_record_type)
             MpicDcvChecker.evaluate_dns_lookup_response(
                 dcv_check_response, lookup, validation_method, dns_record_type, expected_dns_record_content, exact_match
@@ -304,6 +286,8 @@ class MpicDcvChecker:
             dcv_check_response.details.response_history = response_history
             dcv_check_response.details.response_page = base64.b64encode(content).decode()
 
+            http_response.close()  # ensure connection is closed
+
         return dcv_check_response
 
     @staticmethod
@@ -363,7 +347,7 @@ class MpicDcvChecker:
             # This code will flatten a list of record sets should a CNAME come with multiple records in the record set.
             # Per the RFCs, there can only ever be one CNAME in a CNAME record set.
             for cname_record in cname_record_set:
-                cname_chain_str.append( b".".join(cname_record.target.labels).decode("utf-8"))
+                cname_chain_str.append(b".".join(cname_record.target.labels).decode("utf-8"))
         dcv_check_response.details.cname_chain = cname_chain_str
         dcv_check_response.details.found_at = dns_response.qname.to_text(omit_final_dot=True)
 
