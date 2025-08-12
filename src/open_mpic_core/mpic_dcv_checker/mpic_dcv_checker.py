@@ -59,7 +59,7 @@ class MpicDcvChecker:
 
     @asynccontextmanager
     async def get_async_http_client(self):
-        connector = aiohttp.TCPConnector(ssl=self.verify_ssl, limit=0)
+        connector = aiohttp.TCPConnector(ssl=self.verify_ssl, limit=0, force_close=True)
         dummy_cookie_jar = aiohttp.DummyCookieJar()  # disable cookie processing
         client = aiohttp.ClientSession(
             connector=connector,
