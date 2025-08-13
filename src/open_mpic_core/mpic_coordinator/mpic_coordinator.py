@@ -214,14 +214,16 @@ class MpicCoordinator:
         """
         try:
             # noinspection PyUnresolvedReferences
-            async with self.logger.trace_timing(f"MPIC round-trip with perspective {call_config.perspective.code}"):
+            async with self.logger.trace_timing(
+                f"MPIC round-trip with perspective {call_config.perspective.code}; trace ID: {call_config.check_request.trace_identifier}"
+            ):
                 response = await call_remote_perspective_function(
                     call_config.perspective, call_config.check_type, call_config.check_request
                 )
         except Exception as exc:
             error_message = str(exc) if str(exc) else exc.__class__.__name__
             raise RemoteCheckException(
-                f"Check failed for perspective {call_config.perspective.code}, target {call_config.check_request.domain_or_ip_target}: {error_message}",
+                f"Check failed for perspective {call_config.perspective.code}, target {call_config.check_request.domain_or_ip_target}: {error_message}; trace ID: {call_config.check_request.trace_identifier}",
                 call_config=call_config,
             ) from exc
         return PerspectiveResponse(perspective_code=call_config.perspective.code, check_response=response)
@@ -270,7 +272,9 @@ class MpicCoordinator:
         ]
 
         # noinspection PyUnresolvedReferences
-        async with self.logger.trace_timing(f"MPIC round-trip with {len(perspectives_to_use)} perspectives"):
+        async with self.logger.trace_timing(
+            f"MPIC round-trip with {len(perspectives_to_use)} perspectives; trace ID: {mpic_request.trace_identifier}"
+        ):
             responses = await asyncio.gather(*tasks, return_exceptions=True)
 
         for response in responses:
@@ -279,7 +283,7 @@ class MpicCoordinator:
             # (trying to handle other Exceptions should be unreachable code)
             if isinstance(response, RemoteCheckException):
                 response_as_string = str(response)
-                log_msg = f"{response_as_string} - Trace identifier: {mpic_request.trace_identifier}"
+                log_msg = f"{response_as_string} - trace ID: {mpic_request.trace_identifier}"
                 logger.warning(log_msg)
                 error_response = MpicCoordinator.build_error_perspective_response_from_exception(response)
                 perspective_responses.append(error_response)
