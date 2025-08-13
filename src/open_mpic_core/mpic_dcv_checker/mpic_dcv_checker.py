@@ -77,7 +77,7 @@ class MpicDcvChecker:
         validation_method = dcv_request.dcv_check_parameters.validation_method
         # noinspection PyUnresolvedReferences
         self.logger.trace(
-            "Checking DCV for %s with method %s. Trace identifier: %s",
+            "Checking DCV for %s with method %s. Trace ID: %s",
             dcv_request.domain_or_ip_target,
             validation_method,
             dcv_request.trace_identifier,
@@ -97,7 +97,12 @@ class MpicDcvChecker:
 
         # noinspection PyUnresolvedReferences
 
-        self.logger.trace("Completed DCV for %s with method %s", dcv_request.domain_or_ip_target, validation_method)
+        self.logger.trace(
+            "Completed DCV for %s with method %s. Trace ID: %s",
+            dcv_request.domain_or_ip_target,
+            validation_method,
+            dcv_request.trace_identifier,
+        )
         return result
 
     async def perform_general_dns_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:
@@ -125,14 +130,14 @@ class MpicDcvChecker:
         try:
             # noinspection PyUnresolvedReferences
             async with self.logger.trace_timing(
-                f"DNS lookup for target {name_to_resolve}. Trace identifier: {request.trace_identifier}"
+                f"DNS lookup for target {name_to_resolve}. Trace ID: {request.trace_identifier}"
             ):
                 lookup = await self.perform_dns_resolution(name_to_resolve, validation_method, dns_record_type)
             MpicDcvChecker.evaluate_dns_lookup_response(
                 dcv_check_response, lookup, validation_method, dns_record_type, expected_dns_record_content, exact_match
             )
         except dns.exception.DNSException as e:
-            log_msg = f"DNS lookup error for {name_to_resolve}: {str(e)}. Trace identifier: {request.trace_identifier}"
+            log_msg = f"DNS lookup error for {name_to_resolve}: {str(e)}. Trace ID: {request.trace_identifier}"
             if isinstance(e, dns.resolver.NoAnswer) or isinstance(e, dns.resolver.NXDOMAIN):
                 dcv_check_response.check_completed = True  # errors on the target domain, not the lookup
                 # noinspection PyUnresolvedReferences
@@ -188,21 +193,23 @@ class MpicDcvChecker:
         try:
             async with self.get_async_http_client() as async_http_client:
                 # noinspection PyUnresolvedReferences
-                async with self.logger.trace_timing(f"HTTP lookup for target {token_url}"):
+                async with self.logger.trace_timing(
+                    f"HTTP lookup for target {token_url}, trace ID: {request.trace_identifier}"
+                ):
                     async with async_http_client.get(url=token_url, headers=http_headers, max_redirects=20) as response:
                         dcv_check_response = await MpicDcvChecker.evaluate_http_lookup_response(
                             request, dcv_check_response, response, token_url, expected_response_content
                         )
         except asyncio.TimeoutError as e:
             dcv_check_response.timestamp_ns = time.time_ns()
-            log_message = f"Timeout connecting to {token_url}: {str(e)}. Trace identifier: {request.trace_identifier}"
+            log_message = f"Timeout connecting to {token_url}: {str(e)}. Trace ID: {request.trace_identifier}"
             self.logger.warning(log_message)
             message = f"Connection timed out while attempting to connect to {token_url}"
             dcv_check_response.errors = [
                 MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, message)
             ]
         except (ClientError, HTTPException, OSError) as e:
-            log_message = f"Error connecting to {token_url}: {str(e)}. Trace identifier: {request.trace_identifier}"
+            log_message = f"Error connecting to {token_url}: {str(e)}. Trace ID: {request.trace_identifier}"
             self.logger.error(log_message)
             dcv_check_response.timestamp_ns = time.time_ns()
             dcv_check_response.errors = [
