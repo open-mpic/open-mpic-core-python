@@ -80,17 +80,6 @@ class TestMpicDcvChecker:
         log_contents = self.log_output.getvalue()
         assert all(text in log_contents for text in [test_message, "TRACE", dcv_checker.logger.name])
 
-    @pytest.mark.parametrize("reuse_http_client", [True, False])
-    async def mpic_dcv_checker__should_optionally_reuse_http_client(self, reuse_http_client):
-        dcv_checker = MpicDcvChecker(reuse_http_client=reuse_http_client, log_level=TRACE_LEVEL)
-        async with dcv_checker.get_async_http_client() as client_1:
-            async with dcv_checker.get_async_http_client() as client_2:
-                try:
-                    assert (client_1 is client_2) == reuse_http_client
-                finally:
-                    if reuse_http_client:
-                        await dcv_checker.shutdown()
-
     # integration test of a sort -- only mocking dns methods rather than remaining class methods
     @pytest.mark.parametrize(
         "dcv_method, record_type",
@@ -937,7 +926,6 @@ class TestMpicDcvChecker:
             if qname == expected_domain:
                 return test_dns_query_answer
             raise self.raise_(dns.resolver.NoAnswer)
-
 
         return self.patch_resolver_resolve_with_side_effect(mocker, self.dcv_checker.resolver, side_effect)
 

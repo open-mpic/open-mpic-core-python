@@ -59,7 +59,9 @@ class MpicCaaChecker:
             except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
                 domain = domain.parent()
             except Exception as e:
-                self.logger.error(f"Exception during CAA lookup for {caa_request.domain_or_ip_target}: {e}. Trace identifier: {caa_request.trace_identifier}")
+                self.logger.error(
+                    f"Exception during CAA lookup for {caa_request.domain_or_ip_target}: {e}. Trace ID: {caa_request.trace_identifier}"
+                )
                 raise MpicCaaLookupException(f"{e}") from e
 
         return rrset, domain
@@ -105,7 +107,7 @@ class MpicCaaChecker:
             caa_found = rrset is not None
         except (MpicCaaLookupException, ValueError) as e:
             caa_lookup_error = True
-            error_message = f"Error during CAA lookup for {caa_request.domain_or_ip_target}: {e}. Trace identifier: {caa_request.trace_identifier}"
+            error_message = f"Error during CAA lookup for {caa_request.domain_or_ip_target}: {e}. Trace ID: {caa_request.trace_identifier}"
             caa_check_response.errors = [MpicValidationError.create(ErrorMessages.CAA_LOOKUP_ERROR, error_message)]
             caa_check_response.details.found_at = None
             caa_check_response.details.records_seen = None
