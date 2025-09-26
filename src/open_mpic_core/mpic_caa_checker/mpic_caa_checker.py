@@ -113,7 +113,10 @@ class MpicCaaChecker:
             caa_check_response.details.records_seen = None
 
         if caa_lookup_error:
-            pass
+            # check if allow_lookup_failure is set to True, and allow issuance depending on error
+            if caa_request.caa_check_parameters and caa_request.caa_check_parameters.allow_lookup_failure:
+                caa_check_response.check_completed = True
+                caa_check_response.check_passed = True
         elif not caa_found:  # if domain has no CAA records: valid for issuance
             caa_check_response.check_completed = True
             caa_check_response.check_passed = True

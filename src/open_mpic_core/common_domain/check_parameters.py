@@ -13,7 +13,7 @@ IP_ADDRESS_ALLOWED_RECORD_TYPES: Set[DnsRecordType] = {DnsRecordType.A, DnsRecor
 class CaaCheckParameters(BaseModel):
     certificate_type: CertificateType = CertificateType.TLS_SERVER
     caa_domains: list[str] | None = None
-    # contact_info_query: bool | False = False  # to better accommodate email/phone based DCV using contact info in CAA
+    allow_lookup_failure: bool = False  # Baseline Requirements have a carve-out for CAA lookup failure; use carefully!
 
 
 class DcvValidationParameters(BaseModel, ABC):
