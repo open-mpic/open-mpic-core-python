@@ -58,11 +58,7 @@ class MpicCaaChecker:
                 break
             except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
                 domain = domain.parent()
-            except Exception as e:
-                self.logger.error(
-                    f"Exception during CAA lookup for {caa_request.domain_or_ip_target}: {e}. Trace ID: {caa_request.trace_identifier}"
-                )
-                raise MpicCaaLookupException(f"{e}") from e
+            # will raise other exceptions that we want to catch in the calling function
 
         return rrset, domain
 
@@ -84,7 +80,8 @@ class MpicCaaChecker:
         if caa_request.domain_or_ip_target.startswith("*."):
             is_wc_domain = True
 
-        caa_lookup_error = False
+        error_encountered = False
+        caa_lookup_error = None
         caa_found = False
         domain = None
         rrset = None
@@ -105,18 +102,22 @@ class MpicCaaChecker:
             async with self.logger.trace_timing(f"CAA lookup for target {caa_request.domain_or_ip_target}"):
                 rrset, domain = await self.find_caa_records_and_domain(caa_request)
             caa_found = rrset is not None
-        except (MpicCaaLookupException, ValueError) as e:
-            caa_lookup_error = True
+        except Exception as e:
+            error_encountered = True
+            caa_lookup_error = e
             error_message = f"Error during CAA lookup for {caa_request.domain_or_ip_target}: {e}. Trace ID: {caa_request.trace_identifier}"
+            self.logger.error(error_message)
             caa_check_response.errors = [MpicValidationError.create(ErrorMessages.CAA_LOOKUP_ERROR, error_message)]
             caa_check_response.details.found_at = None
             caa_check_response.details.records_seen = None
 
-        if caa_lookup_error:
+        if error_encountered:  # if there was an error during lookup
             # check if allow_lookup_failure is set to True, and allow issuance depending on error
-            if caa_request.caa_check_parameters and caa_request.caa_check_parameters.allow_lookup_failure:
-                caa_check_response.check_completed = True
-                caa_check_response.check_passed = True
+            if isinstance(caa_lookup_error, (dns.resolver.LifetimeTimeout, dns.resolver.NoNameservers)):
+                if caa_request.caa_check_parameters and caa_request.caa_check_parameters.allow_lookup_failure:
+                    # if the error was from the lookup process itself (e.g. timeout), allow issuance
+                    caa_check_response.check_completed = True
+                    caa_check_response.check_passed = True
         elif not caa_found:  # if domain has no CAA records: valid for issuance
             caa_check_response.check_completed = True
             caa_check_response.check_passed = True
