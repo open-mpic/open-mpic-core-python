@@ -191,6 +191,18 @@ class TestMpicCaaChecker:
         caa_response = await caa_checker.check_caa(caa_request)
         assert caa_response.check_passed is True
 
+    async def check_caa__should_allow_issuance_relying_on_default_caa_domains(self, mocker):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
+        resolver = caa_checker.resolver
+        record_name, expected_domain = "example.com", "example.com."
+        test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(record_name, 0, "issue", "ca2.net", mocker)
+        self.patch_resolver_to_expect_domain(
+            mocker, resolver, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer
+        )
+        caa_request = CaaCheckRequest(domain_or_ip_target="example.com")
+        caa_response = await caa_checker.check_caa(caa_request)
+        assert caa_response.check_passed is True
+
     async def check_caa__should_disallow_issuance_given_non_matching_caa_record_found(self, mocker):
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
         resolver = caa_checker.resolver
@@ -220,18 +232,7 @@ class TestMpicCaaChecker:
         caa_response = await caa_checker.check_caa(caa_request)
         assert caa_response.check_passed is False
 
-    async def check_caa__should_allow_issuance_relying_on_default_caa_domains(self, mocker):
-        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
-        resolver = caa_checker.resolver
-        record_name, expected_domain = "example.com", "example.com."
-        test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(record_name, 0, "issue", "ca2.net", mocker)
-        self.patch_resolver_to_expect_domain(
-            mocker, resolver, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer
-        )
-        caa_request = CaaCheckRequest(domain_or_ip_target="example.com")
-        caa_response = await caa_checker.check_caa(caa_request)
-        assert caa_response.check_passed is True
-
+    # noinspection PyUnresolvedReferences
     @pytest.mark.parametrize("should_complete_check", [True, False])
     async def check_caa__should_set_check_completed_true_if_no_errors_encountered_and_false_otherwise(
         self, should_complete_check, mocker
@@ -248,6 +249,34 @@ class TestMpicCaaChecker:
         assert caa_result.check_passed is should_complete_check
         assert caa_result.check_completed is should_complete_check
 
+    # fmt: off
+    @pytest.mark.parametrize("error_type, allow_failure", [
+        (dns.resolver.NoNameservers, True),
+        (dns.resolver.LifetimeTimeout, True),
+        (dns.resolver.YXDOMAIN, False),
+    ])
+    async def check_caa__should_allow_issuance_on_certain_lookup_failures_when_lookup_failure_is_explicitly_allowed(
+        self, error_type, allow_failure, mocker
+    ):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
+        resolver = caa_checker.resolver
+        if error_type == dns.resolver.NoNameservers:
+            resolver_error = dns.resolver.NoNameservers(
+                request=dns.message.make_query("example.com", "CAA", "IN"), errors=[("192.0.0.1", True, 53, "SERVFAIL")]
+            )
+        elif error_type == dns.resolver.LifetimeTimeout:
+            resolver_error = dns.resolver.LifetimeTimeout(
+                timeout=10, errors=[("192.0.0.1", True, 53, "The DNS operation timed out after 10.000 seconds")]
+            )
+        else:
+            resolver_error = dns.resolver.YXDOMAIN()
+        self.patch_resolver_with_answer_or_exception(mocker, resolver, resolver_error)
+        caa_request = self.create_caa_check_request("example.com", ["ca111.com"])
+        caa_request.caa_check_parameters.allow_lookup_failure = True
+        caa_response = await caa_checker.check_caa(caa_request)
+        assert caa_response.check_passed is allow_failure
+        assert caa_response.check_completed is allow_failure
+
     async def check_caa__should_include_timestamp_in_nanos_in_result(self, mocker):
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
         resolver = caa_checker.resolver
@@ -256,25 +285,36 @@ class TestMpicCaaChecker:
         caa_response = await caa_checker.check_caa(caa_request)
         assert caa_response.timestamp_ns is not None
 
-    async def check_caa__should_return_failure_response_with_errors_given_error_in_dns_lookup(self, mocker):
+    async def check_caa__should_return_failure_response_given_error_in_dns_lookup(self, mocker):
         caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
         resolver = caa_checker.resolver
         dns_lookup_error = dns.resolver.NoNameservers(
             request=dns.message.make_query("example.com", "CAA", "IN"),
-            errors=[
-                ("192.0.2.1", True, 53, dns.exception.Timeout("Timeout resolving example.com"))
-            ],  # List of (server, error) tuples
+            errors=[("192.0.2.1", True, 53, "SERVFAIL")],  # List of (server, error) tuples
         )
         self.patch_resolver_with_answer_or_exception(mocker, resolver, dns_lookup_error)
         caa_request = self.create_caa_check_request("example.com", ["ca111.com"])
         caa_response = await caa_checker.check_caa(caa_request)
         check_response_details = CaaCheckResponseDetails(caa_record_present=None)  # if error, don't know this detail
-        caa_response.timestamp_ns = None  # ignore timestamp for comparison
         assert caa_response.check_passed is False
         assert caa_response.check_completed is False
         assert caa_response.details == check_response_details
+
+    @pytest.mark.parametrize("allow_lookup_failure", [True, False])
+    async def check_caa__should_return_errors_in_response_given_error_in_dns_lookup(self, allow_lookup_failure, mocker):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
+        resolver = caa_checker.resolver
+        dns_lookup_error = dns.resolver.NoNameservers(
+            request=dns.message.make_query("example.com", "CAA", "IN"),
+            errors=[("192.0.2.1", True, 53, "SERVFAIL")],  # List of (server, error) tuples
+        )
+        self.patch_resolver_with_answer_or_exception(mocker, resolver, dns_lookup_error)
+        caa_request = self.create_caa_check_request("example.com", ["ca111.com"])
+        caa_request.caa_check_parameters.allow_lookup_failure = allow_lookup_failure
+        caa_response = await caa_checker.check_caa(caa_request)
+        assert len(caa_response.errors) == 1
+        assert "SERVFAIL" in caa_response.errors[0].error_message
         assert caa_response.errors[0].error_type == ErrorMessages.CAA_LOOKUP_ERROR.key
-        assert "Timeout resolving example.com" in caa_response.errors[0].error_message
 
     @pytest.mark.parametrize("caa_answer_value, check_passed", [("ca1allowed.org", True), ("ca1notallowed.org", False)])
     async def check_caa__should_return_rrset_and_domain_given_domain_with_caa_record_on_success_or_failure(
