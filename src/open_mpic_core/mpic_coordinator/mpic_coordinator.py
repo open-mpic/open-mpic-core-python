@@ -14,7 +14,7 @@ from open_mpic_core import MpicRequestValidationException
 from open_mpic_core import MpicValidationError, ErrorMessages
 from open_mpic_core import CheckType
 from open_mpic_core import CohortCreator
-from open_mpic_core import CohortCreationException
+from open_mpic_core import CohortCreationException, CohortSelectionException
 from open_mpic_core import RemoteCheckException
 from open_mpic_core import RemoteCheckCallConfiguration
 from open_mpic_core import RemotePerspective
@@ -79,12 +79,22 @@ class MpicCoordinator:
         if len(perspective_cohorts) == 0:
             raise CohortCreationException(ErrorMessages.COHORT_CREATION_ERROR.message.format(perspective_count))
 
+        #  check if a specific cohort is requested for single attempt
+        cohort_to_use = None
+        if orchestration_parameters is not None and orchestration_parameters.cohort_for_single_attempt is not None:
+            cohort_to_use = orchestration_parameters.cohort_for_single_attempt
+            if not MpicRequestValidator.is_requested_cohort_for_single_attempt_valid(
+                cohort_to_use, len(perspective_cohorts)
+            ):
+                raise CohortSelectionException(ErrorMessages.COHORT_SELECTION_ERROR.message.format(cohort_to_use))
+
         quorum_count = self.determine_required_quorum_count(orchestration_parameters, perspective_count)
 
         if (
             orchestration_parameters is not None
             and orchestration_parameters.max_attempts is not None
             and orchestration_parameters.max_attempts > 0
+            and orchestration_parameters.cohort_for_single_attempt is None
         ):
             max_attempts = orchestration_parameters.max_attempts
             if self.global_max_attempts is not None and max_attempts > self.global_max_attempts:
@@ -96,7 +106,10 @@ class MpicCoordinator:
         cohort_cycle = cycle(perspective_cohorts)
 
         while attempts <= max_attempts:
-            perspectives_to_use = next(cohort_cycle)
+            if cohort_to_use is not None:
+                perspectives_to_use = perspective_cohorts[cohort_to_use - 1]  # cohorts are 1-indexed for the user
+            else:
+                perspectives_to_use = next(cohort_cycle)
 
             # Collect async calls to invoke for each perspective.
             async_calls_to_issue = MpicCoordinator.collect_checker_calls_to_issue(mpic_request, perspectives_to_use)

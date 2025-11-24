@@ -11,6 +11,8 @@ from open_mpic_core import (
     ErrorMessages,
     CaaCheckResponse,
     CaaCheckResponseDetails,
+    CohortCreationException,
+    CohortSelectionException,
     MpicRequestOrchestrationParameters,
     RemotePerspective,
     MpicRequestValidationException,
@@ -21,7 +23,6 @@ from open_mpic_core import (
 )
 from open_mpic_core.common_domain.enum.regional_internet_registry import RegionalInternetRegistry
 
-from open_mpic_core.mpic_coordinator.domain.cohort_creation_exception import CohortCreationException
 from unit.test_util.valid_mpic_request_creator import ValidMpicRequestCreator
 
 
@@ -456,6 +457,78 @@ class TestMpicCoordinator:
         )
         mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config)
         with pytest.raises(MpicRequestValidationException):
+            await mpic_coordinator.coordinate_mpic(mpic_request)
+
+    @pytest.mark.parametrize("cohort_for_single_attempt", [1, 2])
+    async def coordinate_mpic__should_perform_attempt_with_cohort_if_single_attempt_cohort_number_specified(
+            self, cohort_for_single_attempt
+    ):
+        # will create 2 cohorts with 3 perspectives each (2 in RIR 'ARIN', and 1 in 'RIPE NCC').
+        perspectives = [
+            RemotePerspective(rir=RegionalInternetRegistry.ARIN, code="us-east-1"),
+            RemotePerspective(rir=RegionalInternetRegistry.ARIN, code="us-west-1"),
+            RemotePerspective(rir=RegionalInternetRegistry.RIPE_NCC, code="eu-central-1"),
+            RemotePerspective(rir=RegionalInternetRegistry.ARIN, code="us-east-2"),
+            RemotePerspective(rir=RegionalInternetRegistry.ARIN, code="us-west-2"),
+            RemotePerspective(rir=RegionalInternetRegistry.RIPE_NCC, code="eu-central-2"),
+        ]
+        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
+        mpic_coordinator_config.target_perspectives = perspectives
+
+        mocked_call_remote_perspective_function = AsyncMock()
+        mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
+            self.create_passing_caa_check_response
+        )
+        mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config)
+
+        mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters(
+            perspective_count=3,
+            cohort_for_single_attempt=cohort_for_single_attempt
+        )
+
+        mpic_response = await mpic_coordinator.coordinate_mpic(mpic_request)
+        assert mpic_response.is_valid is True
+        assert mpic_response.actual_orchestration_parameters.attempt_count == 1
+
+    # fmt: off
+    @pytest.mark.parametrize("cohort_size, single_attempt_cohort_number", [
+        (2, 0),
+        (2, -1),
+        (3, 4),
+        (6, 2)
+    ])
+    # fmt: on
+    async def coordinate_mpic__should_raise_exception_given_invalid_single_attempt_cohort_number_specified(
+        self, cohort_size, single_attempt_cohort_number
+    ):
+        # If cohort_size is 2, should create cohorts with 2 perspectives each. (One cohort will be all 'ARIN'.)
+        # If cohort_size is 3, should create cohorts with 3 perspectives each (2 in RIR 'ARIN', and 1 in 'RIPE NCC').
+        # If cohort_size is 6, should create cohort with 6 perspectives (4 in RIR 'ARIN', and 2 in 'RIPE NCC').
+        perspectives = [
+            RemotePerspective(rir=RegionalInternetRegistry.ARIN, code="us-east-1"),
+            RemotePerspective(rir=RegionalInternetRegistry.ARIN, code="us-west-1"),
+            RemotePerspective(rir=RegionalInternetRegistry.RIPE_NCC, code="eu-central-1"),
+            RemotePerspective(rir=RegionalInternetRegistry.ARIN, code="us-east-2"),
+            RemotePerspective(rir=RegionalInternetRegistry.ARIN, code="us-west-2"),
+            RemotePerspective(rir=RegionalInternetRegistry.RIPE_NCC, code="eu-central-2"),
+        ]
+        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
+        mpic_coordinator_config.target_perspectives = perspectives
+
+        mocked_call_remote_perspective_function = AsyncMock()
+        mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
+            self.create_passing_caa_check_response
+        )
+        mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config)
+
+        mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters(
+            perspective_count=cohort_size,
+            cohort_for_single_attempt=single_attempt_cohort_number
+        )
+
+        with pytest.raises(CohortSelectionException):
             await mpic_coordinator.coordinate_mpic(mpic_request)
 
     async def coordinate_mpic__should_return_trace_identifier_if_included_in_request(self):

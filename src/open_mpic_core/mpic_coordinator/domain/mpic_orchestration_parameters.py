@@ -9,6 +9,7 @@ class BaseMpicOrchestrationParameters(BaseModel, ABC):
 
 class MpicRequestOrchestrationParameters(BaseMpicOrchestrationParameters):
     max_attempts: int | None = None
+    cohort_for_single_attempt: int | None = None  # sets max_attempts to 1 if defined; must be > 0
 
 
 class MpicEffectiveOrchestrationParameters(BaseMpicOrchestrationParameters):
