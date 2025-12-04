@@ -55,6 +55,11 @@ class MpicRequestValidator:
         )
 
     @staticmethod
+    def is_requested_cohort_for_single_attempt_valid(cohort_for_single_attempt, number_of_cohorts) -> bool:
+        # check if cohort_for_single_attempt is an integer and is within the number of available cohorts
+        return isinstance(cohort_for_single_attempt, int) and 1 <= cohort_for_single_attempt <= number_of_cohorts
+
+    @staticmethod
     def validate_quorum_count(requested_perspective_count, quorum_count, request_validation_issues) -> None:
         # quorum_count can be no less than perspectives-1 if perspectives <= 5
         # quorum_count can be no less than perspectives-2 if perspectives > 5

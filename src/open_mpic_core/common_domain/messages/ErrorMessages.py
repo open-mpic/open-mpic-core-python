@@ -11,6 +11,7 @@ class ErrorMessages(Enum):
     GENERAL_HTTP_ERROR = ('mpic_error:http', 'An HTTP error occurred: Response status {0}, Response reason: {1}')
     INVALID_REDIRECT_ERROR = ('mpic_error:redirect:invalid', 'Invalid redirect. Redirect code: {0}, target: {1}')
     COHORT_CREATION_ERROR = ('mpic_error:coordinator:cohort', 'The coordinator could not construct a cohort of size {0}')
+    COHORT_SELECTION_ERROR = ('mpic_error:coordinator:cohort_selection', 'The coordinator could not select cohort number {0} from available cohorts.')
 
     TLS_ALPN_ERROR_CERTIFICATE_EXTENSION_MISSING = ('mpic_error:dcv_checker:tls_alpn:certificate:extension_missing', 'The TLS ALPN certificate was missing an extension.')
     TLS_ALPN_ERROR_CERTIFICATE_ALPN_EXTENSION_NONCRITICAL = ('mpic_error:dcv_checker:tls_alpn:certificate:noncritical_alpn_extension', 'The TLS ALPN certificate has non-critical id-pe-acmeIdentifier extension')
