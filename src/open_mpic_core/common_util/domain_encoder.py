@@ -8,6 +8,15 @@ from dns.name import IDNAException
 class DomainEncoder:
     @staticmethod
     def prepare_target_for_lookup(domain_or_ip_target) -> str:
+        # Handle bracketed IPv6 addresses (e.g., [2606:4700:4700::1111])
+        if domain_or_ip_target.startswith("[") and domain_or_ip_target.endswith("]"):
+            inner = domain_or_ip_target[1:-1]
+            try:
+                ipaddress.ip_address(inner)
+                return inner  # Return the IPv6 address without brackets
+            except ValueError:
+                pass  # Not a valid IP, will be handled below
+
         try:
             # First check if it's an IP address
             ipaddress.ip_address(domain_or_ip_target)

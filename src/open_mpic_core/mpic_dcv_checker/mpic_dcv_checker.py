@@ -173,21 +173,33 @@ class MpicDcvChecker:
             lookup = await self.resolver.resolve(qname=name_to_resolve, rdtype=dns_rdata_type)
         return lookup
 
+    @staticmethod
+    def format_host_for_url(domain_or_ip_target: str) -> str:
+        """Format host for URL, wrapping IPv6 addresses in square brackets if needed."""
+        try:
+            ip = ipaddress.ip_address(domain_or_ip_target)
+            if isinstance(ip, ipaddress.IPv6Address):
+                return f"[{domain_or_ip_target}]"
+        except ValueError:
+            pass
+        return domain_or_ip_target
+
     async def perform_http_based_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:
         validation_method = request.dcv_check_parameters.validation_method
         domain_or_ip_target = request.domain_or_ip_target
+        formatted_host = MpicDcvChecker.format_host_for_url(domain_or_ip_target)
         http_headers = request.dcv_check_parameters.http_headers
         if validation_method == DcvValidationMethod.WEBSITE_CHANGE:
             expected_response_content = request.dcv_check_parameters.challenge_value
             url_scheme = request.dcv_check_parameters.url_scheme
             token_path = request.dcv_check_parameters.http_token_path
-            token_url = f"{url_scheme}://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{token_path}"  # noqa E501 (http)
+            token_url = f"{url_scheme}://{formatted_host}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{token_path}"  # noqa E501 (http)
             dcv_check_response = DcvUtils.create_empty_check_response(DcvValidationMethod.WEBSITE_CHANGE)
         else:
             expected_response_content = request.dcv_check_parameters.key_authorization
             token = request.dcv_check_parameters.token
             token_url = (
-                f"http://{domain_or_ip_target}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
+                f"http://{formatted_host}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
             )
             dcv_check_response = DcvUtils.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
         try:
