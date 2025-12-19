@@ -1012,6 +1012,72 @@ class TestMpicDcvChecker:
             DcvTlsAlpnValidator, "perform_tls_alpn_validation", return_value=response
         )
 
+    # fmt: off
+    @pytest.mark.parametrize("input_target, expected_output", [
+        ("example.com", "example.com"),  # regular domain unchanged
+        ("192.168.1.1", "192.168.1.1"),  # IPv4 address unchanged
+        ("2001:db8::1", "[2001:db8::1]"),  # IPv6 address wrapped in brackets
+        ("::1", "[::1]"),  # IPv6 loopback wrapped in brackets
+        ("2001:0db8:85a3:0000:0000:8a2e:0370:7334", "[2001:0db8:85a3:0000:0000:8a2e:0370:7334]"),  # full IPv6
+        ("fe80::1%eth0", "[fe80::1%eth0]"),  # IPv6 with zone ID also wrapped
+    ])
+    # fmt: on
+    def format_host_for_url__should_wrap_ipv6_addresses_in_square_brackets(self, input_target, expected_output):
+        result = MpicDcvChecker.format_host_for_url(input_target)
+        assert result == expected_output
+
+    @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01])
+    async def http_based_dcv_checks__should_format_ipv6_addresses_with_square_brackets_in_url(
+        self, dcv_method, mocker
+    ):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
+        ipv6_address = "2001:db8::1"
+        dcv_request.domain_or_ip_target = ipv6_address
+
+        if dcv_method == DcvValidationMethod.WEBSITE_CHANGE:
+            expected_challenge = dcv_request.dcv_check_parameters.challenge_value
+            url_scheme = dcv_request.dcv_check_parameters.url_scheme
+            http_token_path = dcv_request.dcv_check_parameters.http_token_path
+            expected_url = f"{url_scheme}://[{ipv6_address}]/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{http_token_path}"
+        else:
+            expected_challenge = dcv_request.dcv_check_parameters.key_authorization
+            token = dcv_request.dcv_check_parameters.token
+            expected_url = f"http://[{ipv6_address}]/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"
+
+        success_response = TestMpicDcvChecker._create_mock_http_response(200, expected_challenge)
+        mock_get = mocker.patch(
+            "aiohttp.ClientSession.get",
+            side_effect=lambda *args, **kwargs: AsyncMock(__aenter__=AsyncMock(return_value=success_response)),
+        )
+
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+
+        # Verify the URL used in the request contains properly formatted IPv6
+        assert mock_get.call_args.kwargs["url"] == expected_url
+        assert dcv_response.details.response_url == expected_url
+
+    async def http_based_dcv_checks__should_not_modify_ipv4_addresses_in_url(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE)
+        ipv4_address = "192.168.1.1"
+        dcv_request.domain_or_ip_target = ipv4_address
+
+        expected_challenge = dcv_request.dcv_check_parameters.challenge_value
+        url_scheme = dcv_request.dcv_check_parameters.url_scheme
+        http_token_path = dcv_request.dcv_check_parameters.http_token_path
+        expected_url = f"{url_scheme}://{ipv4_address}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{http_token_path}"
+
+        success_response = TestMpicDcvChecker._create_mock_http_response(200, expected_challenge)
+        mock_get = mocker.patch(
+            "aiohttp.ClientSession.get",
+            side_effect=lambda *args, **kwargs: AsyncMock(__aenter__=AsyncMock(return_value=success_response)),
+        )
+
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+
+        # Verify the URL used in the request contains IPv4 without modification
+        assert mock_get.call_args.kwargs["url"] == expected_url
+        assert dcv_response.details.response_url == expected_url
+
     @staticmethod
     def shuffle_case(string_to_shuffle: str) -> str:
         result = "".join(
