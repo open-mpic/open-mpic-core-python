@@ -28,6 +28,7 @@ from open_mpic_core import MpicDcvChecker, DcvCheckRequest, DcvCheckResponse
 from open_mpic_core import DcvTlsAlpnValidator, DcvCheckResponseDetailsBuilder
 from open_mpic_core import DcvValidationMethod, DnsRecordType
 from open_mpic_core import MpicValidationError, ErrorMessages, TRACE_LEVEL
+from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import ExpectedDnsRecordContent
 
 from unit.test_util.mock_dns_object_creator import MockDnsObjectCreator
 from unit.test_util.valid_check_creator import ValidCheckCreator
@@ -476,6 +477,56 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False
 
+    @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01])
+    async def http_based_dcv_checks__should_format_ipv6_addresses_with_square_brackets_in_url(self, dcv_method, mocker):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
+        ipv6_address = "2001:db8::1"
+        dcv_request.domain_or_ip_target = ipv6_address
+
+        if dcv_method == DcvValidationMethod.WEBSITE_CHANGE:
+            expected_challenge = dcv_request.dcv_check_parameters.challenge_value
+            url_scheme = dcv_request.dcv_check_parameters.url_scheme
+            http_token_path = dcv_request.dcv_check_parameters.http_token_path
+            expected_url = f"{url_scheme}://[{ipv6_address}]/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{http_token_path}"
+        else:
+            expected_challenge = dcv_request.dcv_check_parameters.key_authorization
+            token = dcv_request.dcv_check_parameters.token
+            expected_url = f"http://[{ipv6_address}]/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"
+
+        success_response = TestMpicDcvChecker._create_mock_http_response(200, expected_challenge)
+        mock_get = mocker.patch(
+            "aiohttp.ClientSession.get",
+            side_effect=lambda *args, **kwargs: AsyncMock(__aenter__=AsyncMock(return_value=success_response)),
+        )
+
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+
+        # Verify the URL used in the request contains properly formatted IPv6
+        assert mock_get.call_args.kwargs["url"] == expected_url
+        assert dcv_response.details.response_url == expected_url
+
+    async def http_based_dcv_checks__should_not_modify_ipv4_addresses_in_url(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE)
+        ipv4_address = "192.168.1.1"
+        dcv_request.domain_or_ip_target = ipv4_address
+
+        expected_challenge = dcv_request.dcv_check_parameters.challenge_value
+        url_scheme = dcv_request.dcv_check_parameters.url_scheme
+        http_token_path = dcv_request.dcv_check_parameters.http_token_path
+        expected_url = f"{url_scheme}://{ipv4_address}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{http_token_path}"
+
+        success_response = TestMpicDcvChecker._create_mock_http_response(200, expected_challenge)
+        mock_get = mocker.patch(
+            "aiohttp.ClientSession.get",
+            side_effect=lambda *args, **kwargs: AsyncMock(__aenter__=AsyncMock(return_value=success_response)),
+        )
+
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+
+        # Verify the URL used in the request contains IPv4 without modification
+        assert mock_get.call_args.kwargs["url"] == expected_url
+        assert dcv_response.details.response_url == expected_url
+
     @pytest.mark.parametrize("url_scheme", ["http", "https"])
     async def website_change_validation__should_use_specified_url_scheme(self, url_scheme, mocker):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
@@ -674,6 +725,170 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False
 
+    @pytest.mark.parametrize("set_persist_until_parameter", [True, False])
+    def evaluate_persistent_dns_response__should_return_true_given_valid_record(
+            self, set_persist_until_parameter
+    ):
+        issuer_domain_name = "ca.example.com"
+        expected_account_uri = "https://ca.example.com/acct/123"
+
+        if set_persist_until_parameter:
+            future_timestamp = int(time.time()) + 3600  # 1 hour in the future
+            records = [f"{issuer_domain_name}; accounturi={expected_account_uri}; persistUntil={future_timestamp}"]
+        else:
+            records = [f"{issuer_domain_name}; accounturi={expected_account_uri}"]
+
+        expected_dns_record_content = ExpectedDnsRecordContent(
+            possible_values=[issuer_domain_name],
+            expected_parameters={"accounturi": expected_account_uri},
+        )
+
+        result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
+        assert result is True
+
+    def evaluate_persistent_dns_response__should_be_case_insensitive(self):
+        issuer_domain_name = "cA.EXaMPle.com"
+        expected_account_uri = "https://cA.EXaMPle.com/acct/123"
+        records = [f"{issuer_domain_name}; accounturi={expected_account_uri}"]
+
+        expected_dns_record_content = ExpectedDnsRecordContent(
+            possible_values=[issuer_domain_name.lower()],
+            expected_parameters={"accounturi": expected_account_uri.lower()},
+        )
+
+        result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
+        assert result is True
+
+    def evaluate_persistent_dns_response__should_ignore_additional_unknown_parameters(self):
+        issuer_domain_name = "ca.example.com"
+        expected_account_uri = "https://ca.example.com/acct/123"
+        records = [f"{issuer_domain_name}; accounturi={expected_account_uri}; customParam=foo; anotherParam=123"]
+
+        expected_dns_record_content = ExpectedDnsRecordContent(
+            possible_values=[issuer_domain_name],
+            expected_parameters={"accounturi": expected_account_uri},
+        )
+
+        result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
+        assert result is True
+
+    def evaluate_persistent_dns_response__should_return_false_given_no_matching_issuer_domain(self):
+        issuer_domain_name = "nonmatching.example.com"
+        expected_account_uri = "https://ca.example.com/acct/123"
+        records = [f"{issuer_domain_name}; accounturi={expected_account_uri};"]
+
+        expected_dns_record_content = ExpectedDnsRecordContent(
+            possible_values=["ca.example.com"],
+            expected_parameters={"accounturi": expected_account_uri},
+        )
+
+        result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
+        assert result is False
+
+    def evaluate_persistent_dns_response__should_return_false_given_no_matching_account_uri(self):
+        issuer_domain_name = "ca.example.com"
+        expected_account_uri = "https://ca.example.com/acct/foo123"
+        records = [f"{issuer_domain_name}; accounturi=https://ca.example.com/acct/bar456;"]
+
+        expected_dns_record_content = ExpectedDnsRecordContent(
+            possible_values=[issuer_domain_name],
+            expected_parameters={"accounturi": expected_account_uri},
+        )
+
+        result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
+        assert result is False
+
+    def evaluate_persistent_dns_response__should_return_false_given_expired_persist_until(self):
+        issuer_domain_name = "ca.example.com"
+        expected_account_uri = "https://ca.example.com/acct/123"
+        past_timestamp = int(time.time()) - 3600  # 1 hour in the past
+        records = [f"{issuer_domain_name}; accounturi={expected_account_uri}; persistUntil={past_timestamp}"]
+
+        expected_dns_record_content = ExpectedDnsRecordContent(
+            possible_values=[issuer_domain_name],
+            expected_parameters={"accounturi": expected_account_uri},
+        )
+
+        result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
+        assert result is False
+
+    def evaluate_persistent_dns_response__should_return_false_given_missing_account_uri_parameter(self):
+        issuer_domain_name = "ca.example.com"
+        records = [f"{issuer_domain_name}; persistUntil={int(time.time())+3600}"]
+
+        expected_dns_record_content = ExpectedDnsRecordContent(
+            possible_values=[issuer_domain_name],
+            expected_parameters={"accounturi": "https://ca.example.com/acct/123"},
+        )
+
+        result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
+        assert result is False
+
+    def evaluate_persistent_dns_response__should_return_false_given_malformed_persist_until_parameter(self):
+        expected_account_uri = "https://ca.example.com/acct/123"
+        records = [f"accounturi={expected_account_uri}; persistUntil={int(time.time())+3600}garbage"]
+
+        expected_dns_record_content = ExpectedDnsRecordContent(
+            possible_values=["ca.example.com"],
+            expected_parameters={"accounturi": expected_account_uri},
+        )
+
+        result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
+        assert result is False
+
+    def evaluate_persistent_dns_response__should_return_true_given_any_record_in_the_provided_list_is_valid(self):
+        issuer_domain_names = ["ca.example.com", "ca1.example.com"]
+        expected_account_uri = "https://ca.example.com/acct/123"
+        time_now = int(time.time())
+        records = [
+            f"bad.example.com; accounturi=https://ca.example.com/acct/123; persistUntil={time_now + 3600}",
+            f"ca.example.com; accounturi=https://bad.example.com/acct/456; persistUntil={time_now + 3600}",
+            f"ca1.example.com; accounturi=https://ca.example.com/acct/123; persistUntil={time_now - 10}",
+            f"ca.example.com; accounturi=https://ca.example.com/acct/123; persistUntil={time_now + 3600}",  # Valid
+        ]
+
+        expected_dns_record_content = ExpectedDnsRecordContent(
+            possible_values=issuer_domain_names,
+            expected_parameters={"accounturi": expected_account_uri},
+        )
+
+        result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
+        assert result is True, "Should pass if any record is valid"
+
+    def evaluate_persistent_dns_response__should_accept_match_for_any_issuer_in_the_provided_list(self):
+        issuer_domain_names = ["ca.example.com", "alt.example.com"]
+        expected_account_uri = "https://ca.example.com/acct/123"
+        time_now = int(time.time())
+        records = [f"alt.example.com; accounturi=https://ca.example.com/acct/123; persistUntil={time_now + 3600}"]
+
+        expected_dns_record_content = ExpectedDnsRecordContent(
+            possible_values=issuer_domain_names,
+            expected_parameters={"accounturi": expected_account_uri},
+        )
+
+        result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
+        assert result is True, "Should pass with second allowed issuer domain"
+
+    def evaluate_persistent_dns_response__should_return_false_given_malformed_record(self):
+        issuer_domain_names = ["ca.example"]
+        expected_account_uri = "https://ca.example/acct/123"
+        malformed_records = [
+            ";;;",  # Only separators
+            "ca.example",  # Missing parameters
+            "ca.example;",  # Parameter separator but no parameters
+            "ca.example; =value",  # Missing parameter name
+            "ca.example; accounturi",  # Missing value
+        ]
+
+        expected_dns_record_content = ExpectedDnsRecordContent(
+            possible_values=issuer_domain_names,
+            expected_parameters={"accounturi": expected_account_uri},
+        )
+
+        for record in malformed_records:
+            result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, [record])
+            assert result is False, f"Should fail with malformed record: {record}"
+
     @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.DNS_CHANGE, DcvValidationMethod.ACME_DNS_01])
     async def dns_based_dcv_checks__should_return_timestamp_and_list_of_records_seen(self, dcv_method, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
@@ -748,7 +963,7 @@ class TestMpicDcvChecker:
     async def is_expected_ip_address_in_response__should_return_true_if_valid_record_exists_alongside_malformed_records(
         self, record_type
     ):
-        records_as_strings = ["foo", "bar"]
+        records_as_strings = ["foo", "bar", "1.1.1.1"]
         if record_type is DnsRecordType.A:
             expected_record = "1.2.3.4"
             records_as_strings.append(expected_record)
@@ -1036,58 +1251,6 @@ class TestMpicDcvChecker:
         result = MpicDcvChecker.format_host_for_url(input_target)
         assert result == expected_output
 
-    @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01])
-    async def http_based_dcv_checks__should_format_ipv6_addresses_with_square_brackets_in_url(
-        self, dcv_method, mocker
-    ):
-        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
-        ipv6_address = "2001:db8::1"
-        dcv_request.domain_or_ip_target = ipv6_address
-
-        if dcv_method == DcvValidationMethod.WEBSITE_CHANGE:
-            expected_challenge = dcv_request.dcv_check_parameters.challenge_value
-            url_scheme = dcv_request.dcv_check_parameters.url_scheme
-            http_token_path = dcv_request.dcv_check_parameters.http_token_path
-            expected_url = f"{url_scheme}://[{ipv6_address}]/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{http_token_path}"
-        else:
-            expected_challenge = dcv_request.dcv_check_parameters.key_authorization
-            token = dcv_request.dcv_check_parameters.token
-            expected_url = f"http://[{ipv6_address}]/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"
-
-        success_response = TestMpicDcvChecker._create_mock_http_response(200, expected_challenge)
-        mock_get = mocker.patch(
-            "aiohttp.ClientSession.get",
-            side_effect=lambda *args, **kwargs: AsyncMock(__aenter__=AsyncMock(return_value=success_response)),
-        )
-
-        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
-
-        # Verify the URL used in the request contains properly formatted IPv6
-        assert mock_get.call_args.kwargs["url"] == expected_url
-        assert dcv_response.details.response_url == expected_url
-
-    async def http_based_dcv_checks__should_not_modify_ipv4_addresses_in_url(self, mocker):
-        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE)
-        ipv4_address = "192.168.1.1"
-        dcv_request.domain_or_ip_target = ipv4_address
-
-        expected_challenge = dcv_request.dcv_check_parameters.challenge_value
-        url_scheme = dcv_request.dcv_check_parameters.url_scheme
-        http_token_path = dcv_request.dcv_check_parameters.http_token_path
-        expected_url = f"{url_scheme}://{ipv4_address}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{http_token_path}"
-
-        success_response = TestMpicDcvChecker._create_mock_http_response(200, expected_challenge)
-        mock_get = mocker.patch(
-            "aiohttp.ClientSession.get",
-            side_effect=lambda *args, **kwargs: AsyncMock(__aenter__=AsyncMock(return_value=success_response)),
-        )
-
-        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
-
-        # Verify the URL used in the request contains IPv4 without modification
-        assert mock_get.call_args.kwargs["url"] == expected_url
-        assert dcv_response.details.response_url == expected_url
-
     @staticmethod
     def shuffle_case(string_to_shuffle: str) -> str:
         result = "".join(
@@ -1101,147 +1264,6 @@ class TestMpicDcvChecker:
                     result = result[:i] + char.swapcase() + result[i + 1:]
                     break
         return result
-
-
-class TestDnsPersistentValidation:
-    """Tests specifically for DNS_PERSISTENT validation method"""
-
-    @pytest.fixture(autouse=True)
-    def setup_dcv_checker(self):
-        self.dcv_checker = MpicDcvChecker()
-        yield self.dcv_checker
-
-    @pytest.mark.parametrize("record_content, expected_result, description", [
-        ("authority.example; accounturi=https://authority.example/acct/123; persistUntil=1893456000", True,
-         "Valid record with future persistUntil"),
-        ("authority.example; accounturi=https://authority.example/acct/123", True,
-         "Valid record without persistUntil (optional parameter)"),
-        ("AUTHORITY.EXAMPLE; ACCOUNTURI=HTTPS://AUTHORITY.EXAMPLE/ACCT/123", True,
-         "Valid record with uppercase (case insensitive)"),
-        ("authority.example; accounturi=https://authority.example/acct/123; customParam=value; persistUntil=1893456000", True,
-         "Valid record with additional unknown parameters (should be ignored)"),
-        ("wrong.issuer; accounturi=https://authority.example/acct/123; persistUntil=1893456000", False,
-         "Wrong issuer domain"),
-        ("authority.example; accounturi=https://wrong.example/acct/456; persistUntil=1893456000", False,
-         "Wrong account URI"),
-        ("authority.example; accounturi=https://authority.example/acct/123; persistUntil=1735689600", False,
-         "Expired persistUntil (past timestamp)"),
-        ("authority.example; accounturi=https://authority.example/acct/123; persistUntil=invalid", False,
-         "Invalid timestamp format"),
-        ("authority.example; wrongparam=value", False,
-         "Missing required accounturi parameter"),
-        ("invalid-domain; accounturi=https://authority.example/acct/123; persistUntil=1893456000", False,
-         "Invalid issuer domain format"),
-    ])
-    def test_evaluate_persistent_dns_response(self, record_content, expected_result, description):
-        """Test the persistent DNS validation logic with various record formats"""
-        from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import MpicDcvChecker
-        
-        issuer_domain_names = ["authority.example"]
-        expected_account_uri = "https://authority.example/acct/123"
-        records = [record_content] if record_content else []
-        
-        result = MpicDcvChecker.evaluate_persistent_dns_response(records, issuer_domain_names, expected_account_uri)
-        assert result == expected_result, f"Test failed: {description}"
-
-    def test_evaluate_persistent_dns_response_multiple_records(self):
-        """Test that validation passes if any record in the list is valid"""
-        from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import MpicDcvChecker
-        
-        issuer_domain_names = ["authority.example"]
-        expected_account_uri = "https://authority.example/acct/123"
-        records = [
-            "wrong.issuer; accounturi=https://authority.example/acct/123; persistUntil=1893456000",  # Invalid
-            "authority.example; accounturi=https://wrong.example/acct/456; persistUntil=1893456000",  # Invalid
-            "authority.example; accounturi=https://authority.example/acct/123; persistUntil=1893456000",  # Valid
-        ]
-        
-        result = MpicDcvChecker.evaluate_persistent_dns_response(records, issuer_domain_names, expected_account_uri)
-        assert result is True, "Should pass if any record is valid"
-
-    def test_evaluate_persistent_dns_response_multiple_issuers(self):
-        """Test validation with multiple allowed issuer domains"""
-        from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import MpicDcvChecker
-        
-        issuer_domain_names = ["authority1.example", "authority2.example"]
-        expected_account_uri = "https://authority2.example/acct/456"
-        record = "authority2.example; accounturi=https://authority2.example/acct/456; persistUntil=1893456000"
-        
-        result = MpicDcvChecker.evaluate_persistent_dns_response([record], issuer_domain_names, expected_account_uri)
-        assert result is True, "Should pass with second allowed issuer domain"
-
-    def test_evaluate_persistent_dns_response_edge_cases(self):
-        """Test edge cases for persistent DNS validation"""
-        from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import MpicDcvChecker
-        
-        issuer_domain_names = ["authority.example"]
-        expected_account_uri = "https://authority.example/acct/123"
-        
-        # Test empty issuer_domain_names
-        result = MpicDcvChecker.evaluate_persistent_dns_response(["valid.record"], [], expected_account_uri)
-        assert result is False, "Should fail with empty issuer_domain_names"
-        
-        # Test empty account URI
-        result = MpicDcvChecker.evaluate_persistent_dns_response(["valid.record"], issuer_domain_names, "")
-        assert result is False, "Should fail with empty account_uri"
-        
-        # Test empty records
-        result = MpicDcvChecker.evaluate_persistent_dns_response([], issuer_domain_names, expected_account_uri)
-        assert result is False, "Should fail with empty records list"
-        
-        # Test malformed records
-        malformed_records = [
-            ";;;",  # Only separators
-            "authority.example;",  # Incomplete
-            "authority.example; =value",  # Missing parameter name
-            "authority.example; accounturi",  # Missing value
-        ]
-        
-        for record in malformed_records:
-            result = MpicDcvChecker.evaluate_persistent_dns_response([record], issuer_domain_names, expected_account_uri)
-            assert result is False, f"Should fail with malformed record: {record}"
-
-    async def test_dns_persistent_integration(self, mocker):
-        """Integration test for DNS_PERSISTENT validation through the main check_dcv method"""
-        dcv_request = ValidCheckCreator.create_valid_dns_persistent_check_request()
-        
-        # Mock DNS resolution to return a valid persistent record
-        issuer_domain = dcv_request.dcv_check_parameters.issuer_domain_names[0]
-        account_uri = dcv_request.dcv_check_parameters.expected_account_uri
-        persistent_value = f"{issuer_domain}; accounturi={account_uri}; persistUntil=1893456000"
-        
-        # Mock DNS response
-        from unit.test_util.mock_dns_object_creator import MockDnsObjectCreator
-        
-        record_data = {"value": persistent_value}
-        test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer(
-            dcv_request.domain_or_ip_target, 
-            "_validation-persist", 
-            dcv_request.dcv_check_parameters.dns_record_type, 
-            record_data, 
-            mocker
-        )
-        
-        # Mock the DNS resolver
-        async def side_effect(qname, rdtype):
-            if qname == f"_validation-persist.{dcv_request.domain_or_ip_target}":
-                return test_dns_query_answer
-            raise dns.resolver.NoAnswer
-        
-        mocker.patch.object(
-            self.dcv_checker.resolver, 
-            'resolve', 
-            side_effect=side_effect
-        )
-        
-        # Execute the check
-        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
-        
-        # Verify the response
-        assert dcv_response.check_passed is True, "DNS persistent validation should pass"
-        assert dcv_response.check_completed is True, "Check should be completed"
-        assert dcv_response.errors is None or len(dcv_response.errors) == 0, "Should have no errors"
-        assert dcv_response.details.records_seen == [persistent_value], "Should see the persistent record"
 
 
 if __name__ == "__main__":
