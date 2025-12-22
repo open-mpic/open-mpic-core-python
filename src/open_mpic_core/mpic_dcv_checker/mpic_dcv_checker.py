@@ -14,7 +14,7 @@ from yarl import URL
 from aiohttp import ClientError
 from aiohttp.web import HTTPException
 
-from open_mpic_core import DcvCheckRequest, DcvCheckResponse, DcvCheckParameters
+from open_mpic_core import DcvCheckRequest, DcvCheckResponse
 from open_mpic_core import RedirectResponse, DcvUtils
 from open_mpic_core import DcvValidationMethod, DnsRecordType
 from open_mpic_core import MpicValidationError, ErrorMessages
@@ -484,7 +484,7 @@ class MpicDcvChecker:
             expected_content = ExpectedDnsRecordContent(expected_value=check_parameters.key_authorization_hash)
         elif validation_method == DcvValidationMethod.DNS_PERSISTENT:
             expected_content = ExpectedDnsRecordContent(
-                expected_value=None, # validated via issuer_domains and account_uri
+                expected_value=None,  # validated via issuer_domains and account_uri
                 possible_values=check_parameters.issuer_domain_names,
                 expected_parameters={"accounturi": check_parameters.expected_account_uri},
             )
