@@ -825,11 +825,12 @@ class TestMpicDcvChecker:
         assert result is False
 
     def evaluate_persistent_dns_response__should_return_false_given_malformed_persist_until_parameter(self):
+        issuer_domain_name = "ca.example.com"
         expected_account_uri = "https://ca.example.com/acct/123"
-        records = [f"accounturi={expected_account_uri}; persistUntil={int(time.time())+3600}garbage"]
+        records = [f"{issuer_domain_name}; accounturi={expected_account_uri}; persistUntil={int(time.time())+3600}foo"]
 
         expected_dns_record_content = ExpectedDnsRecordContent(
-            possible_values=["ca.example.com"],
+            possible_values=[issuer_domain_name],
             expected_parameters={"accounturi": expected_account_uri},
         )
 
