@@ -441,7 +441,7 @@ class MpicDcvChecker:
             issuer_domain_name = parts[0].lower()
             param_list = parts[1:]
 
-            # First check issuer-domain-nsame matches one of the expected values
+            # First check issuer-domain-name matches one of the expected values
             if issuer_domain_name not in accepted_domain_names:
                 continue
 

@@ -600,28 +600,6 @@ class TestMpicCoordinator:
         assert mpic_response.is_valid is should_complete_mpic
         assert mpic_response.mpic_completed is should_complete_mpic
 
-    # TODO do we need this here? or just in dcv checker tests? this probably doesn't test anything yet untested
-    async def coordinate_mpic__should_successfully_handle_dns_persistent_dcv_method(self):
-        mpic_request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(
-            validation_method=DcvValidationMethod.DNS_PERSISTENT
-        )
-        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
-        mocked_call_remote_perspective_function = AsyncMock()
-        mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
-            self.create_passing_dcv_check_response
-        )
-        mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config)
-        mpic_response = await mpic_coordinator.coordinate_mpic(mpic_request)
-
-        # Verify the response is valid
-        assert mpic_response.is_valid is True
-        # Verify DNS_PERSISTENT method was used
-        assert mpic_request.dcv_check_parameters.validation_method == DcvValidationMethod.DNS_PERSISTENT
-        # Verify required DNS_PERSISTENT parameters are present
-        assert hasattr(mpic_request.dcv_check_parameters, "issuer_domain_names")
-        assert hasattr(mpic_request.dcv_check_parameters, "expected_account_uri")
-        assert len(mpic_request.dcv_check_parameters.issuer_domain_names) > 0
-
     @staticmethod
     def create_mpic_coordinator_configuration() -> MpicCoordinatorConfiguration:
         target_perspectives = [
