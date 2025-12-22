@@ -33,10 +33,6 @@ class ExpectedDnsRecordContent:
             self.possible_values = possible_values
         self.expected_parameters = expected_parameters
 
-    expected_value: str | None = None,
-    possible_values: list[str] | None = None,
-    expected_parameters: dict[str, str] | None = None
-
 
 # noinspection PyUnusedLocal
 class MpicDcvChecker:
