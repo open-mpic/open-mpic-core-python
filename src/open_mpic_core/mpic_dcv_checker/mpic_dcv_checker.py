@@ -132,11 +132,6 @@ class MpicDcvChecker:
         if validation_method == DcvValidationMethod.DNS_CHANGE:  # DNS_CHANGE may allow for non-exact match
             exact_match = check_parameters.require_exact_match
 
-        # Extract persistent validation parameters if needed
-        persistent_params = None
-        if validation_method == DcvValidationMethod.DNS_PERSISTENT:
-            persistent_params = (check_parameters.issuer_domain_names, check_parameters.expected_account_uri)
-
         dcv_check_response = DcvUtils.create_empty_check_response(validation_method)
 
         try:
