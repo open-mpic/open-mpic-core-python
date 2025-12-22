@@ -27,12 +27,14 @@ class DcvHttpCheckResponseDetails(BaseModel):
 class DcvDnsCheckResponseDetails(BaseModel):
     validation_method: Literal[
         DcvValidationMethod.DNS_CHANGE,
+        DcvValidationMethod.DNS_PERSISTENT,
         DcvValidationMethod.IP_ADDRESS,
         DcvValidationMethod.CONTACT_EMAIL_CAA,
         DcvValidationMethod.CONTACT_EMAIL_TXT,
         DcvValidationMethod.CONTACT_PHONE_CAA,
         DcvValidationMethod.CONTACT_PHONE_TXT,
         DcvValidationMethod.ACME_DNS_01,
+        DcvValidationMethod.DNS_ACCOUNT_01,
         DcvValidationMethod.REVERSE_ADDRESS_LOOKUP,
     ]
     records_seen: list[str] | None = None  # list of records found in DNS query; not base64 encoded
@@ -40,6 +42,7 @@ class DcvDnsCheckResponseDetails(BaseModel):
     ad_flag: bool | None = None  # was AD flag set in DNS response
     found_at: str | None = None  # domain where DNS record was found
     cname_chain: list[str] | None = None # List of CNAMEs followed to obtain the final result.
+
 
 class DcvTlsAlpnCheckResponseDetails(BaseModel):
     validation_method: Literal[DcvValidationMethod.ACME_TLS_ALPN_01]
@@ -56,8 +59,10 @@ class DcvCheckResponseDetailsBuilder:
         types = {
             DcvValidationMethod.WEBSITE_CHANGE: DcvHttpCheckResponseDetails,
             DcvValidationMethod.DNS_CHANGE: DcvDnsCheckResponseDetails,
+            DcvValidationMethod.DNS_PERSISTENT: DcvDnsCheckResponseDetails,
             DcvValidationMethod.ACME_HTTP_01: DcvHttpCheckResponseDetails,
             DcvValidationMethod.ACME_DNS_01: DcvDnsCheckResponseDetails,
+            DcvValidationMethod.DNS_ACCOUNT_01: DcvDnsCheckResponseDetails,
             DcvValidationMethod.ACME_TLS_ALPN_01: DcvTlsAlpnCheckResponseDetails,
             DcvValidationMethod.CONTACT_PHONE_TXT: DcvDnsCheckResponseDetails,
             DcvValidationMethod.CONTACT_PHONE_CAA: DcvDnsCheckResponseDetails,

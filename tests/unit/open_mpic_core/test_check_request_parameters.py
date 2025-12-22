@@ -5,6 +5,7 @@ from open_mpic_core import (
     DcvAcmeHttp01ValidationParameters,
     DcvWebsiteChangeValidationParameters,
     DcvDnsChangeValidationParameters,
+    DcvDnsPersistentValidationParameters,
     DcvAcmeDns01ValidationParameters,
     DcvContactPhoneTxtValidationParameters,
     DcvContactEmailCaaValidationParameters,
@@ -24,6 +25,8 @@ class TestCheckRequestDetails:
          DcvDnsChangeValidationParameters),
         ('{"validation_method": "dns-change", "dns_record_type": "CNAME", "challenge_value": "test-cv"}',
          DcvDnsChangeValidationParameters),
+        ('{"validation_method": "dns-persistent", "issuer_domain_names": ["authority.example"], "expected_account_uri": "https://authority.example/acct/123"}',
+         DcvDnsPersistentValidationParameters),
         ('{"validation_method": "acme-http-01", "token": "test-t", "key_authorization": "test-ka"}',
          DcvAcmeHttp01ValidationParameters),
         ('{"validation_method": "acme-dns-01", "key_authorization_hash": "test-ka"}',
@@ -57,6 +60,10 @@ class TestCheckRequestDetails:
          "should fail validation when DNS record type is invalid for Contact Phone"),
         ('{"validation_method": "ip-address", "dns_record_type": "TXT", "challenge_value": "test-cv"}',
          "should fail validation when DNS record type is invalid like TXT for IP Address"),
+        ('{"validation_method": "dns-persistent", "expected_account_uri": "https://authority.example/acct/123"}',
+         "should fail validation when required issuer_domain_names is missing for DNS Persistent"),
+        ('{"validation_method": "dns-persistent", "issuer_domain_names": ["authority.example"]}',
+         "should fail validation when required expected_account_uri is missing for DNS Persistent"),
     ])
     # fmt: on
     def check_request_parameters__should_fail_validation_when_serialized_object_is_malformed(

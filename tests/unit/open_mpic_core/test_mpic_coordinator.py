@@ -569,7 +569,7 @@ class TestMpicCoordinator:
         log_contents = self.log_output.getvalue()
         assert all(text in log_contents for text in ["seconds", "TRACE", mpic_coordinator.logger.name])
 
-    async def coordinate_mpi__should_not_log_trace_timings_if_trace_level_logging_is_not_enabled(self):
+    async def coordinate_mpic__should_not_log_trace_timings_if_trace_level_logging_is_not_enabled(self):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
         mocked_call_perspective_function = AsyncMock()
@@ -627,6 +627,18 @@ class TestMpicCoordinator:
             check_completed=True,
             check_passed=True,
             details=CaaCheckResponseDetails(caa_record_present=False),
+        )
+
+    # noinspection PyUnusedLocal
+    def create_passing_dcv_check_response(
+        self, perspective: RemotePerspective, check_type: CheckType, check_request
+    ):
+        from open_mpic_core import DcvCheckResponse, DcvCheckResponseDetailsBuilder
+        validation_method = check_request.dcv_check_parameters.validation_method
+        return DcvCheckResponse(
+            check_completed=True,
+            check_passed=True,
+            details=DcvCheckResponseDetailsBuilder.build_response_details(validation_method),
         )
 
     # noinspection PyUnusedLocal

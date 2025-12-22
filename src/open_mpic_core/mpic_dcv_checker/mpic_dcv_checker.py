@@ -25,6 +25,15 @@ from open_mpic_core import get_logger
 logger = get_logger(__name__)
 
 
+class ExpectedDnsRecordContent:
+    def __init__(self, expected_value=None, possible_values=None, expected_parameters=None):
+        self.expected_value = expected_value
+        self.possible_values = None
+        if self.expected_value is None:
+            self.possible_values = possible_values
+        self.expected_parameters = expected_parameters
+
+
 # noinspection PyUnusedLocal
 class MpicDcvChecker:
     WELL_KNOWN_PKI_PATH = ".well-known/pki-validation"
@@ -92,11 +101,10 @@ class MpicDcvChecker:
                 result = await self.perform_http_based_validation(dcv_request)
             case DcvValidationMethod.ACME_TLS_ALPN_01:
                 result = await self.acme_tls_alpn_validator.perform_tls_alpn_validation(dcv_request)
-            case _:  # ACME_DNS_01 | DNS_CHANGE | IP_LOOKUP | CONTACT_EMAIL | CONTACT_PHONE | REVERSE_ADDRESS_LOOKUP
+            case _:  # all DNS based methods
                 result = await self.perform_general_dns_validation(dcv_request)
 
         # noinspection PyUnresolvedReferences
-
         self.logger.trace(
             "Completed DCV for %s with method %s. Trace ID: %s",
             dcv_request.domain_or_ip_target,
@@ -117,12 +125,11 @@ class MpicDcvChecker:
         else:
             name_to_resolve = request.domain_or_ip_target
 
-        if validation_method == DcvValidationMethod.ACME_DNS_01:
-            expected_dns_record_content = check_parameters.key_authorization_hash
-        else:
-            expected_dns_record_content = check_parameters.challenge_value
+        expected_dns_record_content = MpicDcvChecker.build_expected_dns_record_content(
+            validation_method, check_parameters
+        )
 
-        if validation_method == DcvValidationMethod.DNS_CHANGE:
+        if validation_method == DcvValidationMethod.DNS_CHANGE:  # DNS_CHANGE may allow for non-exact match
             exact_match = check_parameters.require_exact_match
 
         dcv_check_response = DcvUtils.create_empty_check_response(validation_method)
@@ -170,7 +177,8 @@ class MpicDcvChecker:
                 except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
                     domain = domain.parent()
         else:
-            lookup = await self.resolver.resolve(qname=name_to_resolve, rdtype=dns_rdata_type)
+            domain = dns.name.from_text(name_to_resolve)  # to ensure trailing dot is added
+            lookup = await self.resolver.resolve(qname=domain, rdtype=dns_rdata_type)
         return lookup
 
     @staticmethod
@@ -193,14 +201,14 @@ class MpicDcvChecker:
             expected_response_content = request.dcv_check_parameters.challenge_value
             url_scheme = request.dcv_check_parameters.url_scheme
             token_path = request.dcv_check_parameters.http_token_path
-            token_url = f"{url_scheme}://{formatted_host}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{token_path}"  # noqa E501 (http)
+            token_url = (
+                f"{url_scheme}://{formatted_host}/{MpicDcvChecker.WELL_KNOWN_PKI_PATH}/{token_path}"  # noqa E501 (http)
+            )
             dcv_check_response = DcvUtils.create_empty_check_response(DcvValidationMethod.WEBSITE_CHANGE)
         else:
             expected_response_content = request.dcv_check_parameters.key_authorization
             token = request.dcv_check_parameters.token
-            token_url = (
-                f"http://{formatted_host}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
-            )
+            token_url = f"http://{formatted_host}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
             dcv_check_response = DcvUtils.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
         try:
             async with self.get_async_http_client() as async_http_client:
@@ -314,9 +322,9 @@ class MpicDcvChecker:
         dns_response: dns.resolver.Answer,
         validation_method: DcvValidationMethod,
         dns_record_type: DnsRecordType,
-        expected_dns_record_content: str,
+        expected_dns_record_content: ExpectedDnsRecordContent | None,
         exact_match: bool = True,
-    ):
+    ) -> None:
         if dns_response is None:
             dcv_check_response.check_passed = False
             dcv_check_response.check_completed = True
@@ -356,24 +364,31 @@ class MpicDcvChecker:
         dcv_check_response.details.cname_chain = cname_chain_str
         dcv_check_response.details.found_at = dns_response.qname.to_text(omit_final_dot=True)
 
-        # Case-insensitive comparison for all validation methods except ACME and IP Address
-        if validation_method not in (DcvValidationMethod.ACME_DNS_01, DcvValidationMethod.IP_ADDRESS):
-            expected_dns_record_content = expected_dns_record_content.lower()
-            records_as_strings = [record.lower() for record in records_as_strings]
-
-        # exact_match=True requires at least one record matches and will fail even if whitespace is different.
-        # exact_match=False simply runs a contains check.
-        if exact_match:
-            if validation_method == DcvValidationMethod.IP_ADDRESS:
-                dcv_check_response.check_passed = MpicDcvChecker.is_expected_ip_address_in_response(
-                    expected_dns_record_content, records_as_strings
-                )
-            else:
-                dcv_check_response.check_passed = expected_dns_record_content in records_as_strings
-        else:
-            dcv_check_response.check_passed = any(
-                expected_dns_record_content in record for record in records_as_strings
+        # handle "special logic" validation methods first
+        if validation_method == DcvValidationMethod.IP_ADDRESS:
+            dcv_check_response.check_passed = MpicDcvChecker.is_expected_ip_address_in_response(
+                expected_dns_record_content.expected_value, records_as_strings
             )
+        elif validation_method == DcvValidationMethod.DNS_PERSISTENT:
+            dcv_check_response.check_passed = MpicDcvChecker.evaluate_persistent_dns_response(
+                expected_dns_record_content, records_as_strings
+            )
+        else:
+            if validation_method == DcvValidationMethod.ACME_DNS_01:
+                expected_dns_value = expected_dns_record_content.expected_value  # case-sensitive per ACME spec
+            else:
+                expected_dns_value = expected_dns_record_content.expected_value.lower()  # all others case-insensitive
+                records_as_strings = [record.lower() for record in records_as_strings]
+
+            # exact_match=True requires at least one record matches and will fail even if whitespace is different.
+            # exact_match=False simply runs a contains check.
+            if exact_match:
+                dcv_check_response.check_passed = expected_dns_value in records_as_strings
+            else:
+                dcv_check_response.check_passed = any(
+                    expected_dns_value in record for record in records_as_strings
+                )
+
         dcv_check_response.check_completed = True
 
     @staticmethod
@@ -396,6 +411,86 @@ class MpicDcvChecker:
                 except ValueError:
                     continue
         return ip_address_found
+
+    @staticmethod
+    def evaluate_persistent_dns_response(
+        expected_dns_record_content: ExpectedDnsRecordContent,
+        records_as_strings: list[str],
+    ) -> bool:
+        """
+        Evaluate DNS TXT records for persistent validation per CA/Browser Forum requirements.
+        Expected format follows RFC 8659 CAA issue-value syntax:
+        "issuer-domain-name; accounturi=<uri>; persistUntil=<timestamp>"
+        The persistUntil parameter is optional.
+        """
+        found_valid_record = False
+        accepted_domain_names = [domain.lower() for domain in expected_dns_record_content.possible_values]
+        expected_account_uri = expected_dns_record_content.expected_parameters['accounturi'].lower()
+
+        for txt_record in records_as_strings:
+            # Split on semicolon (parameter delimiter) and strip whitespace from each part
+            parts = [part.strip() for part in txt_record.rstrip().split(";")]
+            if len(parts) < 2:
+                continue  # Need at least issuer-domain-name and one parameter
+
+            issuer_domain_name = parts[0].lower()
+            param_list = parts[1:]
+
+            # First check issuer-domain-name matches one of the expected values
+            if issuer_domain_name not in accepted_domain_names:
+                continue
+
+            # Look for required accounturi parameter
+            valid_account_uri = False
+            within_allowed_time = True  # Assume valid unless proven otherwise
+
+            if not (len(param_list) == 1 and param_list[0].strip() == ""):  # if actual parameters follow the semicolon
+                for parameter in param_list:
+                    name_and_value = parameter.split("=", 1)
+                    if len(name_and_value) != 2:
+                        break  # malformed parameter; skip to next record
+                    param_name = name_and_value[0].strip().lower()
+                    param_value = name_and_value[1].strip()
+
+                    if param_name == "accounturi":
+                        if param_value.lower() == expected_account_uri:
+                            valid_account_uri = True
+                        else:
+                            break  # accounturi does not match; skip to next record
+                    elif param_name == "persistuntil":
+                        try:
+                            persist_until_in_seconds = int(param_value)  # seconds since epoch
+                            current_seconds = int(time.time())
+                            if persist_until_in_seconds < current_seconds:
+                                within_allowed_time = False
+                                break
+                        except (ValueError, OSError):
+                            within_allowed_time = False
+                            break  # Invalid timestamp format
+                        # Additional parameters are ignored per CA/Browser Forum spec
+
+            # Record is valid if issuer matches, account URI matches, and not expired
+            if valid_account_uri and within_allowed_time:
+                found_valid_record = True
+
+        return found_valid_record
+
+    @staticmethod
+    def build_expected_dns_record_content(
+        validation_method: DcvValidationMethod,
+        check_parameters,
+    ) -> ExpectedDnsRecordContent:
+        if validation_method == DcvValidationMethod.ACME_DNS_01:
+            expected_content = ExpectedDnsRecordContent(expected_value=check_parameters.key_authorization_hash)
+        elif validation_method == DcvValidationMethod.DNS_PERSISTENT:
+            expected_content = ExpectedDnsRecordContent(
+                expected_value=None,  # validated via issuer_domains and account_uri
+                possible_values=check_parameters.issuer_domain_names,
+                expected_parameters={"accounturi": check_parameters.expected_account_uri},
+            )
+        else:
+            expected_content = ExpectedDnsRecordContent(expected_value=check_parameters.challenge_value)
+        return expected_content
 
     # noinspection PyUnresolvedReferences
     @staticmethod

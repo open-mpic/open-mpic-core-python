@@ -1,6 +1,7 @@
 from open_mpic_core import (
     CaaCheckParameters,
     DcvDnsChangeValidationParameters,
+    DcvDnsPersistentValidationParameters,
     DcvWebsiteChangeValidationParameters,
     DcvAcmeDns01ValidationParameters,
     DcvAcmeHttp01ValidationParameters,
@@ -66,4 +67,9 @@ class ValidMpicRequestCreator:
                 check_parameters = DcvContactEmailCaaValidationParameters(challenge_value="test")
             case DcvValidationMethod.CONTACT_EMAIL_TXT:
                 check_parameters = DcvContactEmailTxtValidationParameters(challenge_value="test")
+            case DcvValidationMethod.DNS_PERSISTENT:
+                check_parameters = DcvDnsPersistentValidationParameters(
+                    issuer_domain_names=["authority.example"],
+                    expected_account_uri="https://authority.example/acct/123"
+                )
         return check_parameters

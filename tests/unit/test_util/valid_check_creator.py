@@ -3,6 +3,7 @@ import hashlib
 from open_mpic_core import (
     DcvWebsiteChangeValidationParameters,
     DcvDnsChangeValidationParameters,
+    DcvDnsPersistentValidationParameters,
     CaaCheckParameters,
     DcvAcmeHttp01ValidationParameters,
     DcvAcmeDns01ValidationParameters,
@@ -73,6 +74,16 @@ class ValidCheckCreator:
         return check_request
 
     @staticmethod
+    def create_valid_dns_persistent_check_request() -> DcvCheckRequest:
+        return DcvCheckRequest(
+            domain_or_ip_target="example.com",
+            dcv_check_parameters=DcvDnsPersistentValidationParameters(
+                issuer_domain_names=["authority.example"],
+                expected_account_uri="https://authority.example/acct/123"
+            ),
+        )
+
+    @staticmethod
     def create_valid_ip_lookup_check_request(record_type=DnsRecordType.A) -> DcvCheckRequest:
         check_request = DcvCheckRequest(
             domain_or_ip_target="example.com",
@@ -127,6 +138,8 @@ class ValidCheckCreator:
                 if record_type is None:
                     record_type = DnsRecordType.TXT
                 return ValidCheckCreator.create_valid_dns_check_request(record_type)
+            case DcvValidationMethod.DNS_PERSISTENT:
+                return ValidCheckCreator.create_valid_dns_persistent_check_request()
             case DcvValidationMethod.ACME_HTTP_01:
                 return ValidCheckCreator.create_valid_acme_http_01_check_request()
             case DcvValidationMethod.ACME_DNS_01:
