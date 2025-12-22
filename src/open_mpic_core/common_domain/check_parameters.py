@@ -54,6 +54,14 @@ class DcvDnsChangeValidationParameters(DcvGeneralDnsValidationParameters):
         return v
 
 
+class DcvDnsPersistentValidationParameters(DcvValidationParameters):
+    validation_method: Literal[DcvValidationMethod.DNS_PERSISTENT] = DcvValidationMethod.DNS_PERSISTENT
+    dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
+    dns_name_prefix: Literal["_validation-persist"] = "_validation-persist"
+    issuer_domain_names: list[str]  # Disclosed issuer domain names from CA's CP/CPS
+    expected_account_uri: str  # The specific account URI to validate
+
+
 class DcvContactEmailTxtValidationParameters(DcvGeneralDnsValidationParameters):
     validation_method: Literal[DcvValidationMethod.CONTACT_EMAIL_TXT] = DcvValidationMethod.CONTACT_EMAIL_TXT
     dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
@@ -117,6 +125,7 @@ DcvCheckParameters = Annotated[
     Union[
         DcvWebsiteChangeValidationParameters,
         DcvDnsChangeValidationParameters,
+        DcvDnsPersistentValidationParameters,
         DcvAcmeHttp01ValidationParameters,
         DcvAcmeDns01ValidationParameters,
         DcvAcmeTlsAlpn01ValidationParameters,

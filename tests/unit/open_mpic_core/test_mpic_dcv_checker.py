@@ -1,6 +1,8 @@
 import asyncio
 import base64
 import logging
+import time
+
 import dns
 import random
 import dns.rdatatype
@@ -88,6 +90,7 @@ class TestMpicDcvChecker:
             (DcvValidationMethod.DNS_CHANGE, DnsRecordType.TXT),
             (DcvValidationMethod.DNS_CHANGE, DnsRecordType.CNAME),
             (DcvValidationMethod.DNS_CHANGE, DnsRecordType.CAA),
+            (DcvValidationMethod.DNS_PERSISTENT, None),
             (DcvValidationMethod.CONTACT_EMAIL_TXT, None),
             (DcvValidationMethod.CONTACT_EMAIL_CAA, None),
             (DcvValidationMethod.CONTACT_PHONE_TXT, None),
@@ -120,6 +123,7 @@ class TestMpicDcvChecker:
             (DcvValidationMethod.DNS_CHANGE, DnsRecordType.TXT, True),
             (DcvValidationMethod.DNS_CHANGE, DnsRecordType.CNAME, True),
             (DcvValidationMethod.DNS_CHANGE, DnsRecordType.CAA, True),
+            # (DcvValidationMethod.DNS_PERSISTENT, None, True),  # Skipped: no challenge_value
             (DcvValidationMethod.CONTACT_EMAIL_TXT, None, True),
             (DcvValidationMethod.CONTACT_EMAIL_CAA, None, True),
             (DcvValidationMethod.CONTACT_PHONE_TXT, None, True),
@@ -134,6 +138,9 @@ class TestMpicDcvChecker:
     async def check_dcv__should_be_case_insensitive_for_challenge_values_for_all_validation_methods_except_acme(
         self, dcv_method, record_type, is_case_insensitive, mocker
     ):
+        if dcv_method == DcvValidationMethod.DNS_PERSISTENT:
+            pytest.skip("DNS_PERSISTENT does not use challenge_value for case sensitivity test")
+
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type)
         if dcv_method in (DcvValidationMethod.CONTACT_PHONE_TXT, DcvValidationMethod.CONTACT_PHONE_CAA):
             # technically this should be case-insensitive, but also it would usually have digits...
@@ -205,7 +212,7 @@ class TestMpicDcvChecker:
             dcv_request.domain_or_ip_target = encoded_domain  # do this first for mocking
             self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
 
-        dcv_request.domain_or_ip_target = domain  # set to original to see if the mock triggers as expected
+        dcv_request.domain_or_ip_target = domain  # set to original (mock expects punycode; testing if that happens)
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is True
 
@@ -583,40 +590,34 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
         if dns_name_prefix is not None and len(dns_name_prefix) > 0:
-            mock_dns_resolver_resolve.assert_called_once_with(
-                qname=f"{dns_name_prefix}.{dcv_request.domain_or_ip_target}", rdtype=dns.rdatatype.TXT
-            )
+            expected_domain = dns.name.from_text(f"{dns_name_prefix}.{dcv_request.domain_or_ip_target}")
         else:
-            mock_dns_resolver_resolve.assert_called_once_with(
-                qname=dcv_request.domain_or_ip_target, rdtype=dns.rdatatype.TXT
-            )
+            expected_domain = dns.name.from_text(dcv_request.domain_or_ip_target)
+        mock_dns_resolver_resolve.assert_called_once_with(qname=expected_domain, rdtype=dns.rdatatype.TXT)
 
     async def acme_dns_validation__should_auto_insert_acme_challenge_prefix(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_acme_dns_01_check_request()
         mock_dns_resolver_resolve = self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
-        mock_dns_resolver_resolve.assert_called_once_with(
-            qname=f"_acme-challenge.{dcv_request.domain_or_ip_target}", rdtype=dns.rdatatype.TXT
-        )
+        expected_domain = dns.name.from_text(f"_acme-challenge.{dcv_request.domain_or_ip_target}")
+        mock_dns_resolver_resolve.assert_called_once_with(qname=expected_domain, rdtype=dns.rdatatype.TXT)
 
     async def contact_email_txt_lookup__should_auto_insert_validation_prefix(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_contact_check_request(DcvValidationMethod.CONTACT_EMAIL_TXT)
         mock_dns_resolver_resolve = self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
-        mock_dns_resolver_resolve.assert_called_once_with(
-            qname=f"_validation-contactemail.{dcv_request.domain_or_ip_target}", rdtype=dns.rdatatype.TXT
-        )
+        expected_domain = dns.name.from_text(f"_validation-contactemail.{dcv_request.domain_or_ip_target}")
+        mock_dns_resolver_resolve.assert_called_once_with(qname=expected_domain, rdtype=dns.rdatatype.TXT)
 
     async def contact_phone_txt_lookup__should_auto_insert_validation_prefix(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_contact_check_request(DcvValidationMethod.CONTACT_PHONE_TXT)
         mock_dns_resolver_resolve = self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is True
-        mock_dns_resolver_resolve.assert_called_once_with(
-            qname=f"_validation-contactphone.{dcv_request.domain_or_ip_target}", rdtype=dns.rdatatype.TXT
-        )
+        expected_domain = dns.name.from_text(f"_validation-contactphone.{dcv_request.domain_or_ip_target}")
+        mock_dns_resolver_resolve.assert_called_once_with(qname=expected_domain, rdtype=dns.rdatatype.TXT)
 
     # fmt: off
     @pytest.mark.parametrize("dcv_method, tag, expected_result", [
@@ -897,8 +898,11 @@ class TestMpicDcvChecker:
                 expected_domain = f"_validation-contactphone.{dcv_request.domain_or_ip_target}"
             case DcvValidationMethod.CONTACT_EMAIL_TXT:
                 expected_domain = f"_validation-contactemail.{dcv_request.domain_or_ip_target}"
-            case DcvValidationMethod.CONTACT_PHONE_CAA | DcvValidationMethod.CONTACT_EMAIL_CAA:
-                expected_domain = dns.name.from_text(expected_domain)  # CAA -- using dns names instead of strings
+            case DcvValidationMethod.DNS_PERSISTENT:
+                expected_domain = f"_validation-persist.{dcv_request.domain_or_ip_target}"
+
+        # expecting a dns name instead of string from the DCV checker (avoiding use of search directive in resolv.conf)
+        expected_domain = dns.name.from_text(expected_domain)
         test_dns_query_answer = self._create_basic_dns_response_for_mock(dcv_request, mocker)
 
         # noinspection PyUnusedLocal
@@ -971,6 +975,12 @@ class TestMpicDcvChecker:
                     record_data = {"flags": "", "tag": "issue", "value": check_parameters.challenge_value}
                 else:
                     record_data = {"value": check_parameters.challenge_value}
+            case DcvValidationMethod.DNS_PERSISTENT:
+                issuer_domain = check_parameters.issuer_domain_names[0]
+                account_uri = check_parameters.expected_account_uri
+                persist_until = int(time.time()) + 365*24*60*60  # 1 year from now
+                persistent_value = f"{issuer_domain}; accounturi={account_uri}; persistUntil={persist_until}"
+                record_data = {"value": persistent_value}
             case DcvValidationMethod.CONTACT_EMAIL_CAA:
                 record_data = {"flags": "", "tag": "contactemail", "value": check_parameters.challenge_value}
             case DcvValidationMethod.CONTACT_PHONE_CAA:
@@ -1091,6 +1101,147 @@ class TestMpicDcvChecker:
                     result = result[:i] + char.swapcase() + result[i + 1:]
                     break
         return result
+
+
+class TestDnsPersistentValidation:
+    """Tests specifically for DNS_PERSISTENT validation method"""
+
+    @pytest.fixture(autouse=True)
+    def setup_dcv_checker(self):
+        self.dcv_checker = MpicDcvChecker()
+        yield self.dcv_checker
+
+    @pytest.mark.parametrize("record_content, expected_result, description", [
+        ("authority.example; accounturi=https://authority.example/acct/123; persistUntil=1893456000", True,
+         "Valid record with future persistUntil"),
+        ("authority.example; accounturi=https://authority.example/acct/123", True,
+         "Valid record without persistUntil (optional parameter)"),
+        ("AUTHORITY.EXAMPLE; ACCOUNTURI=HTTPS://AUTHORITY.EXAMPLE/ACCT/123", True,
+         "Valid record with uppercase (case insensitive)"),
+        ("authority.example; accounturi=https://authority.example/acct/123; customParam=value; persistUntil=1893456000", True,
+         "Valid record with additional unknown parameters (should be ignored)"),
+        ("wrong.issuer; accounturi=https://authority.example/acct/123; persistUntil=1893456000", False,
+         "Wrong issuer domain"),
+        ("authority.example; accounturi=https://wrong.example/acct/456; persistUntil=1893456000", False,
+         "Wrong account URI"),
+        ("authority.example; accounturi=https://authority.example/acct/123; persistUntil=1735689600", False,
+         "Expired persistUntil (past timestamp)"),
+        ("authority.example; accounturi=https://authority.example/acct/123; persistUntil=invalid", False,
+         "Invalid timestamp format"),
+        ("authority.example; wrongparam=value", False,
+         "Missing required accounturi parameter"),
+        ("invalid-domain; accounturi=https://authority.example/acct/123; persistUntil=1893456000", False,
+         "Invalid issuer domain format"),
+    ])
+    def test_evaluate_persistent_dns_response(self, record_content, expected_result, description):
+        """Test the persistent DNS validation logic with various record formats"""
+        from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import MpicDcvChecker
+        
+        issuer_domain_names = ["authority.example"]
+        expected_account_uri = "https://authority.example/acct/123"
+        records = [record_content] if record_content else []
+        
+        result = MpicDcvChecker.evaluate_persistent_dns_response(records, issuer_domain_names, expected_account_uri)
+        assert result == expected_result, f"Test failed: {description}"
+
+    def test_evaluate_persistent_dns_response_multiple_records(self):
+        """Test that validation passes if any record in the list is valid"""
+        from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import MpicDcvChecker
+        
+        issuer_domain_names = ["authority.example"]
+        expected_account_uri = "https://authority.example/acct/123"
+        records = [
+            "wrong.issuer; accounturi=https://authority.example/acct/123; persistUntil=1893456000",  # Invalid
+            "authority.example; accounturi=https://wrong.example/acct/456; persistUntil=1893456000",  # Invalid
+            "authority.example; accounturi=https://authority.example/acct/123; persistUntil=1893456000",  # Valid
+        ]
+        
+        result = MpicDcvChecker.evaluate_persistent_dns_response(records, issuer_domain_names, expected_account_uri)
+        assert result is True, "Should pass if any record is valid"
+
+    def test_evaluate_persistent_dns_response_multiple_issuers(self):
+        """Test validation with multiple allowed issuer domains"""
+        from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import MpicDcvChecker
+        
+        issuer_domain_names = ["authority1.example", "authority2.example"]
+        expected_account_uri = "https://authority2.example/acct/456"
+        record = "authority2.example; accounturi=https://authority2.example/acct/456; persistUntil=1893456000"
+        
+        result = MpicDcvChecker.evaluate_persistent_dns_response([record], issuer_domain_names, expected_account_uri)
+        assert result is True, "Should pass with second allowed issuer domain"
+
+    def test_evaluate_persistent_dns_response_edge_cases(self):
+        """Test edge cases for persistent DNS validation"""
+        from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import MpicDcvChecker
+        
+        issuer_domain_names = ["authority.example"]
+        expected_account_uri = "https://authority.example/acct/123"
+        
+        # Test empty issuer_domain_names
+        result = MpicDcvChecker.evaluate_persistent_dns_response(["valid.record"], [], expected_account_uri)
+        assert result is False, "Should fail with empty issuer_domain_names"
+        
+        # Test empty account URI
+        result = MpicDcvChecker.evaluate_persistent_dns_response(["valid.record"], issuer_domain_names, "")
+        assert result is False, "Should fail with empty account_uri"
+        
+        # Test empty records
+        result = MpicDcvChecker.evaluate_persistent_dns_response([], issuer_domain_names, expected_account_uri)
+        assert result is False, "Should fail with empty records list"
+        
+        # Test malformed records
+        malformed_records = [
+            ";;;",  # Only separators
+            "authority.example;",  # Incomplete
+            "authority.example; =value",  # Missing parameter name
+            "authority.example; accounturi",  # Missing value
+        ]
+        
+        for record in malformed_records:
+            result = MpicDcvChecker.evaluate_persistent_dns_response([record], issuer_domain_names, expected_account_uri)
+            assert result is False, f"Should fail with malformed record: {record}"
+
+    async def test_dns_persistent_integration(self, mocker):
+        """Integration test for DNS_PERSISTENT validation through the main check_dcv method"""
+        dcv_request = ValidCheckCreator.create_valid_dns_persistent_check_request()
+        
+        # Mock DNS resolution to return a valid persistent record
+        issuer_domain = dcv_request.dcv_check_parameters.issuer_domain_names[0]
+        account_uri = dcv_request.dcv_check_parameters.expected_account_uri
+        persistent_value = f"{issuer_domain}; accounturi={account_uri}; persistUntil=1893456000"
+        
+        # Mock DNS response
+        from unit.test_util.mock_dns_object_creator import MockDnsObjectCreator
+        
+        record_data = {"value": persistent_value}
+        test_dns_query_answer = MockDnsObjectCreator.create_dns_query_answer(
+            dcv_request.domain_or_ip_target, 
+            "_validation-persist", 
+            dcv_request.dcv_check_parameters.dns_record_type, 
+            record_data, 
+            mocker
+        )
+        
+        # Mock the DNS resolver
+        async def side_effect(qname, rdtype):
+            if qname == f"_validation-persist.{dcv_request.domain_or_ip_target}":
+                return test_dns_query_answer
+            raise dns.resolver.NoAnswer
+        
+        mocker.patch.object(
+            self.dcv_checker.resolver, 
+            'resolve', 
+            side_effect=side_effect
+        )
+        
+        # Execute the check
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        
+        # Verify the response
+        assert dcv_response.check_passed is True, "DNS persistent validation should pass"
+        assert dcv_response.check_completed is True, "Check should be completed"
+        assert dcv_response.errors is None or len(dcv_response.errors) == 0, "Should have no errors"
+        assert dcv_response.details.records_seen == [persistent_value], "Should see the persistent record"
 
 
 if __name__ == "__main__":

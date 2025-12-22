@@ -15,7 +15,7 @@ class TestMpicDcvRequest:
 
     def model_validate_json__should_return_dcv_mpic_request_given_valid_dcv_json(self):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()
-        mpic_request = MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
+        mpic_request = MpicDcvRequest.model_validate_json(json.dumps(request.model_dump(warnings=False)))
         assert mpic_request.domain_or_ip_target == request.domain_or_ip_target
 
     def mpic_dcv_request__should_require_dcv_check_parameters(self):
@@ -23,14 +23,14 @@ class TestMpicDcvRequest:
         # noinspection PyTypeChecker
         request.dcv_check_parameters = None
         with pytest.raises(pydantic.ValidationError) as validation_error:
-            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
+            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump(warnings=False)))
         assert "dcv_check_parameters" in str(validation_error.value)
 
     def mpic_dcv_request__should_require_validation_method_in_check_parameters(self):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()
         request.dcv_check_parameters.validation_method = None
         with pytest.raises(pydantic.ValidationError) as validation_error:
-            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
+            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump(warnings=False)))
         assert "validation_method" in str(validation_error.value)
 
     def mpic_dcv_request__should_require_valid_validation_method_in_check_parameters(self):
@@ -45,7 +45,7 @@ class TestMpicDcvRequest:
         # noinspection PyTypeChecker
         request.dcv_check_parameters.challenge_value = None
         with pytest.raises(pydantic.ValidationError) as validation_error:
-            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
+            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump(warnings=False)))
         assert "challenge_value" in str(validation_error.value)
 
     def mpic_dcv_request__should_require_dns_record_type_for_dns_change_validation(self):
@@ -53,7 +53,7 @@ class TestMpicDcvRequest:
         # noinspection PyTypeChecker
         request.dcv_check_parameters.dns_record_type = None
         with pytest.raises(pydantic.ValidationError) as validation_error:
-            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
+            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump(warnings=False)))
         assert "dns_record_type" in str(validation_error.value)
 
     def mpic_dcv_request__should_require_valid_dns_record_type_for_dns_change_validation(self):
@@ -70,7 +70,7 @@ class TestMpicDcvRequest:
         # noinspection PyTypeChecker
         request.dcv_check_parameters.http_token_path = None
         with pytest.raises(pydantic.ValidationError) as validation_error:
-            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
+            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump(warnings=False)))
         assert "http_token_path" in str(validation_error.value)
 
     def mpic_dcv_request__should_require_token_for_acme_http_01_validation(self):
@@ -78,7 +78,7 @@ class TestMpicDcvRequest:
         # noinspection PyTypeChecker
         request.dcv_check_parameters.token = None
         with pytest.raises(pydantic.ValidationError) as validation_error:
-            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
+            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump(warnings=False)))
         assert "token" in str(validation_error.value)
 
     @pytest.mark.parametrize("validation_method", [DcvValidationMethod.ACME_HTTP_01, DcvValidationMethod.ACME_DNS_01])
@@ -90,12 +90,12 @@ class TestMpicDcvRequest:
         else:
             request.dcv_check_parameters.key_authorization_hash = None
         with pytest.raises(pydantic.ValidationError) as validation_error:
-            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
+            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump(warnings=False)))
         assert "key_authorization" in str(validation_error.value)
 
     def mpic_dcv_request__should_have_check_type_set_to_dcv(self):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()
-        mpic_request = MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
+        mpic_request = MpicDcvRequest.model_validate_json(json.dumps(request.model_dump(warnings=False)))
         assert mpic_request.check_type == CheckType.DCV
 
     def mpic_dcv_request__should_default_to_http_scheme_for_website_change_validation_given_no_scheme_specified(self):
@@ -105,7 +105,7 @@ class TestMpicDcvRequest:
             challenge_value="test",
             http_token_path="example-path",
         )
-        mpic_request = MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
+        mpic_request = MpicDcvRequest.model_validate_json(json.dumps(request.model_dump(warnings=False)))
         assert mpic_request.dcv_check_parameters.url_scheme == UrlScheme.HTTP
 
     @pytest.mark.parametrize(
@@ -121,7 +121,7 @@ class TestMpicDcvRequest:
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(validation_method)
         request.dcv_check_parameters.dns_name_prefix = "moo"
         with pytest.raises(pydantic.ValidationError) as validation_error:
-            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump()))
+            MpicDcvRequest.model_validate_json(json.dumps(request.model_dump(warnings=False)))
         assert expected_prefix in str(validation_error.value)
 
 
