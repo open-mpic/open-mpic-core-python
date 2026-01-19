@@ -27,7 +27,7 @@ dependencies = [
   "requests==2.32.4",
   "dnspython==2.7.0",
   "pydantic==2.11.7",
-  "aiohttp==3.12.14",
+  "aiohttp==3.13.3",
   "black==25.1.0",
   "cryptography==45.0.4",
 ]
@@ -57,7 +57,7 @@ build.targets.wheel.packages = ["src/open_mpic_core"]
 "./tests/unit/test_util" = "open_mpic_core_test/test_util"  # include tests in the wheel to facilitate integration testing in wrapper projects
 
 [tool.api]
-spec_version = "3.7.0"
+spec_version = "3.8.0"
 spec_repository = "https://github.com/open-mpic/open-mpic-specification"
 
 [tool.hatch.envs.default]
@@ -99,8 +99,6 @@ markers = [
 addopts = [
     "--import-mode=prepend",  # explicit default, as the tests rely on it for proper import resolution
 ]
-spec_header_format = "Spec for {test_case} ({path}):"
-spec_test_format = "{result} {docstring_summary}"  # defaults to {name} if docstring is not present in test
 asyncio_mode = "auto"  # defaults to "strict"
 asyncio_default_fixture_loop_scope = "function"
 
