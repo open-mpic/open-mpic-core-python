@@ -443,21 +443,35 @@ class MpicDcvChecker:
             # Look for required accounturi parameter
             valid_account_uri = False
             within_allowed_time = True  # Assume valid unless proven otherwise
+            well_formed_record = True
+            found_accounturi_param = False
+            found_persistuntil_param = False
 
             if not (len(param_list) == 1 and param_list[0].strip() == ""):  # if actual parameters follow the semicolon
                 for parameter in param_list:
                     name_and_value = parameter.split("=", 1)
                     if len(name_and_value) != 2:
+                        well_formed_record = False
                         break  # malformed parameter; skip to next record
                     param_name = name_and_value[0].strip().lower()
                     param_value = name_and_value[1].strip()
 
                     if param_name == "accounturi":
+                        if found_accounturi_param:  # check if duplicate param; if so, mark as malformed and skip
+                            well_formed_record = False
+                            break
+                        else:
+                            found_accounturi_param = True
                         if param_value.lower() == expected_account_uri:
                             valid_account_uri = True
                         else:
                             break  # accounturi does not match; skip to next record
                     elif param_name == "persistuntil":
+                        if found_persistuntil_param:  # check if duplicate param; if so, mark as malformed and skip
+                            well_formed_record = False
+                            break
+                        else:
+                            found_persistuntil_param = True
                         try:
                             persist_until_in_seconds = int(param_value)  # seconds since epoch
                             current_seconds = int(time.time())
@@ -470,7 +484,7 @@ class MpicDcvChecker:
                         # Additional parameters are ignored per CA/Browser Forum spec
 
             # Record is valid if issuer matches, account URI matches, and not expired
-            if valid_account_uri and within_allowed_time:
+            if valid_account_uri and within_allowed_time and well_formed_record:
                 found_valid_record = True
 
         return found_valid_record

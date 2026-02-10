@@ -726,9 +726,7 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is False
 
     @pytest.mark.parametrize("set_persist_until_parameter", [True, False])
-    def evaluate_persistent_dns_response__should_return_true_given_valid_record(
-            self, set_persist_until_parameter
-    ):
+    def evaluate_persistent_dns_response__should_return_true_given_valid_record(self, set_persist_until_parameter):
         issuer_domain_name = "ca.example.com"
         expected_account_uri = "https://ca.example.com/acct/123"
 
@@ -749,7 +747,7 @@ class TestMpicDcvChecker:
     def evaluate_persistent_dns_response__should_be_case_insensitive(self):
         issuer_domain_name = "cA.EXaMPle.com"
         expected_account_uri = "https://cA.EXaMPle.com/acct/123"
-        records = [f"{issuer_domain_name}; accounturi={expected_account_uri}"]
+        records = [f"{issuer_domain_name}; acCoUntUrI={expected_account_uri}"]
 
         expected_dns_record_content = ExpectedDnsRecordContent(
             possible_values=[issuer_domain_name.lower()],
@@ -873,12 +871,17 @@ class TestMpicDcvChecker:
     def evaluate_persistent_dns_response__should_return_false_given_malformed_record(self):
         issuer_domain_names = ["ca.example"]
         expected_account_uri = "https://ca.example/acct/123"
+        time_now = int(time.time())
         malformed_records = [
             ";;;",  # Only separators
             "ca.example",  # Missing parameters
             "ca.example;",  # Parameter separator but no parameters
             "ca.example; =value",  # Missing parameter name
             "ca.example; accounturi",  # Missing value
+            "ca.example; accounturi=https://ca.example/acct/123; badparam",  # malformed param after expected param
+            "ca.example; badparam; accountURI=https://ca.example/acct/123",  # malformed param before expected param
+            "ca.example; accounturi=https://ca.example/acct/234; accounturi=https://example/acct/123",  # duplicate param
+            f"ca.example; accounturi=https://ca.example/acct/123; persistuntil={time_now+10}; persistuntil={time_now+20}",  # duplicate persistUntil param
         ]
 
         expected_dns_record_content = ExpectedDnsRecordContent(
@@ -1129,9 +1132,7 @@ class TestMpicDcvChecker:
 
         return self.patch_resolver_resolve_with_side_effect(mocker, self.dcv_checker.resolver, side_effect)
 
-    def _mock_dns_resolve_call_with_specific_response_code(
-        self, dcv_request: DcvCheckRequest, response_code, mocker
-    ):
+    def _mock_dns_resolve_call_with_specific_response_code(self, dcv_request: DcvCheckRequest, response_code, mocker):
         test_dns_query_answer = self._create_basic_dns_response_for_mock(dcv_request, mocker)
 
         test_dns_query_answer.response.rcode = lambda: response_code
@@ -1194,7 +1195,7 @@ class TestMpicDcvChecker:
             case DcvValidationMethod.DNS_PERSISTENT:
                 issuer_domain = check_parameters.issuer_domain_names[0]
                 account_uri = check_parameters.expected_account_uri
-                persist_until = int(time.time()) + 365*24*60*60  # 1 year from now
+                persist_until = int(time.time()) + 365 * 24 * 60 * 60  # 1 year from now
                 persistent_value = f"{issuer_domain}; accounturi={account_uri}; persistUntil={persist_until}"
                 record_data = {"value": persistent_value}
             case DcvValidationMethod.CONTACT_EMAIL_CAA:
@@ -1234,9 +1235,7 @@ class TestMpicDcvChecker:
             details=DcvCheckResponseDetailsBuilder.build_response_details(DcvValidationMethod.ACME_TLS_ALPN_01),
         )
         response.details.common_name = dcv_request.domain_or_ip_target
-        mocker.patch.object(
-            DcvTlsAlpnValidator, "perform_tls_alpn_validation", return_value=response
-        )
+        mocker.patch.object(DcvTlsAlpnValidator, "perform_tls_alpn_validation", return_value=response)
 
     # fmt: off
     @pytest.mark.parametrize("input_target, expected_output", [
@@ -1262,7 +1261,7 @@ class TestMpicDcvChecker:
         if result.islower() or result.isupper():
             for i, char in enumerate(result):
                 if char.isalpha():
-                    result = result[:i] + char.swapcase() + result[i + 1:]
+                    result = result[:i] + char.swapcase() + result[i + 1 :]
                     break
         return result
 
