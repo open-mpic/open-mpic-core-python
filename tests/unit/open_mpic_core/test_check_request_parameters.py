@@ -76,8 +76,6 @@ class TestCheckRequestDetails:
         type_adapter = TypeAdapter(DcvCheckParameters)
         with pytest.raises(Exception) as validation_error:
             type_adapter.validate_json(parameters_as_json)
-        # print validation error to console...
-        print(f"Validation error for test case '{test_description}': {validation_error.value}")
         assert isinstance(validation_error.value, ValueError)
 
 
