@@ -3,7 +3,7 @@ import logging
 import pytest
 import ssl
 import socket
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 from io import StringIO
 from cryptography import x509
 from cryptography.x509 import SubjectAlternativeName, Extension, NameAttribute
@@ -257,14 +257,7 @@ class TestDcvTlsAlpnValidator:
         mocker.patch("asyncio.open_connection", return_value=(mock_reader, mock_writer))
 
         mock_writer.get_extra_info.return_value = mock_cert
-        # Mock SSL context and wrapped socket
-        # mock_ssl_socket = MagicMock()
-        # mock_ssl_socket.getpeercert.return_value = b'mock_binary_cert'
-
-        ## Mock SSL context's wrap_socket method
-        # mock_context = MagicMock()
-        # mock_context.wrap_socket.return_value.__enter__.return_value = mock_ssl_socket
-        # mocker.patch('ssl.create_default_context', return_value=mock_context)
+        mock_writer.wait_closed = AsyncMock()  # Make wait_closed an async mock
 
         # Mock x509.load_der_x509_certificate to return our mock certificate
         mocker.patch("cryptography.x509.load_der_x509_certificate", return_value=mock_cert)

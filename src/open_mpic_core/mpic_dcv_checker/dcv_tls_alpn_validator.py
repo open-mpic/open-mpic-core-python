@@ -84,7 +84,11 @@ class DcvTlsAlpnValidator:
                     ssl=context,
                     server_hostname=sni_target,  # use the real host name  # pass in the context.
                 )
-                binary_cert = writer.get_extra_info("peercert")
+                try:
+                    binary_cert = writer.get_extra_info("peercert")
+                finally:
+                    writer.close()
+                    await writer.wait_closed()
 
             dcv_check_response.check_completed = True  # check will be considered "complete" whether it passes or fails
 
