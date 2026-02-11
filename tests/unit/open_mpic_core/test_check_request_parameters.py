@@ -64,6 +64,10 @@ class TestCheckRequestDetails:
          "should fail validation when required issuer_domain_names is missing for DNS Persistent"),
         ('{"validation_method": "dns-persistent", "issuer_domain_names": ["authority.example"]}',
          "should fail validation when required expected_account_uri is missing for DNS Persistent"),
+        ('{"validation_method": "dns-persistent", "issuer_domain_names": ["authority.example"], "expected_account_uri": "not-a-valid-uri"}',
+         "should fail validation when expected_account_uri is not a valid URI for DNS Persistent"),
+        ('{"validation_method": "dns-persistent", "issuer_domain_names": [""], "expected_account_uri": "https://authority.example/acct/123"}',
+         "should fail validation when issuer_domain_names contains an empty string for DNS Persistent"),
     ])
     # fmt: on
     def check_request_parameters__should_fail_validation_when_serialized_object_is_malformed(

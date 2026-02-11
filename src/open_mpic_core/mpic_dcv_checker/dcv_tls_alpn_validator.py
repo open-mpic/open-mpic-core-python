@@ -79,9 +79,16 @@ class DcvTlsAlpnValidator:
             context.minimum_version = TLSVersion.TLSv1_2
             with getpeercert_with_binary_info():  # monkeypatch overrides default behavior and gets binary cert info
                 reader, writer = await asyncio.open_connection(
-                    hostname, 443, ssl=context, server_hostname=sni_target  # use the real host name  # pass in the context.
+                    hostname,
+                    443,
+                    ssl=context,
+                    server_hostname=sni_target,  # use the real host name  # pass in the context.
                 )
-                binary_cert = writer.get_extra_info("peercert")
+                try:
+                    binary_cert = writer.get_extra_info("peercert")
+                finally:
+                    writer.close()
+                    await writer.wait_closed()
 
             dcv_check_response.check_completed = True  # check will be considered "complete" whether it passes or fails
 
@@ -89,7 +96,7 @@ class DcvTlsAlpnValidator:
 
             subject_alt_name_extension = None
             acme_tls_alpn_extension = None
-            
+
             for extension in x509_cert.extensions:
                 if extension.oid.dotted_string == self.ACME_TLS_ALPN_OID_DOTTED_STRING:
                     acme_tls_alpn_extension = extension
@@ -120,24 +127,28 @@ class DcvTlsAlpnValidator:
                             + key_authorization_hash_binary
                         )
                         self.logger.debug(f"tls-alpn-01: binary_challenge_seen: {binary_challenge_seen}")
-                        self.logger.debug(f"tls-alpn-01: key_authorization_hash_binary: {key_authorization_hash_binary}")
-                        
+                        self.logger.debug(
+                            f"tls-alpn-01: key_authorization_hash_binary: {key_authorization_hash_binary}"
+                        )
+
                     except ValueError:
                         dcv_check_response.errors = [
-                            MpicValidationError.create(ErrorMessages.DCV_PARAMETER_ERROR, key_authorization_hash)
+                            MpicValidationError.create(
+                                ErrorMessages.DCV_PARAMETER_ERROR, "key_authorization_hash", key_authorization_hash
+                            )
                         ]
                     else:
                         # Only assign the check_passed attribute if we properly parsed the challenge.
                         dcv_check_response.check_passed = binary_challenge_seen == key_authorization_hash_binary
-                    
+
                     # Obtain the certs common name for logging.
                     common_name_attributes = x509_cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
                     common_name = None
                     if len(common_name_attributes) > 0:
                         common_name = str(common_name_attributes[0].value)
                         self.logger.debug(f"common name: {common_name}")
-                    dcv_check_response.details.common_name = common_name # Cert common name for logging info.
-                    
+                    dcv_check_response.details.common_name = common_name  # Cert common name for logging info.
+
                     self.logger.debug(f"tls-alpn-01: passed? {dcv_check_response.check_passed}")
                 dcv_check_response.timestamp_ns = time.time_ns()
         except asyncio.TimeoutError as e:
@@ -169,7 +180,9 @@ class DcvTlsAlpnValidator:
         if type(san_target) == str:
             if not isinstance(single_san_name, x509.general_name.DNSName):
                 errors = [MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_DNSNAME)]
-            elif single_san_name.value.lower() != san_target.lower(): # Comparison is case insensitive per RFC4343 rules.
+            elif (
+                single_san_name.value.lower() != san_target.lower()
+            ):  # Comparison is case insensitive per RFC4343 rules.
                 errors = [MpicValidationError.create(ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_SAN_NOT_HOSTNAME)]
         else:
             if not isinstance(single_san_name, x509.general_name.IPAddress):

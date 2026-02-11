@@ -3,7 +3,7 @@ import logging
 import pytest
 import ssl
 import socket
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 from io import StringIO
 from cryptography import x509
 from cryptography.x509 import SubjectAlternativeName, Extension, NameAttribute
@@ -144,7 +144,10 @@ class TestDcvTlsAlpnValidator:
         assert response.check_completed is True
         assert response.check_passed is False
         assert len(response.errors) > 0
-        assert response.errors[0].error_message == ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_ALPN_EXTENSION_NONCRITICAL.message
+        assert (
+            response.errors[0].error_message
+            == ErrorMessages.TLS_ALPN_ERROR_CERTIFICATE_ALPN_EXTENSION_NONCRITICAL.message
+        )
 
     async def perform_tls_alpn_validation__should_fail_given_invalid_key_authorization_hash(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_acme_tls_alpn_01_check_request()
@@ -152,18 +155,20 @@ class TestDcvTlsAlpnValidator:
         key_authorization_hash = dcv_request.dcv_check_parameters.key_authorization_hash
         mock_cert = self._create_mock_certificate(hostname, key_authorization_hash)
         # Modify the mock certificate to have a different key authorization hash
-        dcv_request.dcv_check_parameters.key_authorization_hash = 'invalid_hash_value'
+        dcv_request.dcv_check_parameters.key_authorization_hash = "invalid_hash_value"
         self._mock_socket_and_ssl_context(mocker, mock_cert)
         response = await self.validator.perform_tls_alpn_validation(dcv_request)
         assert response.check_completed is True
         assert response.check_passed is False
-        expected_error = ErrorMessages.DCV_PARAMETER_ERROR.message.format("invalid_hash_value")
+        expected_error = ErrorMessages.DCV_PARAMETER_ERROR.message.format(
+            "key_authorization_hash", "invalid_hash_value"
+        )
         assert response.errors[0].error_message == expected_error
 
     async def perform_tls_alpn_validation__should_handle_connection_errors(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_acme_tls_alpn_01_check_request()
         # Mock asyncio to raise an exception (haven't checked if this specific exception could be raised, but whatever)
-        mocker.patch('asyncio.open_connection', side_effect=socket.timeout("Connection timed out"))
+        mocker.patch("asyncio.open_connection", side_effect=socket.timeout("Connection timed out"))
         response = await self.validator.perform_tls_alpn_validation(dcv_request)
         assert response.check_completed is False
         assert response.check_passed is False
@@ -172,7 +177,7 @@ class TestDcvTlsAlpnValidator:
     async def perform_tls_alpn_validation__should_handle_ssl_errors(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_acme_tls_alpn_01_check_request()
         # Mock SSL context to raise an exception
-        mocker.patch('ssl.create_default_context', side_effect=ssl.SSLError("SSL error"))
+        mocker.patch("ssl.create_default_context", side_effect=ssl.SSLError("SSL error"))
         response = await self.validator.perform_tls_alpn_validation(dcv_request)
         assert response.check_completed is False
         assert response.check_passed is False
@@ -230,15 +235,15 @@ class TestDcvTlsAlpnValidator:
         invalid_san = x509.general_name.DNSName("invalid.example.com")
         san_extension.value._general_names = [invalid_san]
         return mock_cert
-    
+
     def _create_mock_certificate_with_ip_san(self, ipstring, key_authorization_hash):
-        mock_cert = self._create_mock_certificate('foo.baa', key_authorization_hash)
+        mock_cert = self._create_mock_certificate("foo.baa", key_authorization_hash)
         # Create a SAN entry that does not match the hostname
         san_extension = mock_cert.extensions[0]
         ip_san = x509.general_name.IPAddress(ipaddress.ip_address(ipstring))
         san_extension.value._general_names = [ip_san]
         return mock_cert
-    
+
     def _create_mock_certificate_with_noncritical_alpn_extension(self, hostname, key_authorization_hash):
         mock_cert = self._create_mock_certificate(hostname, key_authorization_hash)
         alpn_extension = mock_cert.extensions[1]
@@ -249,19 +254,12 @@ class TestDcvTlsAlpnValidator:
         # Mock socket.create_connection
         mock_writer = MagicMock()
         mock_reader = MagicMock()
-        mocker.patch('asyncio.open_connection', return_value=(mock_reader, mock_writer))
+        mocker.patch("asyncio.open_connection", return_value=(mock_reader, mock_writer))
 
         mock_writer.get_extra_info.return_value = mock_cert
-        # Mock SSL context and wrapped socket
-        #mock_ssl_socket = MagicMock()
-        #mock_ssl_socket.getpeercert.return_value = b'mock_binary_cert'
-
-        ## Mock SSL context's wrap_socket method
-        #mock_context = MagicMock()
-        #mock_context.wrap_socket.return_value.__enter__.return_value = mock_ssl_socket
-        #mocker.patch('ssl.create_default_context', return_value=mock_context)
+        mock_writer.wait_closed = AsyncMock()  # Make wait_closed an async mock
 
         # Mock x509.load_der_x509_certificate to return our mock certificate
-        mocker.patch('cryptography.x509.load_der_x509_certificate', return_value=mock_cert)
+        mocker.patch("cryptography.x509.load_der_x509_certificate", return_value=mock_cert)
 
         return mock_writer
