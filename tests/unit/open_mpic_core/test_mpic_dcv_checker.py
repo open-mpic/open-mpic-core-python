@@ -28,6 +28,7 @@ from open_mpic_core import MpicDcvChecker, DcvCheckRequest, DcvCheckResponse
 from open_mpic_core import DcvTlsAlpnValidator, DcvCheckResponseDetailsBuilder
 from open_mpic_core import DcvValidationMethod, DnsRecordType
 from open_mpic_core import MpicValidationError, ErrorMessages, TRACE_LEVEL
+from open_mpic_core.common_domain.enum.url_scheme import UrlScheme
 from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import ExpectedDnsRecordContent
 
 from unit.test_util.mock_dns_object_creator import MockDnsObjectCreator
@@ -527,7 +528,7 @@ class TestMpicDcvChecker:
         assert mock_get.call_args.kwargs["url"] == expected_url
         assert dcv_response.details.response_url == expected_url
 
-    @pytest.mark.parametrize("url_scheme", ["http", "https"])
+    @pytest.mark.parametrize("url_scheme", [UrlScheme.HTTP, UrlScheme.HTTPS])
     async def website_change_validation__should_use_specified_url_scheme(self, url_scheme, mocker):
         dcv_request = ValidCheckCreator.create_valid_http_check_request()
         dcv_request.dcv_check_parameters.url_scheme = url_scheme
@@ -822,19 +823,6 @@ class TestMpicDcvChecker:
         result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
         assert result is False
 
-    def evaluate_persistent_dns_response__should_return_false_given_malformed_persist_until_parameter(self):
-        issuer_domain_name = "ca.example.com"
-        expected_account_uri = "https://ca.example.com/acct/123"
-        records = [f"{issuer_domain_name}; accounturi={expected_account_uri}; persistUntil={int(time.time())+3600}foo"]
-
-        expected_dns_record_content = ExpectedDnsRecordContent(
-            possible_values=[issuer_domain_name],
-            expected_parameters={"accounturi": expected_account_uri},
-        )
-
-        result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
-        assert result is False
-
     def evaluate_persistent_dns_response__should_return_true_given_any_record_in_the_provided_list_is_valid(self):
         issuer_domain_names = ["ca.example.com", "ca1.example.com"]
         expected_account_uri = "https://ca.example.com/acct/123"
@@ -868,30 +856,32 @@ class TestMpicDcvChecker:
         result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
         assert result is True, "Should pass with second allowed issuer domain"
 
-    def evaluate_persistent_dns_response__should_return_false_given_malformed_record(self):
+    # fmt: off
+    @pytest.mark.parametrize("record", [
+        ";;;",  # Only separators
+        "ca.example",  # Missing parameters
+        "ca.example;",  # Parameter separator but no parameters
+        "ca.example; =value",  # Missing parameter name
+        "ca.example; accounturi",  # Missing value
+        f"ca.example; persistuntil={int(time.time()) + 3600}",  # Missing accounturi parameter
+        "ca.example; accounturi=https://ca.example/acct/123; badparam",  # malformed param after expected param
+        "ca.example; badparam; accountURI=https://ca.example/acct/123",  # malformed param before expected param
+        "ca.example; accounturi=https://ca.example/acct/234; accounturi=https://example/acct/123",  # duplicate param
+        f"ca.example; accounturi=https://ca.example/acct/123; persistuntil={int(time.time())+10}; persistuntil={int(time.time())+20}",  # duplicate persistUntil param
+        f"ca.example; accounturi=https://ca.example/acct/123; persistUntil={int(time.time())+3600}foo",  # malformed persistUntil value
+    ])
+    # fmt: on
+    def evaluate_persistent_dns_response__should_return_false_given_malformed_record(self, record):
         issuer_domain_names = ["ca.example"]
         expected_account_uri = "https://ca.example/acct/123"
-        time_now = int(time.time())
-        malformed_records = [
-            ";;;",  # Only separators
-            "ca.example",  # Missing parameters
-            "ca.example;",  # Parameter separator but no parameters
-            "ca.example; =value",  # Missing parameter name
-            "ca.example; accounturi",  # Missing value
-            "ca.example; accounturi=https://ca.example/acct/123; badparam",  # malformed param after expected param
-            "ca.example; badparam; accountURI=https://ca.example/acct/123",  # malformed param before expected param
-            "ca.example; accounturi=https://ca.example/acct/234; accounturi=https://example/acct/123",  # duplicate param
-            f"ca.example; accounturi=https://ca.example/acct/123; persistuntil={time_now+10}; persistuntil={time_now+20}",  # duplicate persistUntil param
-        ]
 
         expected_dns_record_content = ExpectedDnsRecordContent(
             possible_values=issuer_domain_names,
             expected_parameters={"accounturi": expected_account_uri},
         )
 
-        for record in malformed_records:
-            result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, [record])
-            assert result is False, f"Should fail with malformed record: {record}"
+        result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, [record])
+        assert result is False, f"Should fail with malformed record: {record}"
 
     @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.DNS_CHANGE, DcvValidationMethod.ACME_DNS_01])
     async def dns_based_dcv_checks__should_return_timestamp_and_list_of_records_seen(self, dcv_method, mocker):

@@ -2,7 +2,13 @@ import json
 import pydantic
 import pytest
 
-from open_mpic_core import DcvWebsiteChangeValidationParameters, CheckType,  DcvValidationMethod, UrlScheme, MpicDcvRequest
+from open_mpic_core import (
+    DcvWebsiteChangeValidationParameters,
+    CheckType,
+    DcvValidationMethod,
+    UrlScheme,
+    MpicDcvRequest,
+)
 
 from unit.test_util.valid_mpic_request_creator import ValidMpicRequestCreator
 

@@ -1,5 +1,6 @@
 from open_mpic_core import DcvValidationMethod, DcvCheckResponse, DcvCheckResponseDetailsBuilder
 
+
 class DcvUtils:
     @staticmethod
     def create_empty_check_response(validation_method: DcvValidationMethod) -> DcvCheckResponse:

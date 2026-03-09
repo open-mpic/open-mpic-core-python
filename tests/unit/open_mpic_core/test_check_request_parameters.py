@@ -1,5 +1,5 @@
 import pytest
-from pydantic import TypeAdapter, ValidationError
+from pydantic import TypeAdapter
 
 from open_mpic_core import (
     DcvAcmeHttp01ValidationParameters,

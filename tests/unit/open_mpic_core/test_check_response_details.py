@@ -28,10 +28,12 @@ class TestCheckResponseDetails:
         ('{"validation_method": "acme-tls-alpn-01", "common_name": "example.com"}', DcvTlsAlpnCheckResponseDetails),
     ])
     # fmt: on
-    def check_response_details__should_automatically_deserialize_into_correct_object_based_on_discriminator(self, details_as_json, expected_class):
+    def check_response_details__should_automatically_deserialize_into_correct_object_based_on_discriminator(
+        self, details_as_json, expected_class
+    ):
         details_as_object = expected_class.model_validate_json(details_as_json)
         assert isinstance(details_as_object, expected_class)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pytest.main()

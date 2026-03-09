@@ -78,8 +78,7 @@ class ValidCheckCreator:
         return DcvCheckRequest(
             domain_or_ip_target="example.com",
             dcv_check_parameters=DcvDnsPersistentValidationParameters(
-                issuer_domain_names=["authority.example"],
-                expected_account_uri="https://authority.example/acct/123"
+                issuer_domain_names=["authority.example"], expected_account_uri="https://authority.example/acct/123"
             ),
         )
 
@@ -113,7 +112,7 @@ class ValidCheckCreator:
         )
 
     @staticmethod
-    def create_valid_acme_tls_alpn_01_check_request(target = "example.com"):
+    def create_valid_acme_tls_alpn_01_check_request(target="example.com"):
         challenge = "example-token.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
         hash_bytes_hex = hashlib.sha256(challenge.encode("utf-8")).digest().hex()
         return DcvCheckRequest(
