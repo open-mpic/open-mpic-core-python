@@ -68,4 +68,5 @@ from open_mpic_core.mpic_dcv_checker.dcv_utils import DcvUtils
 from open_mpic_core.mpic_dcv_checker.dcv_tls_alpn_validator import DcvTlsAlpnValidator
 
 from open_mpic_core.mpic_caa_checker.mpic_caa_checker import MpicCaaChecker
+from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import ExpectedDnsRecordContent
 from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import MpicDcvChecker

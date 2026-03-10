@@ -28,8 +28,8 @@ from open_mpic_core import MpicDcvChecker, DcvCheckRequest, DcvCheckResponse
 from open_mpic_core import DcvTlsAlpnValidator, DcvCheckResponseDetailsBuilder
 from open_mpic_core import DcvValidationMethod, DnsRecordType
 from open_mpic_core import MpicValidationError, ErrorMessages, TRACE_LEVEL
-from open_mpic_core.common_domain.enum.url_scheme import UrlScheme
-from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import ExpectedDnsRecordContent
+from open_mpic_core import UrlScheme
+from open_mpic_core import ExpectedDnsRecordContent
 
 from unit.test_util.mock_dns_object_creator import MockDnsObjectCreator
 from unit.test_util.valid_check_creator import ValidCheckCreator
