@@ -6,7 +6,6 @@ from pydantic import BaseModel, field_validator, Field
 
 from open_mpic_core import CertificateType, DnsRecordType, DcvValidationMethod, UrlScheme
 
-
 DNS_CHANGE_ALLOWED_RECORD_TYPES: Set[DnsRecordType] = {DnsRecordType.CNAME, DnsRecordType.TXT, DnsRecordType.CAA}
 IP_ADDRESS_ALLOWED_RECORD_TYPES: Set[DnsRecordType] = {DnsRecordType.A, DnsRecordType.AAAA}
 

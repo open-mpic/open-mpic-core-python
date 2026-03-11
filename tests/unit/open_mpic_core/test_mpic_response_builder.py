@@ -8,7 +8,7 @@ from open_mpic_core import (
     CheckType,
     DcvValidationMethod,
     MpicResponseBuilder,
-    PerspectiveResponse
+    PerspectiveResponse,
 )
 
 from unit.test_util.valid_mpic_request_creator import ValidMpicRequestCreator
@@ -29,7 +29,7 @@ class TestMpicResponseBuilder:
                             check_response=CaaCheckResponse(
                                 check_passed=perspective_status_map[code],
                                 details=CaaCheckResponseDetails(caa_record_present=(not perspective_status_map[code])),
-                            )
+                            ),
                         ),
                         perspective_status_map.keys(),
                     )
@@ -44,7 +44,7 @@ class TestMpicResponseBuilder:
                             perspective_code=code,
                             check_response=DcvCheckResponse(
                                 check_passed=perspective_status_map[code], details=response_details
-                            )
+                            ),
                         ),
                         perspective_status_map.keys(),
                     )

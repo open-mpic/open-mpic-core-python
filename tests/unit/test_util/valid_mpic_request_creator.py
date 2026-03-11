@@ -69,7 +69,6 @@ class ValidMpicRequestCreator:
                 check_parameters = DcvContactEmailTxtValidationParameters(challenge_value="test")
             case DcvValidationMethod.DNS_PERSISTENT:
                 check_parameters = DcvDnsPersistentValidationParameters(
-                    issuer_domain_names=["authority.example"],
-                    expected_account_uri="https://authority.example/acct/123"
+                    issuer_domain_names=["authority.example"], expected_account_uri="https://authority.example/acct/123"
                 )
         return check_parameters

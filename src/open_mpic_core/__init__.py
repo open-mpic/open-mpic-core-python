@@ -33,7 +33,7 @@ from open_mpic_core.common_domain.check_response_details import (
     DcvCheckResponseDetailsBuilder,
     DcvDnsCheckResponseDetails,
     DcvHttpCheckResponseDetails,
-    DcvTlsAlpnCheckResponseDetails
+    DcvTlsAlpnCheckResponseDetails,
 )
 from open_mpic_core.common_domain.check_response import CheckResponse, CaaCheckResponse, DcvCheckResponse
 
@@ -53,7 +53,7 @@ from open_mpic_core.mpic_coordinator.domain.mpic_response import MpicResponse, M
 from open_mpic_core.mpic_coordinator.domain.mpic_request_errors import (
     MpicRequestValidationException,
     CohortCreationException,
-    CohortSelectionException
+    CohortSelectionException,
 )
 from open_mpic_core.mpic_coordinator.domain.remote_check_call_configuration import RemoteCheckCallConfiguration
 from open_mpic_core.mpic_coordinator.domain.remote_check_exception import RemoteCheckException
@@ -68,5 +68,5 @@ from open_mpic_core.mpic_dcv_checker.dcv_utils import DcvUtils
 from open_mpic_core.mpic_dcv_checker.dcv_tls_alpn_validator import DcvTlsAlpnValidator
 
 from open_mpic_core.mpic_caa_checker.mpic_caa_checker import MpicCaaChecker
+from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import ExpectedDnsRecordContent
 from open_mpic_core.mpic_dcv_checker.mpic_dcv_checker import MpicDcvChecker
-

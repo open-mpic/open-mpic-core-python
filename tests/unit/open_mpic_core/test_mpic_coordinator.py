@@ -299,7 +299,7 @@ class TestMpicCoordinator:
         assert mpic_response.is_valid is False
         assert mpic_response.actual_orchestration_parameters.attempt_count == 3
 
-    async def coordinate_mpic__should_raise_cohort_creation_error_if_it_cannot_make_any_cohorts_due_to_too_close_codes(self):
+    async def coordinate_mpic__should_raise_cohort_creation_error_if_no_cohorts_possible_due_to_too_close_codes(self):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         # there are 3 rirs of 2 perspectives each in the test setup; expect 3 cohorts of 2 perspectives each
         mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters(
@@ -308,8 +308,8 @@ class TestMpicCoordinator:
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
         # Make all the perspectives too close to us-west-1.
         for index in range(len(mpic_coordinator_config.target_perspectives)):
-            if mpic_coordinator_config.target_perspectives[index].code != 'us-west-1':
-                mpic_coordinator_config.target_perspectives[index].too_close_codes = ['us-west-1']
+            if mpic_coordinator_config.target_perspectives[index].code != "us-west-1":
+                mpic_coordinator_config.target_perspectives[index].too_close_codes = ["us-west-1"]
 
         mocked_call_remote_perspective_function = AsyncMock()
         mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
@@ -319,7 +319,7 @@ class TestMpicCoordinator:
         with pytest.raises(CohortCreationException):
             await mpic_coordinator.coordinate_mpic(mpic_request)
 
-    async def coordinate_mpic__should_raise_cohort_creation_error_if_it_cannot_make_any_cohorts_due_to_rir_diversity(self):
+    async def coordinate_mpic__should_raise_cohort_creation_error_if_no_cohorts_possible_due_to_rir_diversity(self):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         # there are 3 rirs of 2 perspectives each in the test setup; expect 3 cohorts of 2 perspectives each
         mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters(
@@ -461,7 +461,7 @@ class TestMpicCoordinator:
 
     @pytest.mark.parametrize("cohort_for_single_attempt", [1, 2])
     async def coordinate_mpic__should_perform_attempt_with_cohort_if_single_attempt_cohort_number_specified(
-            self, cohort_for_single_attempt
+        self, cohort_for_single_attempt
     ):
         # will create 2 cohorts with 3 perspectives each (2 in RIR 'ARIN', and 1 in 'RIPE NCC').
         perspectives = [
@@ -483,8 +483,7 @@ class TestMpicCoordinator:
 
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters(
-            perspective_count=3,
-            cohort_for_single_attempt=cohort_for_single_attempt
+            perspective_count=3, cohort_for_single_attempt=cohort_for_single_attempt
         )
 
         mpic_response = await mpic_coordinator.coordinate_mpic(mpic_request)
@@ -524,8 +523,7 @@ class TestMpicCoordinator:
 
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         mpic_request.orchestration_parameters = MpicRequestOrchestrationParameters(
-            perspective_count=cohort_size,
-            cohort_for_single_attempt=single_attempt_cohort_number
+            perspective_count=cohort_size, cohort_for_single_attempt=single_attempt_cohort_number
         )
 
         with pytest.raises(CohortSelectionException):
@@ -585,7 +583,7 @@ class TestMpicCoordinator:
 
     @pytest.mark.parametrize("should_complete_mpic", [True, False])
     async def coordinate_mpic__should_set_mpic_completed_true_if_enough_perspectives_completed_check_otherwise_false(
-            self, should_complete_mpic
+        self, should_complete_mpic
     ):
         mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
         mpic_coordinator_config = self.create_mpic_coordinator_configuration()
@@ -630,10 +628,9 @@ class TestMpicCoordinator:
         )
 
     # noinspection PyUnusedLocal
-    def create_passing_dcv_check_response(
-        self, perspective: RemotePerspective, check_type: CheckType, check_request
-    ):
+    def create_passing_dcv_check_response(self, perspective: RemotePerspective, check_type: CheckType, check_request):
         from open_mpic_core import DcvCheckResponse, DcvCheckResponseDetailsBuilder
+
         validation_method = check_request.dcv_check_parameters.validation_method
         return DcvCheckResponse(
             check_completed=True,

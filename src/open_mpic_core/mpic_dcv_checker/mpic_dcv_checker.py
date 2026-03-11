@@ -385,9 +385,7 @@ class MpicDcvChecker:
             if exact_match:
                 dcv_check_response.check_passed = expected_dns_value in records_as_strings
             else:
-                dcv_check_response.check_passed = any(
-                    expected_dns_value in record for record in records_as_strings
-                )
+                dcv_check_response.check_passed = any(expected_dns_value in record for record in records_as_strings)
 
         dcv_check_response.check_completed = True
 
@@ -425,7 +423,7 @@ class MpicDcvChecker:
         """
         found_valid_record = False
         accepted_domain_names = [domain.lower() for domain in expected_dns_record_content.possible_values]
-        expected_account_uri = expected_dns_record_content.expected_parameters['accounturi'].lower()
+        expected_account_uri = expected_dns_record_content.expected_parameters["accounturi"].lower()
 
         for txt_record in records_as_strings:
             # Split on semicolon (parameter delimiter) and strip whitespace from each part
