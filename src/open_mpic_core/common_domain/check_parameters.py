@@ -44,6 +44,9 @@ class DcvDnsChangeValidationParameters(DcvGeneralDnsValidationParameters):
     validation_method: Literal[DcvValidationMethod.DNS_CHANGE] = DcvValidationMethod.DNS_CHANGE
     dns_record_type: DnsRecordType
     require_exact_match: bool = False
+    # Baseline Requirements don't specify case sensitivity for DNS-based validation,
+    # but we may want this as an option for certain CAs that require it based on their implementation
+    # require_exact_case: bool = True
 
     # noinspection PyNestedDecorators
     @field_validator("dns_record_type")
