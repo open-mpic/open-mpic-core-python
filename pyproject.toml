@@ -29,6 +29,7 @@ dependencies = [
   "pydantic==2.11.7",
   "aiohttp==3.13.3",
   "cryptography==46.0.5",
+  "uritools==6.0.1",
 ]
 
 [project.optional-dependencies]

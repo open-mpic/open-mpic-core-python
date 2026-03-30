@@ -1,6 +1,6 @@
 from abc import ABC
 from typing import Literal, Union, Any, Set, Annotated
-from urllib.parse import urlparse
+from uritools import isuri
 
 from pydantic import BaseModel, field_validator, Field
 
@@ -42,7 +42,6 @@ class DcvGeneralDnsValidationParameters(DcvValidationParameters, ABC):
 
 class DcvDnsChangeValidationParameters(DcvGeneralDnsValidationParameters):
     validation_method: Literal[DcvValidationMethod.DNS_CHANGE] = DcvValidationMethod.DNS_CHANGE
-    dns_record_type: DnsRecordType
     require_exact_match: bool = False
     # Baseline Requirements don't specify case sensitivity for DNS-based validation,
     # but we may want this as an option for certain CAs that require it based on their implementation
@@ -68,9 +67,8 @@ class DcvDnsPersistentValidationParameters(DcvValidationParameters):
     @field_validator("expected_account_uri")
     @classmethod
     def validate_account_uri(cls, v: str) -> str:
-        parsed_account_uri = urlparse(v)
-        if not parsed_account_uri.scheme or not parsed_account_uri.netloc:
-            raise ValueError(f"expected_account_uri must be a valid URI with scheme and host, got {v}")
+        if not isuri(v):
+            raise ValueError(f"expected_account_uri must be a valid URI, got {v}")
         return v
 
     @field_validator("issuer_domain_names")

@@ -844,9 +844,9 @@ class TestMpicDcvChecker:
 
     def evaluate_persistent_dns_response__should_accept_match_for_any_issuer_in_the_provided_list(self):
         issuer_domain_names = ["ca.example.com", "alt.example.com"]
-        expected_account_uri = "https://ca.example.com/acct/123"
+        expected_account_uri = "acct:foo123@example.com"
         time_now = int(time.time())
-        records = [f"alt.example.com; accounturi=https://ca.example.com/acct/123; persistUntil={time_now + 3600}"]
+        records = [f"alt.example.com; accounturi=acct:foo123@example.com; persistUntil={time_now + 3600}"]
 
         expected_dns_record_content = ExpectedDnsRecordContent(
             possible_values=issuer_domain_names,
@@ -869,6 +869,7 @@ class TestMpicDcvChecker:
         "ca.example; accounturi=https://ca.example/acct/234; accounturi=https://example/acct/123",  # duplicate param
         f"ca.example; accounturi=https://ca.example/acct/123; persistuntil={int(time.time())+10}; persistuntil={int(time.time())+20}",  # duplicate persistUntil param
         f"ca.example; accounturi=https://ca.example/acct/123; persistUntil={int(time.time())+3600}foo",  # malformed persistUntil value
+        f"ca.example; accounturi=ca.example/acct/123"  # malformed account URI
     ])
     # fmt: on
     def evaluate_persistent_dns_response__should_return_false_given_malformed_record(self, record):
