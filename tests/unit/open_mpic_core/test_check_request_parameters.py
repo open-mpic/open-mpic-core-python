@@ -78,6 +78,22 @@ class TestCheckRequestDetails:
             type_adapter.validate_json(parameters_as_json)
         assert isinstance(validation_error.value, ValueError)
 
+    # fmt: off
+    @pytest.mark.parametrize("account_uri", [
+        "http://authority.example/acct/123",
+        "mailto:123@example.com",
+        "acct:abc123@example.com"
+    ])
+    # fmt: on
+    def check_request_parameters__should_accept_valid_uri_format_for_expected_account_uri_in_dns_persistent_validation(
+        self, account_uri
+    ):
+        parameters_as_json = f'{{"validation_method": "dns-persistent", "issuer_domain_names": ["authority.example"], "expected_account_uri": "{account_uri}"}}'
+        type_adapter = TypeAdapter(DcvCheckParameters)
+        details_as_object: DcvCheckParameters = type_adapter.validate_json(parameters_as_json)
+        assert isinstance(details_as_object, DcvDnsPersistentValidationParameters)
+        assert details_as_object.expected_account_uri == account_uri
+
 
 if __name__ == "__main__":
     pytest.main()
