@@ -184,9 +184,35 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is False  # should fail because casing was shuffled
 
-    # check_dcv__should_be_case_sensitive_unless_flagged_otherwise_for_challenge_values_for_certain_validation_methods
-    #   (DcvValidationMethod.WEBSITE_CHANGE, None, True),
-    #   (DcvValidationMethod.DNS_CHANGE, DnsRecordType.TXT, True),
+    @pytest.mark.parametrize(
+        "dcv_method, record_type, allow_case_insensitive",
+        [
+            (DcvValidationMethod.WEBSITE_CHANGE, None, False),
+            (DcvValidationMethod.WEBSITE_CHANGE, None, True),
+            (DcvValidationMethod.DNS_CHANGE, DnsRecordType.TXT, False),
+            (DcvValidationMethod.DNS_CHANGE, DnsRecordType.TXT, True),
+        ],
+    )
+    async def check_dcv__should_be_case_sensitive_unless_flagged_otherwise_for_challenge_values_for_certain_validation_methods(
+        self, dcv_method, record_type, allow_case_insensitive, mocker
+    ):
+        if allow_case_insensitive:
+            dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type, require_exact_case=False)
+        else:
+            dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type)
+
+        if dcv_method is DcvValidationMethod.WEBSITE_CHANGE:
+            self._mock_request_specific_http_response(dcv_request, mocker)
+        else:
+            self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
+
+        dcv_request.dcv_check_parameters.challenge_value = TestMpicDcvChecker.shuffle_case(
+            dcv_request.dcv_check_parameters.challenge_value
+        )
+
+        # pass or fail depending on case sensitivity flag
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        assert dcv_response.check_passed is allow_case_insensitive
 
     # fmt: off
     @pytest.mark.parametrize("record_type, target_record_data, mock_record_data, should_allow_issuance", [

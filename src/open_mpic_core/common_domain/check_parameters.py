@@ -42,7 +42,7 @@ class DcvGeneralDnsValidationParameters(DcvValidationParameters, ABC):
 
 class DcvDnsChangeValidationParameters(DcvGeneralDnsValidationParameters):
     validation_method: Literal[DcvValidationMethod.DNS_CHANGE] = DcvValidationMethod.DNS_CHANGE
-    require_exact_match: bool = False
+    require_exact_match: bool = False  # if False, looks for a matching substring (rather than entire string)
     # Baseline Requirements don't specify case sensitivity for DNS-based validation,
     # but we may want this as an option for certain CAs that require it based on their implementation
     # require_exact_case: bool = True

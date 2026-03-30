@@ -129,7 +129,7 @@ class ValidCheckCreator:
         )
 
     @staticmethod
-    def create_valid_dcv_check_request(validation_method: DcvValidationMethod, record_type=None):
+    def create_valid_dcv_check_request(validation_method: DcvValidationMethod, record_type=None, require_exact_case=True) -> DcvCheckRequest:
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE:
                 return ValidCheckCreator.create_valid_http_check_request()
