@@ -154,8 +154,6 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert dcv_response.check_passed is True
 
-    # add test for case SENSITIVITY for other certain validation methods
-    @pytest.mark.skip(reason="still working on this test")
     @pytest.mark.parametrize(
         "dcv_method, record_type",
         [
