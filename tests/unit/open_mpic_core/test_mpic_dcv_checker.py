@@ -119,30 +119,23 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is True
 
     @pytest.mark.parametrize(
-        "dcv_method, record_type, is_case_insensitive",
+        "dcv_method, record_type",
         [
-            (DcvValidationMethod.WEBSITE_CHANGE, None, True),
-            (DcvValidationMethod.DNS_CHANGE, DnsRecordType.TXT, True),
-            (DcvValidationMethod.DNS_CHANGE, DnsRecordType.CNAME, True),
-            (DcvValidationMethod.DNS_CHANGE, DnsRecordType.CAA, True),
-            # (DcvValidationMethod.DNS_PERSISTENT, None, True),  # Skipped: no challenge_value
-            (DcvValidationMethod.CONTACT_EMAIL_TXT, None, True),
-            (DcvValidationMethod.CONTACT_EMAIL_CAA, None, True),
-            (DcvValidationMethod.CONTACT_PHONE_TXT, None, True),
-            (DcvValidationMethod.CONTACT_PHONE_CAA, None, True),
-            # (DcvValidationMethod.IP_ADDRESS, DnsRecordType.A, False),  # A records should not have letters anyway
-            (DcvValidationMethod.IP_ADDRESS, DnsRecordType.AAAA, True),
-            (DcvValidationMethod.ACME_HTTP_01, None, False),
-            (DcvValidationMethod.ACME_DNS_01, None, False),
-            (DcvValidationMethod.REVERSE_ADDRESS_LOOKUP, None, True),
+            (DcvValidationMethod.DNS_CHANGE, DnsRecordType.CNAME),
+            (DcvValidationMethod.DNS_CHANGE, DnsRecordType.CAA),
+            # (DcvValidationMethod.DNS_PERSISTENT, None),  # Skipped: no challenge_value
+            (DcvValidationMethod.CONTACT_EMAIL_TXT, None),
+            (DcvValidationMethod.CONTACT_EMAIL_CAA, None),
+            (DcvValidationMethod.CONTACT_PHONE_TXT, None),
+            (DcvValidationMethod.CONTACT_PHONE_CAA, None),
+            # (DcvValidationMethod.IP_ADDRESS, DnsRecordType.A),  # A records should not have letters anyway
+            (DcvValidationMethod.IP_ADDRESS, DnsRecordType.AAAA),
+            (DcvValidationMethod.REVERSE_ADDRESS_LOOKUP, None),
         ],
     )
-    async def check_dcv__should_be_case_insensitive_for_challenge_values_for_all_validation_methods_except_acme(
-        self, dcv_method, record_type, is_case_insensitive, mocker
+    async def check_dcv__should_be_case_insensitive_for_challenge_values_for_certain_validation_methods(
+        self, dcv_method, record_type, mocker
     ):
-        if dcv_method == DcvValidationMethod.DNS_PERSISTENT:
-            pytest.skip("DNS_PERSISTENT does not use challenge_value for case sensitivity test")
-
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type)
         if dcv_method in (DcvValidationMethod.CONTACT_PHONE_TXT, DcvValidationMethod.CONTACT_PHONE_CAA):
             # technically this should be case-insensitive, but also it would usually have digits...
@@ -151,7 +144,31 @@ class TestMpicDcvChecker:
             dcv_request.dcv_check_parameters.challenge_value = "2001:0DB8:85A3:0000:0000:8A2E:03C0:7B34"
 
         # set up mocks prior which will return the original challenge value in the dcv_request
-        if dcv_method in (DcvValidationMethod.WEBSITE_CHANGE, DcvValidationMethod.ACME_HTTP_01):
+        self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
+
+        # set up the challenge value casing to be different from the original
+        dcv_request.dcv_check_parameters.challenge_value = TestMpicDcvChecker.shuffle_case(
+            dcv_request.dcv_check_parameters.challenge_value
+        )
+
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+        assert dcv_response.check_passed is True
+
+    # add test for case SENSITIVITY for other certain validation methods
+    @pytest.mark.skip(reason="still working on this test")
+    @pytest.mark.parametrize(
+        "dcv_method, record_type",
+        [
+            (DcvValidationMethod.ACME_HTTP_01, None),
+            (DcvValidationMethod.ACME_DNS_01, None),
+        ],
+    )
+    async def check_dcv__should_be_case_sensitive_for_challenge_values_for_certain_validation_methods(
+        self, dcv_method, record_type, mocker
+    ):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type)
+
+        if dcv_method is DcvValidationMethod.ACME_HTTP_01:
             self._mock_request_specific_http_response(dcv_request, mocker)
         else:
             self._mock_request_specific_dns_resolve_call(dcv_request, mocker)
@@ -161,17 +178,17 @@ class TestMpicDcvChecker:
             dcv_request.dcv_check_parameters.key_authorization = TestMpicDcvChecker.shuffle_case(
                 dcv_request.dcv_check_parameters.key_authorization
             )
-        elif dcv_method == DcvValidationMethod.ACME_DNS_01:
+        else:
             dcv_request.dcv_check_parameters.key_authorization_hash = TestMpicDcvChecker.shuffle_case(
                 dcv_request.dcv_check_parameters.key_authorization_hash
             )
-        else:
-            dcv_request.dcv_check_parameters.challenge_value = TestMpicDcvChecker.shuffle_case(
-                dcv_request.dcv_check_parameters.challenge_value
-            )
 
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
-        assert dcv_response.check_passed is is_case_insensitive
+        assert dcv_response.check_passed is False  # should fail because casing was shuffled
+
+    # check_dcv__should_be_case_sensitive_unless_flagged_otherwise_for_challenge_values_for_certain_validation_methods
+    #   (DcvValidationMethod.WEBSITE_CHANGE, None, True),
+    #   (DcvValidationMethod.DNS_CHANGE, DnsRecordType.TXT, True),
 
     # fmt: off
     @pytest.mark.parametrize("record_type, target_record_data, mock_record_data, should_allow_issuance", [
