@@ -129,6 +129,8 @@ class MpicDcvChecker:
             validation_method, check_parameters
         )
 
+        require_exact_case = check_parameters.require_exact_case
+
         if validation_method == DcvValidationMethod.DNS_CHANGE:  # DNS_CHANGE may allow for non-exact match
             exact_match = check_parameters.require_exact_match
 
@@ -141,7 +143,8 @@ class MpicDcvChecker:
             ):
                 lookup = await self.perform_dns_resolution(name_to_resolve, validation_method, dns_record_type)
             MpicDcvChecker.evaluate_dns_lookup_response(
-                dcv_check_response, lookup, validation_method, dns_record_type, expected_dns_record_content, exact_match
+                dcv_check_response, lookup, validation_method, dns_record_type, expected_dns_record_content, exact_match,
+                require_exact_case
             )
         except dns.exception.DNSException as e:
             log_msg = f"DNS lookup error for {name_to_resolve}: {str(e)}. Trace ID: {request.trace_identifier}"
@@ -289,11 +292,18 @@ class MpicDcvChecker:
                 # ACME requires an exact match
                 dcv_check_response.check_passed = challenge_value == result
             else:
-                # Case-insensitive substring check for WEBSITE_CHANGE; also checks regex if provided
-                dcv_check_response.check_passed = challenge_value.lower() in result.lower()
+                # For WEBSITE_CHANGE: substring check; case-sensitive by default, unless require_exact_case=False
+                require_exact_case = dcv_check_request.dcv_check_parameters.require_exact_case
+                if require_exact_case:
+                    dcv_check_response.check_passed = challenge_value in result
+                else:
+                    dcv_check_response.check_passed = challenge_value.lower() in result.lower()
                 if match_regex is not None and len(match_regex) > 0:
                     match = re.search(match_regex, result)
-                    dcv_check_response.check_passed = challenge_value.lower() in result.lower() and match is not None
+                    if require_exact_case:
+                        dcv_check_response.check_passed = challenge_value in result and match is not None
+                    else:
+                        dcv_check_response.check_passed = challenge_value.lower() in result.lower() and match is not None
             dcv_check_response.details.response_status_code = http_response.status
             dcv_check_response.details.response_url = target_url
             dcv_check_response.details.response_history = response_history
@@ -324,6 +334,7 @@ class MpicDcvChecker:
         dns_record_type: DnsRecordType,
         expected_dns_record_content: ExpectedDnsRecordContent | None,
         exact_match: bool = True,
+        require_exact_case: bool = False,
     ) -> None:
         if dns_response is None:
             dcv_check_response.check_passed = False
@@ -374,10 +385,10 @@ class MpicDcvChecker:
                 expected_dns_record_content, records_as_strings
             )
         else:
-            if validation_method == DcvValidationMethod.ACME_DNS_01:
-                expected_dns_value = expected_dns_record_content.expected_value  # case-sensitive per ACME spec
+            if require_exact_case:
+                expected_dns_value = expected_dns_record_content.expected_value
             else:
-                expected_dns_value = expected_dns_record_content.expected_value.lower()  # all others case-insensitive
+                expected_dns_value = expected_dns_record_content.expected_value.lower()  # case-insensitive
                 records_as_strings = [record.lower() for record in records_as_strings]
 
             # exact_match=True requires at least one record matches and will fail even if whitespace is different.

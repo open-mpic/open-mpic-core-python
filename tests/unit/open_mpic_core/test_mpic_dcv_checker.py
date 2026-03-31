@@ -122,7 +122,7 @@ class TestMpicDcvChecker:
         "dcv_method, record_type",
         [
             (DcvValidationMethod.DNS_CHANGE, DnsRecordType.CNAME),
-            (DcvValidationMethod.DNS_CHANGE, DnsRecordType.CAA),
+            (DcvValidationMethod.DNS_CHANGE, DnsRecordType.CAA),  # TODO do we want to move this to flagged casing?
             # (DcvValidationMethod.DNS_PERSISTENT, None),  # Skipped: no challenge_value
             (DcvValidationMethod.CONTACT_EMAIL_TXT, None),
             (DcvValidationMethod.CONTACT_EMAIL_CAA, None),
@@ -197,9 +197,9 @@ class TestMpicDcvChecker:
         self, dcv_method, record_type, allow_case_insensitive, mocker
     ):
         if allow_case_insensitive:
-            dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type, require_exact_case=False)
-        else:
             dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type)
+        else:
+            dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type, require_exact_case=True)
 
         if dcv_method is DcvValidationMethod.WEBSITE_CHANGE:
             self._mock_request_specific_http_response(dcv_request, mocker)
