@@ -143,8 +143,13 @@ class MpicDcvChecker:
             ):
                 lookup = await self.perform_dns_resolution(name_to_resolve, validation_method, dns_record_type)
             MpicDcvChecker.evaluate_dns_lookup_response(
-                dcv_check_response, lookup, validation_method, dns_record_type, expected_dns_record_content, exact_match,
-                require_exact_case
+                dcv_check_response,
+                lookup,
+                validation_method,
+                dns_record_type,
+                expected_dns_record_content,
+                exact_match,
+                require_exact_case,
             )
         except dns.exception.DNSException as e:
             log_msg = f"DNS lookup error for {name_to_resolve}: {str(e)}. Trace ID: {request.trace_identifier}"
@@ -303,7 +308,9 @@ class MpicDcvChecker:
                     if require_exact_case:
                         dcv_check_response.check_passed = challenge_value in result and match is not None
                     else:
-                        dcv_check_response.check_passed = challenge_value.lower() in result.lower() and match is not None
+                        dcv_check_response.check_passed = (
+                            challenge_value.lower() in result.lower() and match is not None
+                        )
             dcv_check_response.details.response_status_code = http_response.status
             dcv_check_response.details.response_url = target_url
             dcv_check_response.details.response_history = response_history

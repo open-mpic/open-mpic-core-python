@@ -199,7 +199,9 @@ class TestMpicDcvChecker:
         if allow_case_insensitive:
             dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type)
         else:
-            dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type, require_exact_case=True)
+            dcv_request = ValidCheckCreator.create_valid_dcv_check_request(
+                dcv_method, record_type, require_exact_case=True
+            )
 
         if dcv_method is DcvValidationMethod.WEBSITE_CHANGE:
             self._mock_request_specific_http_response(dcv_request, mocker)
