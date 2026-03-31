@@ -64,7 +64,6 @@ class DcvDnsPersistentValidationParameters(DcvValidationParameters):
     expected_account_uri: str  # The specific account URI to validate
     require_exact_case: bool = Field(default=False, strict=False)
 
-    # expected_account_uri should be a URI with a scheme and host (e.g. "https://example.com/acct/123")
     @field_validator("expected_account_uri")
     @classmethod
     def validate_account_uri(cls, v: str) -> str:
