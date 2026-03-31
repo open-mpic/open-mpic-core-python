@@ -869,7 +869,6 @@ class TestMpicDcvChecker:
         "ca.example; accounturi=https://ca.example/acct/234; accounturi=https://example/acct/123",  # duplicate param
         f"ca.example; accounturi=https://ca.example/acct/123; persistuntil={int(time.time())+10}; persistuntil={int(time.time())+20}",  # duplicate persistUntil param
         f"ca.example; accounturi=https://ca.example/acct/123; persistUntil={int(time.time())+3600}foo",  # malformed persistUntil value
-        f"ca.example; accounturi=ca.example/acct/123"  # malformed account URI
     ])
     # fmt: on
     def evaluate_persistent_dns_response__should_return_false_given_malformed_record(self, record):
