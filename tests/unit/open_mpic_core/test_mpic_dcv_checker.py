@@ -842,11 +842,30 @@ class TestMpicDcvChecker:
         result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
         assert result is True, "Should pass if any record is valid"
 
+    @pytest.mark.parametrize("account_uri", [
+        "acct:foo123@example.com",
+        "https://example.com/acct/123",
+        "thiscanbeanything:bar@baz.com",
+    ])
+    def evaluate_persistent_dns_response__should_accept_any_spec_compliant_account_uri(self, account_uri):
+        issuer_domain_names = ["ca.example.com"]
+        expected_account_uri = account_uri
+        time_now = int(time.time())
+        records = [f"ca.example.com; accounturi={account_uri}; persistUntil={time_now + 3600}"]
+
+        expected_dns_record_content = ExpectedDnsRecordContent(
+            possible_values=issuer_domain_names,
+            expected_parameters={"accounturi": expected_account_uri},
+        )
+
+        result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
+        assert result is True, "Should pass with second allowed issuer domain"
+
     def evaluate_persistent_dns_response__should_accept_match_for_any_issuer_in_the_provided_list(self):
         issuer_domain_names = ["ca.example.com", "alt.example.com"]
-        expected_account_uri = "https://ca.example.com/acct/123"
+        expected_account_uri = "https://example.com/acct/123"
         time_now = int(time.time())
-        records = [f"alt.example.com; accounturi=https://ca.example.com/acct/123; persistUntil={time_now + 3600}"]
+        records = [f"alt.example.com; accounturi=https://example.com/acct/123; persistUntil={time_now + 3600}"]
 
         expected_dns_record_content = ExpectedDnsRecordContent(
             possible_values=issuer_domain_names,
