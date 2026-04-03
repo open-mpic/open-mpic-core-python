@@ -13,8 +13,8 @@ from open_mpic_core import (
     DcvContactPhoneCaaValidationParameters,
     DcvIpAddressValidationParameters,
     DcvCheckParameters,
+    DnsRecordType
 )
-from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
 
 
 class TestCheckRequestDetails:
@@ -112,6 +112,22 @@ class TestCheckRequestDetails:
             assert details_as_object.require_exact_case is False  # should be forced to False for non-TXT records
         else:
             assert details_as_object.require_exact_case is True
+
+    @staticmethod
+    def check_request_parameters__should_disallow_setting_case_sensitivity_to_false_for_acme_dns_01():
+        parameters_as_json = '{"validation_method": "acme-dns-01", "key_authorization_hash": "test-kah", "require_exact_case": false}'
+        type_adapter = TypeAdapter(DcvCheckParameters)
+        with pytest.raises(Exception) as validation_error:
+            type_adapter.validate_json(parameters_as_json)
+        assert isinstance(validation_error.value, ValueError)
+
+    @staticmethod
+    def check_request_parameters__should_disallow_setting_case_sensitivity_to_false_for_acme_http_01():
+        parameters_as_json = '{"validation_method": "acme-http-01", "key_authorization": "test-ka", "require_exact_case": false}'
+        type_adapter = TypeAdapter(DcvCheckParameters)
+        with pytest.raises(Exception) as validation_error:
+            type_adapter.validate_json(parameters_as_json)
+        assert isinstance(validation_error.value, ValueError)
 
 
 if __name__ == "__main__":

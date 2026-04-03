@@ -5,7 +5,6 @@ from uritools import isuri
 from pydantic import BaseModel, field_validator, Field, model_validator
 
 from open_mpic_core import CertificateType, DnsRecordType, DcvValidationMethod, UrlScheme
-from open_mpic_core.common_domain.enum import dns_record_type
 
 DNS_CHANGE_ALLOWED_RECORD_TYPES: Set[DnsRecordType] = {DnsRecordType.CNAME, DnsRecordType.TXT, DnsRecordType.CAA}
 IP_ADDRESS_ALLOWED_RECORD_TYPES: Set[DnsRecordType] = {DnsRecordType.A, DnsRecordType.AAAA}
@@ -141,7 +140,7 @@ class DcvAcmeHttp01ValidationParameters(DcvValidationParameters):
     token: str
     key_authorization: str
     http_headers: dict[str, Any] | None = None
-    require_exact_case: bool = Field(default=True, strict=True)
+    require_exact_case: Literal[True] = True  # ACME HTTP-01 validation is always case-sensitive, per RFC8555
 
 
 class DcvAcmeDns01ValidationParameters(DcvValidationParameters):
@@ -149,7 +148,7 @@ class DcvAcmeDns01ValidationParameters(DcvValidationParameters):
     key_authorization_hash: str
     dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
     dns_name_prefix: Literal["_acme-challenge"] = "_acme-challenge"
-    require_exact_case: bool = Field(default=True, strict=True)
+    require_exact_case: Literal[True] = True  # ACME DNS-01 validation is always case-sensitive
 
 
 class DcvAcmeTlsAlpn01ValidationParameters(DcvValidationParameters):
