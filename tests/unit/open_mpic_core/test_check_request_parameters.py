@@ -123,7 +123,7 @@ class TestCheckRequestDetails:
 
     @staticmethod
     def check_request_parameters__should_disallow_setting_case_sensitivity_to_false_for_acme_http_01():
-        parameters_as_json = '{"validation_method": "acme-http-01", "key_authorization": "test-ka", "require_exact_case": false}'
+        parameters_as_json = '{"validation_method": "acme-http-01", "token:" "test", "key_authorization": "test-ka", "require_exact_case": false}'
         type_adapter = TypeAdapter(DcvCheckParameters)
         with pytest.raises(Exception) as validation_error:
             type_adapter.validate_json(parameters_as_json)
