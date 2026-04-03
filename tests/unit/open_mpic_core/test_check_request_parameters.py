@@ -95,11 +95,11 @@ class TestCheckRequestDetails:
         assert isinstance(details_as_object, DcvDnsPersistentValidationParameters)
         assert details_as_object.expected_account_uri == account_uri
 
-    # fmt:off
+    # fmt: off
     @pytest.mark.parametrize("record_type, is_always_case_insensitive", [
         (DnsRecordType.CNAME, True), (DnsRecordType.TXT, False), (DnsRecordType.CAA, True)
     ])
-    # fmt:on
+    # fmt: on
     def check_request_parameters__should_force_case_sensitivity_to_false_for_non_txt_dns_records(
         self, record_type, is_always_case_insensitive
     ):
