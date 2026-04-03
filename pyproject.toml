@@ -27,7 +27,7 @@ dependencies = [
   "requests==2.32.4",
   "dnspython==2.7.0",
   "pydantic==2.11.7",
-  "aiohttp==3.13.3",
+  "aiohttp==3.13.4",
   "cryptography==46.0.5",
   "uritools==6.0.1",
 ]
