@@ -2,9 +2,10 @@ from abc import ABC
 from typing import Literal, Union, Any, Set, Annotated
 from uritools import isuri
 
-from pydantic import BaseModel, field_validator, Field
+from pydantic import BaseModel, field_validator, Field, model_validator
 
 from open_mpic_core import CertificateType, DnsRecordType, DcvValidationMethod, UrlScheme
+from open_mpic_core.common_domain.enum import dns_record_type
 
 DNS_CHANGE_ALLOWED_RECORD_TYPES: Set[DnsRecordType] = {DnsRecordType.CNAME, DnsRecordType.TXT, DnsRecordType.CAA}
 IP_ADDRESS_ALLOWED_RECORD_TYPES: Set[DnsRecordType] = {DnsRecordType.A, DnsRecordType.AAAA}
@@ -54,6 +55,12 @@ class DcvDnsChangeValidationParameters(DcvGeneralDnsValidationParameters):
         if v not in DNS_CHANGE_ALLOWED_RECORD_TYPES:
             raise ValueError(f"Record type must be one of {DNS_CHANGE_ALLOWED_RECORD_TYPES}, got {v}")
         return v
+
+    @model_validator(mode="after")
+    def validate_require_exact_case(self) -> 'DcvDnsChangeValidationParameters':
+        if self.dns_record_type is not DnsRecordType.TXT:
+            self.require_exact_case = False  # case-sensitivity only applies to TXT records; force to False for others
+        return self
 
 
 class DcvDnsPersistentValidationParameters(DcvValidationParameters):

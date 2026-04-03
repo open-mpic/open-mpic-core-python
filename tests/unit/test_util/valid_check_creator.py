@@ -131,14 +131,17 @@ class ValidCheckCreator:
         )
 
     @staticmethod
-    def create_valid_dcv_check_request(validation_method: DcvValidationMethod, record_type=None, require_exact_case=False) -> DcvCheckRequest:
+    def create_valid_dcv_check_request(validation_method: DcvValidationMethod, record_type=None, require_exact_case=True) -> DcvCheckRequest:
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE:
                 return ValidCheckCreator.create_valid_http_check_request(require_exact_case=require_exact_case)
             case DcvValidationMethod.DNS_CHANGE:
                 if record_type is None:
                     record_type = DnsRecordType.TXT
-                return ValidCheckCreator.create_valid_dns_check_request(record_type, require_exact_case=require_exact_case)
+                if record_type is DnsRecordType.TXT:  # accept a flag for TXT; for the rest, don't...
+                    return ValidCheckCreator.create_valid_dns_check_request(record_type, require_exact_case=require_exact_case)
+                else:
+                    return ValidCheckCreator.create_valid_dns_check_request(record_type)
             case DcvValidationMethod.DNS_PERSISTENT:
                 return ValidCheckCreator.create_valid_dns_persistent_check_request()
             case DcvValidationMethod.ACME_HTTP_01:

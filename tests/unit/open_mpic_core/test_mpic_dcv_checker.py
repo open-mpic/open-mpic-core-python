@@ -197,11 +197,11 @@ class TestMpicDcvChecker:
         self, dcv_method, record_type, allow_case_insensitive, mocker
     ):
         if allow_case_insensitive:
-            dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type)
-        else:
             dcv_request = ValidCheckCreator.create_valid_dcv_check_request(
-                dcv_method, record_type, require_exact_case=True
+                dcv_method, record_type, require_exact_case=False
             )
+        else:
+            dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method, record_type)
 
         if dcv_method is DcvValidationMethod.WEBSITE_CHANGE:
             self._mock_request_specific_http_response(dcv_request, mocker)
@@ -885,11 +885,14 @@ class TestMpicDcvChecker:
         result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
         assert result is True, "Should pass if any record is valid"
 
-    @pytest.mark.parametrize("account_uri", [
-        "acct:foo123@example.com",
-        "https://example.com/acct/123",
-        "thiscanbeanything:bar@baz.com",
-    ])
+    @pytest.mark.parametrize(
+        "account_uri",
+        [
+            "acct:foo123@example.com",
+            "https://example.com/acct/123",
+            "thiscanbeanything:bar@baz.com",
+        ],
+    )
     def evaluate_persistent_dns_response__should_accept_any_spec_compliant_account_uri(self, account_uri):
         issuer_domain_names = ["ca.example.com"]
         expected_account_uri = account_uri
