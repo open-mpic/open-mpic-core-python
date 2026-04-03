@@ -305,12 +305,10 @@ class MpicDcvChecker:
                     dcv_check_response.check_passed = challenge_value.lower() in result.lower()
                 if match_regex is not None and len(match_regex) > 0:
                     match = re.search(match_regex, result)
-                    if require_exact_case:
-                        dcv_check_response.check_passed = challenge_value in result and match is not None
-                    else:
-                        dcv_check_response.check_passed = (
-                            challenge_value.lower() in result.lower() and match is not None
-                        )
+                    challenge_value_found = (
+                        challenge_value in result if require_exact_case else challenge_value.lower() in result.lower()
+                    )
+                    dcv_check_response.check_passed = challenge_value_found and match is not None
             dcv_check_response.details.response_status_code = http_response.status
             dcv_check_response.details.response_url = target_url
             dcv_check_response.details.response_history = response_history
