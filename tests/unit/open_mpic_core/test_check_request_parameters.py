@@ -13,6 +13,7 @@ from open_mpic_core import (
     DcvContactPhoneCaaValidationParameters,
     DcvIpAddressValidationParameters,
     DcvCheckParameters,
+    DnsRecordType
 )
 
 
@@ -93,6 +94,40 @@ class TestCheckRequestDetails:
         details_as_object: DcvCheckParameters = type_adapter.validate_json(parameters_as_json)
         assert isinstance(details_as_object, DcvDnsPersistentValidationParameters)
         assert details_as_object.expected_account_uri == account_uri
+
+    # fmt: off
+    @pytest.mark.parametrize("record_type, is_always_case_insensitive", [
+        (DnsRecordType.CNAME, True), (DnsRecordType.TXT, False), (DnsRecordType.CAA, True)
+    ])
+    # fmt: on
+    def check_request_parameters__should_force_case_sensitivity_to_false_for_non_txt_dns_records(
+        self, record_type, is_always_case_insensitive
+    ):
+        # notice require_exact_case is true in the serialized JSON; it should be forced to False for non-TXT records
+        parameters_as_json = f'{{"validation_method": "dns-change", "dns_record_type": "{record_type}", "challenge_value": "test-cv", "require_exact_case": true}}'
+        type_adapter = TypeAdapter(DcvCheckParameters)
+        details_as_object: DcvCheckParameters = type_adapter.validate_json(parameters_as_json)
+        assert isinstance(details_as_object, DcvDnsChangeValidationParameters)
+        if is_always_case_insensitive:
+            assert details_as_object.require_exact_case is False  # should be forced to False for non-TXT records
+        else:
+            assert details_as_object.require_exact_case is True
+
+    @staticmethod
+    def check_request_parameters__should_disallow_setting_case_sensitivity_to_false_for_acme_dns_01():
+        parameters_as_json = '{"validation_method": "acme-dns-01", "key_authorization_hash": "test-kah", "require_exact_case": false}'
+        type_adapter = TypeAdapter(DcvCheckParameters)
+        with pytest.raises(Exception) as validation_error:
+            type_adapter.validate_json(parameters_as_json)
+        assert isinstance(validation_error.value, ValueError)
+
+    @staticmethod
+    def check_request_parameters__should_disallow_setting_case_sensitivity_to_false_for_acme_http_01():
+        parameters_as_json = '{"validation_method": "acme-http-01", "token:" "test", "key_authorization": "test-ka", "require_exact_case": false}'
+        type_adapter = TypeAdapter(DcvCheckParameters)
+        with pytest.raises(Exception) as validation_error:
+            type_adapter.validate_json(parameters_as_json)
+        assert isinstance(validation_error.value, ValueError)
 
 
 if __name__ == "__main__":
