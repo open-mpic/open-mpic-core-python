@@ -68,7 +68,7 @@ class DcvDnsPersistentValidationParameters(DcvValidationParameters):
     dns_name_prefix: Literal["_validation-persist"] = "_validation-persist"
     issuer_domain_names: list[str]  # Disclosed issuer domain names from CA's CP/CPS
     expected_account_uri: str  # The specific account URI to validate
-    require_exact_case: bool = Field(default=False, strict=False)
+    require_exact_case: Literal[False] = False
 
     @field_validator("expected_account_uri")
     @classmethod
@@ -93,32 +93,32 @@ class DcvContactEmailTxtValidationParameters(DcvGeneralDnsValidationParameters):
     validation_method: Literal[DcvValidationMethod.CONTACT_EMAIL_TXT] = DcvValidationMethod.CONTACT_EMAIL_TXT
     dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
     dns_name_prefix: Literal["_validation-contactemail"] = "_validation-contactemail"
-    require_exact_case: bool = Field(default=False, strict=False)
+    require_exact_case: Literal[False] = False
 
 
 class DcvContactEmailCaaValidationParameters(DcvGeneralDnsValidationParameters):
     validation_method: Literal[DcvValidationMethod.CONTACT_EMAIL_CAA] = DcvValidationMethod.CONTACT_EMAIL_CAA
     dns_record_type: Literal[DnsRecordType.CAA] = DnsRecordType.CAA
-    require_exact_case: bool = Field(default=False, strict=False)
+    require_exact_case: Literal[False] = False
 
 
 class DcvContactPhoneTxtValidationParameters(DcvGeneralDnsValidationParameters):
     validation_method: Literal[DcvValidationMethod.CONTACT_PHONE_TXT] = DcvValidationMethod.CONTACT_PHONE_TXT
     dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
     dns_name_prefix: Literal["_validation-contactphone"] = "_validation-contactphone"
-    require_exact_case: bool = Field(default=False, strict=False)
+    require_exact_case: Literal[False] = False
 
 
 class DcvContactPhoneCaaValidationParameters(DcvGeneralDnsValidationParameters):
     validation_method: Literal[DcvValidationMethod.CONTACT_PHONE_CAA] = DcvValidationMethod.CONTACT_PHONE_CAA
     dns_record_type: Literal[DnsRecordType.CAA] = DnsRecordType.CAA
-    require_exact_case: bool = Field(default=False, strict=False)
+    require_exact_case: Literal[False] = False
 
 
 class DcvIpAddressValidationParameters(DcvGeneralDnsValidationParameters):
     validation_method: Literal[DcvValidationMethod.IP_ADDRESS] = DcvValidationMethod.IP_ADDRESS
     dns_record_type: DnsRecordType
-    require_exact_case: bool = Field(default=False, strict=False)
+    require_exact_case: Literal[False] = False
 
     # noinspection PyNestedDecorators
     @field_validator("dns_record_type")
@@ -132,7 +132,7 @@ class DcvIpAddressValidationParameters(DcvGeneralDnsValidationParameters):
 class DcvReverseAddressLookupValidationParameters(DcvGeneralDnsValidationParameters):
     validation_method: Literal[DcvValidationMethod.REVERSE_ADDRESS_LOOKUP] = DcvValidationMethod.REVERSE_ADDRESS_LOOKUP
     dns_record_type: Literal[DnsRecordType.PTR] = DnsRecordType.PTR
-    require_exact_case: bool = Field(default=False, strict=False)
+    require_exact_case: Literal[False] = False
 
 
 class DcvAcmeHttp01ValidationParameters(DcvValidationParameters):
@@ -154,7 +154,7 @@ class DcvAcmeDns01ValidationParameters(DcvValidationParameters):
 class DcvAcmeTlsAlpn01ValidationParameters(DcvValidationParameters):
     validation_method: Literal[DcvValidationMethod.ACME_TLS_ALPN_01] = DcvValidationMethod.ACME_TLS_ALPN_01
     key_authorization_hash: str
-    require_exact_case: bool = Field(default=False, strict=False)
+    require_exact_case: Literal[False] = False
 
 
 DcvCheckParameters = Annotated[
