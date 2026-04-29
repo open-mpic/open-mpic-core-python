@@ -291,7 +291,9 @@ class MpicDcvChecker:
                     async with self.logger.trace_timing(
                         f"HTTP lookup for target {token_url}, trace ID: {request.trace_identifier}"
                     ):
-                        async with async_http_client.get(url=token_url, headers=http_headers, max_redirects=20) as response:
+                        async with async_http_client.get(
+                            url=token_url, headers=http_headers, max_redirects=20
+                        ) as response:
                             dcv_check_response = await MpicDcvChecker.evaluate_http_lookup_response(
                                 request, dcv_check_response, response, token_url, expected_response_content
                             )

@@ -83,9 +83,7 @@ class MpicCaaChecker:
                     domain = domain.parent()
                 # will raise other exceptions that we want to catch in the calling function
 
-        self._dns_duration_histogram.record(
-            (time.perf_counter_ns() - _dns_start_ns) / 1_000_000
-        )
+        self._dns_duration_histogram.record((time.perf_counter_ns() - _dns_start_ns) / 1_000_000)
         return rrset, domain
 
     async def check_caa(self, caa_request: CaaCheckRequest) -> CaaCheckResponse:
@@ -124,7 +122,9 @@ class MpicCaaChecker:
         with self._tracer.start_as_current_span("mpic.caa.check") as _span:
             try:
                 # encode domain if needed
-                caa_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(caa_request.domain_or_ip_target)
+                caa_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(
+                    caa_request.domain_or_ip_target
+                )
 
                 # noinspection PyUnresolvedReferences
                 async with self.logger.trace_timing(f"CAA lookup for target {caa_request.domain_or_ip_target}"):

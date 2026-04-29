@@ -114,12 +114,17 @@ class MpicCoordinator:
 
                 #  check if a specific cohort is requested for single attempt
                 cohort_to_use = None
-                if orchestration_parameters is not None and orchestration_parameters.cohort_for_single_attempt is not None:
+                if (
+                    orchestration_parameters is not None
+                    and orchestration_parameters.cohort_for_single_attempt is not None
+                ):
                     cohort_to_use = orchestration_parameters.cohort_for_single_attempt
                     if not MpicRequestValidator.is_requested_cohort_for_single_attempt_valid(
                         cohort_to_use, len(perspective_cohorts)
                     ):
-                        raise CohortSelectionException(ErrorMessages.COHORT_SELECTION_ERROR.message.format(cohort_to_use))
+                        raise CohortSelectionException(
+                            ErrorMessages.COHORT_SELECTION_ERROR.message.format(cohort_to_use)
+                        )
 
                 quorum_count = self.determine_required_quorum_count(orchestration_parameters, perspective_count)
 
@@ -140,19 +145,24 @@ class MpicCoordinator:
 
                 while attempts <= max_attempts:
                     if cohort_to_use is not None:
-                        perspectives_to_use = perspective_cohorts[cohort_to_use - 1]  # cohorts are 1-indexed for the user
+                        perspectives_to_use = perspective_cohorts[
+                            cohort_to_use - 1
+                        ]  # cohorts are 1-indexed for the user
                     else:
                         perspectives_to_use = next(cohort_cycle)
 
                     # Collect async calls to invoke for each perspective.
-                    async_calls_to_issue = MpicCoordinator.collect_checker_calls_to_issue(mpic_request, perspectives_to_use)
+                    async_calls_to_issue = MpicCoordinator.collect_checker_calls_to_issue(
+                        mpic_request, perspectives_to_use
+                    )
 
                     perspective_responses = await self.call_checkers_and_collect_responses(
                         mpic_request, perspectives_to_use, async_calls_to_issue
                     )
 
                     check_passed_per_perspective = {
-                        response.perspective_code: response.check_response.check_passed for response in perspective_responses
+                        response.perspective_code: response.check_response.check_passed
+                        for response in perspective_responses
                     }
 
                     valid_perspective_count = sum(check_passed_per_perspective.values())
@@ -166,7 +176,9 @@ class MpicCoordinator:
                     # if cohort size is larger than 2, then at least two RIRs must be represented in the SUCCESSFUL perspectives
                     if len(perspectives_to_use) > 2:
                         valid_perspectives = [
-                            perspective for perspective in perspectives_to_use if check_passed_per_perspective[perspective.code]
+                            perspective
+                            for perspective in perspectives_to_use
+                            if check_passed_per_perspective[perspective.code]
                         ]
                         rir_count = len(set(perspective.rir for perspective in valid_perspectives))
                         is_valid_result = rir_count >= 2 and is_valid_result
@@ -201,9 +213,7 @@ class MpicCoordinator:
             finally:
                 elapsed_ms = (time.perf_counter_ns() - _start_ns) / 1_000_000
                 self._coordinator_duration.record(elapsed_ms, {"check.type": check_type_value})
-                self._request_counter.add(
-                    1, {"check.type": check_type_value, "mpic.is_valid": str(_is_valid)}
-                )
+                self._request_counter.add(1, {"check.type": check_type_value, "mpic.is_valid": str(_is_valid)})
 
     def _raise_exception_on_invalid_request(self, mpic_request):
         is_request_valid, validation_issues = MpicRequestValidator.is_request_valid(
