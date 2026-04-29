@@ -6,10 +6,13 @@ import dns.asyncresolver
 from dns.name import Name
 from dns.rrset import RRset
 
+from opentelemetry.trace import StatusCode
+
 from open_mpic_core import CaaCheckRequest, CaaCheckResponse, CaaCheckResponseDetails
 from open_mpic_core import MpicValidationError, ErrorMessages
 from open_mpic_core import DomainEncoder
 from open_mpic_core import get_logger
+from open_mpic_core import get_meter, get_tracer
 from open_mpic_core import CertificateType
 
 ISSUE_TAG: Final[str] = "issue"
@@ -47,19 +50,42 @@ class MpicCaaChecker:
             dns_resolution_lifetime if dns_resolution_lifetime is not None else self.resolver.lifetime
         )
 
+        _meter = get_meter(__name__)
+        self._tracer = get_tracer(__name__)
+        self._request_counter = _meter.create_counter(
+            "mpic.caa.requests",
+            description="Total CAA check requests processed",
+            unit="1",
+        )
+        self._duration_histogram = _meter.create_histogram(
+            "mpic.caa.duration",
+            description="CAA check request duration",
+            unit="ms",
+        )
+        self._dns_duration_histogram = _meter.create_histogram(
+            "mpic.caa.dns_lookup.duration",
+            description="CAA DNS lookup duration",
+            unit="ms",
+        )
+
     async def find_caa_records_and_domain(self, caa_request) -> tuple[RRset, Name]:
-        rrset = None
-        domain = dns.name.from_text(caa_request.domain_or_ip_target)
+        _dns_start_ns = time.perf_counter_ns()
+        with self._tracer.start_as_current_span("mpic.caa.dns_lookup"):
+            rrset = None
+            domain = dns.name.from_text(caa_request.domain_or_ip_target)
 
-        while domain != dns.name.root:
-            try:
-                lookup = await self.resolver.resolve(domain, dns.rdatatype.CAA)
-                rrset = lookup.rrset
-                break
-            except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
-                domain = domain.parent()
-            # will raise other exceptions that we want to catch in the calling function
+            while domain != dns.name.root:
+                try:
+                    lookup = await self.resolver.resolve(domain, dns.rdatatype.CAA)
+                    rrset = lookup.rrset
+                    break
+                except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
+                    domain = domain.parent()
+                # will raise other exceptions that we want to catch in the calling function
 
+        self._dns_duration_histogram.record(
+            (time.perf_counter_ns() - _dns_start_ns) / 1_000_000
+        )
         return rrset, domain
 
     async def check_caa(self, caa_request: CaaCheckRequest) -> CaaCheckResponse:
@@ -94,46 +120,63 @@ class MpicCaaChecker:
             timestamp_ns=None,
         )
 
-        try:
-            # encode domain if needed
-            caa_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(caa_request.domain_or_ip_target)
+        _start_ns = time.perf_counter_ns()
+        with self._tracer.start_as_current_span("mpic.caa.check") as _span:
+            try:
+                # encode domain if needed
+                caa_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(caa_request.domain_or_ip_target)
 
-            # noinspection PyUnresolvedReferences
-            async with self.logger.trace_timing(f"CAA lookup for target {caa_request.domain_or_ip_target}"):
-                rrset, domain = await self.find_caa_records_and_domain(caa_request)
-            caa_found = rrset is not None
-        except Exception as e:
-            error_encountered = True
-            caa_lookup_error = e
-            error_message = f"Error during CAA lookup for {caa_request.domain_or_ip_target}: {e}. Trace ID: {caa_request.trace_identifier}"
-            self.logger.error(error_message)
-            caa_check_response.errors = [MpicValidationError.create(ErrorMessages.CAA_LOOKUP_ERROR, error_message)]
-            caa_check_response.details.found_at = None
-            caa_check_response.details.records_seen = None
+                # noinspection PyUnresolvedReferences
+                async with self.logger.trace_timing(f"CAA lookup for target {caa_request.domain_or_ip_target}"):
+                    rrset, domain = await self.find_caa_records_and_domain(caa_request)
+                caa_found = rrset is not None
+            except Exception as e:
+                error_encountered = True
+                caa_lookup_error = e
+                error_message = f"Error during CAA lookup for {caa_request.domain_or_ip_target}: {e}. Trace ID: {caa_request.trace_identifier}"
+                self.logger.error(error_message)
+                caa_check_response.errors = [MpicValidationError.create(ErrorMessages.CAA_LOOKUP_ERROR, error_message)]
+                caa_check_response.details.found_at = None
+                caa_check_response.details.records_seen = None
 
-        if error_encountered:  # if there was an error during lookup
-            # check if allow_lookup_failure is set to True, and allow issuance depending on error
-            if isinstance(caa_lookup_error, (dns.resolver.LifetimeTimeout, dns.resolver.NoNameservers)):
-                if caa_request.caa_check_parameters and caa_request.caa_check_parameters.allow_lookup_failure:
-                    # if the error was from the lookup process itself (e.g. timeout), allow issuance
-                    caa_check_response.check_completed = True
-                    caa_check_response.check_passed = True
-        elif not caa_found:  # if domain has no CAA records: valid for issuance
-            caa_check_response.check_completed = True
-            caa_check_response.check_passed = True
-            caa_check_response.details.caa_record_present = False
-            caa_check_response.details.found_at = None
-            caa_check_response.details.records_seen = None
-        else:
-            caa_check_response.check_completed = True
-            valid_for_issuance = MpicCaaChecker.is_valid_for_issuance(
-                caa_domains, certificate_type, is_wc_domain, rrset
+            if error_encountered:  # if there was an error during lookup
+                _span.set_status(StatusCode.ERROR, description=type(caa_lookup_error).__name__)
+                # check if allow_lookup_failure is set to True, and allow issuance depending on error
+                if isinstance(caa_lookup_error, (dns.resolver.LifetimeTimeout, dns.resolver.NoNameservers)):
+                    if caa_request.caa_check_parameters and caa_request.caa_check_parameters.allow_lookup_failure:
+                        # if the error was from the lookup process itself (e.g. timeout), allow issuance
+                        caa_check_response.check_completed = True
+                        caa_check_response.check_passed = True
+            elif not caa_found:  # if domain has no CAA records: valid for issuance
+                caa_check_response.check_completed = True
+                caa_check_response.check_passed = True
+                caa_check_response.details.caa_record_present = False
+                caa_check_response.details.found_at = None
+                caa_check_response.details.records_seen = None
+            else:
+                caa_check_response.check_completed = True
+                valid_for_issuance = MpicCaaChecker.is_valid_for_issuance(
+                    caa_domains, certificate_type, is_wc_domain, rrset
+                )
+                caa_check_response.check_passed = valid_for_issuance
+                caa_check_response.details.caa_record_present = True
+                caa_check_response.details.found_at = domain.to_text(omit_final_dot=True)
+                caa_check_response.details.records_seen = [record_data.to_text() for record_data in rrset]
+            caa_check_response.timestamp_ns = time.time_ns()
+
+            elapsed_ms = (time.perf_counter_ns() - _start_ns) / 1_000_000
+            self._duration_histogram.record(
+                elapsed_ms,
+                {"check.passed": str(caa_check_response.check_passed)},
             )
-            caa_check_response.check_passed = valid_for_issuance
-            caa_check_response.details.caa_record_present = True
-            caa_check_response.details.found_at = domain.to_text(omit_final_dot=True)
-            caa_check_response.details.records_seen = [record_data.to_text() for record_data in rrset]
-        caa_check_response.timestamp_ns = time.time_ns()
+            self._request_counter.add(
+                1,
+                {
+                    "check.passed": str(caa_check_response.check_passed),
+                    "check.completed": str(caa_check_response.check_completed),
+                    "caa.lookup_error": str(error_encountered),
+                },
+            )
 
         # noinspection PyUnresolvedReferences
         self.logger.trace(f"Completed CAA for {caa_request.domain_or_ip_target}")
