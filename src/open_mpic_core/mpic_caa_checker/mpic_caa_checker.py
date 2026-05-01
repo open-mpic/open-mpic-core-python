@@ -6,7 +6,7 @@ import dns.asyncresolver
 from dns.name import Name
 from dns.rrset import RRset
 
-from opentelemetry.trace import StatusCode
+from opentelemetry.trace import Status, StatusCode
 
 from open_mpic_core import CaaCheckRequest, CaaCheckResponse, CaaCheckResponseDetails
 from open_mpic_core import MpicValidationError, ErrorMessages
@@ -70,20 +70,21 @@ class MpicCaaChecker:
 
     async def find_caa_records_and_domain(self, caa_request) -> tuple[RRset, Name]:
         _dns_start_ns = time.perf_counter_ns()
+        rrset = None
+        domain = dns.name.from_text(caa_request.domain_or_ip_target)
         with self._tracer.start_as_current_span("mpic.caa.dns_lookup"):
-            rrset = None
-            domain = dns.name.from_text(caa_request.domain_or_ip_target)
+            try:
+                while domain != dns.name.root:
+                    try:
+                        lookup = await self.resolver.resolve(domain, dns.rdatatype.CAA)
+                        rrset = lookup.rrset
+                        break
+                    except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
+                        domain = domain.parent()
+                    # will raise other exceptions that we want to catch in the calling function
+            finally:
+                self._dns_duration_histogram.record((time.perf_counter_ns() - _dns_start_ns) / 1_000_000)
 
-            while domain != dns.name.root:
-                try:
-                    lookup = await self.resolver.resolve(domain, dns.rdatatype.CAA)
-                    rrset = lookup.rrset
-                    break
-                except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
-                    domain = domain.parent()
-                # will raise other exceptions that we want to catch in the calling function
-
-        self._dns_duration_histogram.record((time.perf_counter_ns() - _dns_start_ns) / 1_000_000)
         return rrset, domain
 
     async def check_caa(self, caa_request: CaaCheckRequest) -> CaaCheckResponse:
@@ -141,7 +142,7 @@ class MpicCaaChecker:
 
             if error_encountered:  # if there was an error during lookup
                 _span.record_exception(caa_lookup_error)
-                _span.set_status(StatusCode.ERROR, description=type(caa_lookup_error).__name__)
+                _span.set_status(Status(StatusCode.ERROR, description=type(caa_lookup_error).__name__))
                 # check if allow_lookup_failure is set to True, and allow issuance depending on error
                 if isinstance(caa_lookup_error, (dns.resolver.LifetimeTimeout, dns.resolver.NoNameservers)):
                     if caa_request.caa_check_parameters and caa_request.caa_check_parameters.allow_lookup_failure:

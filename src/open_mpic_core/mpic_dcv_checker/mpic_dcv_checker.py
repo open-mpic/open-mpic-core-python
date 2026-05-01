@@ -14,7 +14,7 @@ from yarl import URL
 from aiohttp import ClientError
 from aiohttp.web import HTTPException
 
-from opentelemetry.trace import StatusCode
+from opentelemetry.trace import Status, StatusCode
 
 from open_mpic_core import DcvCheckRequest, DcvCheckResponse
 from open_mpic_core import RedirectResponse, DcvUtils
@@ -137,7 +137,7 @@ class MpicDcvChecker:
                         result = await self.perform_general_dns_validation(dcv_request)
             except Exception as exc:
                 _span.record_exception(exc)
-                _span.set_status(StatusCode.ERROR, description=type(exc).__name__)
+                _span.set_status(Status(StatusCode.ERROR, description=type(exc).__name__))
                 raise
             finally:
                 elapsed_ms = (time.perf_counter_ns() - _start_ns) / 1_000_000

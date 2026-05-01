@@ -5,7 +5,7 @@ from itertools import cycle
 from pprint import pformat
 
 import hashlib
-from opentelemetry.trace import StatusCode
+from opentelemetry.trace import Status, StatusCode
 
 from open_mpic_core import CaaCheckResponse, DcvCheckResponse, CaaCheckResponseDetails
 from open_mpic_core import MpicRequest, MpicResponse, PerspectiveResponse
@@ -208,7 +208,7 @@ class MpicCoordinator:
                         attempts += 1
             except Exception as exc:
                 _span.record_exception(exc)
-                _span.set_status(StatusCode.ERROR, description=type(exc).__name__)
+                _span.set_status(Status(StatusCode.ERROR, description=type(exc).__name__))
                 raise
             finally:
                 elapsed_ms = (time.perf_counter_ns() - _start_ns) / 1_000_000
@@ -299,7 +299,7 @@ class MpicCoordinator:
                     )
             except Exception as exc:
                 span.record_exception(exc)
-                span.set_status(StatusCode.ERROR, description=type(exc).__name__)
+                span.set_status(Status(StatusCode.ERROR, description=type(exc).__name__))
                 error_message = str(exc) if str(exc) else exc.__class__.__name__
                 raise RemoteCheckException(
                     f"Check failed for perspective {call_config.perspective.code}, target {call_config.check_request.domain_or_ip_target}: {error_message}; trace ID: {call_config.check_request.trace_identifier}",
@@ -357,7 +357,7 @@ class MpicCoordinator:
             responses = await asyncio.gather(*tasks, return_exceptions=True)
 
         check_type_value = mpic_request.check_type.value
-        for response in responses:
+        for call_config, response in zip(async_calls_to_issue, responses):
             # check for exception (return_exceptions=True above will return exceptions as responses)
             # every Exception should be rethrown as RemoteCheckException
             # (trying to handle other Exceptions should be unreachable code)
@@ -374,8 +374,7 @@ class MpicCoordinator:
                         "perspective.code": response.call_config.perspective.code,
                     },
                 )
-            else:
-                # Now we know it's a valid PerspectiveResponse
+            elif isinstance(response, PerspectiveResponse):
                 perspective_responses.append(response)
                 self._perspective_response_counter.add(
                     1,
@@ -384,6 +383,23 @@ class MpicCoordinator:
                         "perspective.code": response.perspective_code,
                         "check.passed": str(response.check_response.check_passed),
                         "check.completed": str(response.check_response.check_completed),
+                    },
+                )
+            else:
+                # Defensive handling for unexpected exceptions returned by gather(..., return_exceptions=True).
+                response_error = response if isinstance(response, Exception) else Exception(str(response))
+                wrapped_error = RemoteCheckException(
+                    f"Unexpected error type {type(response_error).__name__} for perspective {call_config.perspective.code}, target {call_config.check_request.domain_or_ip_target}: {response_error}; trace ID: {mpic_request.trace_identifier}",
+                    call_config=call_config,
+                )
+                logger.warning(str(wrapped_error))
+                error_response = MpicCoordinator.build_error_perspective_response_from_exception(wrapped_error)
+                perspective_responses.append(error_response)
+                self._remote_error_counter.add(
+                    1,
+                    {
+                        "check.type": check_type_value,
+                        "perspective.code": call_config.perspective.code,
                     },
                 )
 
