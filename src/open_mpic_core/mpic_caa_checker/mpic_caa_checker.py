@@ -140,6 +140,7 @@ class MpicCaaChecker:
                 caa_check_response.details.records_seen = None
 
             if error_encountered:  # if there was an error during lookup
+                _span.record_exception(caa_lookup_error)
                 _span.set_status(StatusCode.ERROR, description=type(caa_lookup_error).__name__)
                 # check if allow_lookup_failure is set to True, and allow issuance depending on error
                 if isinstance(caa_lookup_error, (dns.resolver.LifetimeTimeout, dns.resolver.NoNameservers)):
