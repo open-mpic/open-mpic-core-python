@@ -372,8 +372,7 @@ class MpicCoordinator:
             # (trying to handle other Exceptions should be unreachable code)
             if isinstance(response, RemoteCheckException):
                 response_as_string = str(response)
-                log_msg = f"{response_as_string} - trace ID: {mpic_request.trace_identifier}"
-                logger.warning(log_msg)
+                logger.warning(response_as_string)
                 error_response = MpicCoordinator.build_error_perspective_response_from_exception(response)
                 perspective_responses.append(error_response)
                 self._remote_error_counter.add(
