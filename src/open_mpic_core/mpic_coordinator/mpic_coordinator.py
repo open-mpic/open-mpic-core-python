@@ -92,6 +92,7 @@ class MpicCoordinator:
         check_type_value = mpic_request.check_type.value
         _start_ns = time.perf_counter_ns()
         _is_valid = False
+        _request_status = "error"
 
         with self._tracer.start_as_current_span(
             "mpic.coordinate", attributes={"check.type": check_type_value}
@@ -195,7 +196,8 @@ class MpicCoordinator:
                         )
 
                         _is_valid = is_valid_result
-                        _span.set_attribute("mpic.is_valid", str(is_valid_result))
+                        _request_status = "ok"
+                        _span.set_attribute("mpic.is_valid", is_valid_result)
                         _span.set_attribute("mpic.attempts", attempts)
 
                         # noinspection PyUnresolvedReferences
@@ -213,7 +215,14 @@ class MpicCoordinator:
             finally:
                 elapsed_ms = (time.perf_counter_ns() - _start_ns) / 1_000_000
                 self._coordinator_duration.record(elapsed_ms, {"check.type": check_type_value})
-                self._request_counter.add(1, {"check.type": check_type_value, "mpic.is_valid": str(_is_valid)})
+                self._request_counter.add(
+                    1,
+                    {
+                        "check.type": check_type_value,
+                        "mpic.is_valid": _is_valid,
+                        "request.status": _request_status,
+                    },
+                )
 
     def _raise_exception_on_invalid_request(self, mpic_request):
         is_request_valid, validation_issues = MpicRequestValidator.is_request_valid(
@@ -381,8 +390,8 @@ class MpicCoordinator:
                     {
                         "check.type": check_type_value,
                         "perspective.code": response.perspective_code,
-                        "check.passed": str(response.check_response.check_passed),
-                        "check.completed": str(response.check_response.check_completed),
+                        "check.passed": response.check_response.check_passed,
+                        "check.completed": response.check_response.check_completed,
                     },
                 )
             else:

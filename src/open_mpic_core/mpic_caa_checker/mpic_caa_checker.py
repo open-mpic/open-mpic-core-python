@@ -169,14 +169,14 @@ class MpicCaaChecker:
             elapsed_ms = (time.perf_counter_ns() - _start_ns) / 1_000_000
             self._duration_histogram.record(
                 elapsed_ms,
-                {"check.passed": str(caa_check_response.check_passed)},
+                {"check.passed": caa_check_response.check_passed},
             )
             self._request_counter.add(
                 1,
                 {
-                    "check.passed": str(caa_check_response.check_passed),
-                    "check.completed": str(caa_check_response.check_completed),
-                    "caa.lookup_error": str(error_encountered),
+                    "check.passed": caa_check_response.check_passed,
+                    "check.completed": caa_check_response.check_completed,
+                    "caa.lookup_error": error_encountered,
                 },
             )
 

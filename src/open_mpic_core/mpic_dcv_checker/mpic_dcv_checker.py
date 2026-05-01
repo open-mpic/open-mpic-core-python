@@ -141,8 +141,8 @@ class MpicDcvChecker:
                 raise
             finally:
                 elapsed_ms = (time.perf_counter_ns() - _start_ns) / 1_000_000
-                check_passed = str(result.check_passed) if result is not None else "False"
-                check_completed = str(result.check_completed) if result is not None else "False"
+                check_passed = result.check_passed if result is not None else False
+                check_completed = result.check_completed if result is not None else False
                 self._duration_histogram.record(
                     elapsed_ms,
                     {"validation.method": validation_method_value, "check.passed": check_passed},
