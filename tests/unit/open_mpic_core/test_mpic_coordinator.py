@@ -1,7 +1,8 @@
 import logging
 from io import StringIO
 from itertools import cycle
-from unittest.mock import AsyncMock
+from contextlib import nullcontext
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -19,6 +20,7 @@ from open_mpic_core import (
     MpicResponse,
     MpicCoordinator,
     MpicCoordinatorConfiguration,
+    RemoteCheckException,
     TRACE_LEVEL,
 )
 from open_mpic_core.common_domain.enum.regional_internet_registry import RegionalInternetRegistry
@@ -580,6 +582,48 @@ class TestMpicCoordinator:
         # Get the log output and assert
         log_contents = self.log_output.getvalue()
         assert "seconds" not in log_contents
+
+    async def coordinate_mpic__should_start_coordinate_span(self):
+        mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
+        mocked_call_remote_perspective_function = AsyncMock()
+        mocked_call_remote_perspective_function.side_effect = TestMpicCoordinator.SideEffectForMockedPayloads(
+            self.create_passing_caa_check_response
+        )
+        mpic_coordinator = MpicCoordinator(mocked_call_remote_perspective_function, mpic_coordinator_config)
+
+        span_mock = MagicMock()
+        tracer_mock = MagicMock()
+        tracer_mock.start_as_current_span.return_value = nullcontext(span_mock)
+        mpic_coordinator._tracer = tracer_mock
+
+        await mpic_coordinator.coordinate_mpic(mpic_request)
+
+        assert any(
+            call.args and call.args[0] == "mpic.coordinate" for call in tracer_mock.start_as_current_span.call_args_list
+        )
+
+    async def call_remote_perspective__should_record_exception_and_set_error_status_on_remote_failure(self):
+        mpic_request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        mpic_coordinator_config = self.create_mpic_coordinator_configuration()
+
+        failing_remote_call = AsyncMock(side_effect=Exception("test remote failure"))
+        mpic_coordinator = MpicCoordinator(failing_remote_call, mpic_coordinator_config)
+
+        span_mock = MagicMock()
+        tracer_mock = MagicMock()
+        tracer_mock.start_as_current_span.return_value = nullcontext(span_mock)
+        mpic_coordinator._tracer = tracer_mock
+
+        call_config = MpicCoordinator.collect_checker_calls_to_issue(
+            mpic_request, [mpic_coordinator_config.target_perspectives[0]]
+        )[0]
+
+        with pytest.raises(RemoteCheckException):
+            await mpic_coordinator.call_remote_perspective(call_config, mpic_coordinator.call_remote_perspective_function)
+
+        span_mock.record_exception.assert_called_once()
+        span_mock.set_status.assert_called_once()
 
     @pytest.mark.parametrize("should_complete_mpic", [True, False])
     async def coordinate_mpic__should_set_mpic_completed_true_if_enough_perspectives_completed_check_otherwise_false(

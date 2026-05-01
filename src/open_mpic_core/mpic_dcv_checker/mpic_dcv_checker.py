@@ -192,7 +192,7 @@ class MpicDcvChecker:
         _dns_start_ns = time.perf_counter_ns()
         with self._tracer.start_as_current_span(
             "mpic.dcv.dns_validation", attributes={"validation.method": validation_method_value}
-        ):
+        ) as _span:
             try:
                 # noinspection PyUnresolvedReferences
                 async with self.logger.trace_timing(
@@ -216,6 +216,8 @@ class MpicDcvChecker:
                     self.logger.trace(log_msg)
                 else:
                     self.logger.warning(log_msg)
+                _span.record_exception(e)
+                _span.set_status(Status(StatusCode.ERROR, description=type(e).__name__))
                 dcv_check_response.errors = [
                     MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, e.msg)
                 ]
@@ -284,7 +286,7 @@ class MpicDcvChecker:
         _http_start_ns = time.perf_counter_ns()
         with self._tracer.start_as_current_span(
             "mpic.dcv.http_validation", attributes={"validation.method": validation_method_value}
-        ):
+        ) as _span:
             try:
                 async with self.get_async_http_client() as async_http_client:
                     # noinspection PyUnresolvedReferences
@@ -301,6 +303,8 @@ class MpicDcvChecker:
                 dcv_check_response.timestamp_ns = time.time_ns()
                 log_message = f"Timeout connecting to {token_url}: {str(e)}. Trace ID: {request.trace_identifier}"
                 self.logger.warning(log_message)
+                _span.record_exception(e)
+                _span.set_status(Status(StatusCode.ERROR, description=type(e).__name__))
                 message = f"Connection timed out while attempting to connect to {token_url}"
                 dcv_check_response.errors = [
                     MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, message)
@@ -308,6 +312,8 @@ class MpicDcvChecker:
             except (ClientError, HTTPException, OSError) as e:
                 log_message = f"Error connecting to {token_url}: {str(e)}. Trace ID: {request.trace_identifier}"
                 self.logger.error(log_message)
+                _span.record_exception(e)
+                _span.set_status(Status(StatusCode.ERROR, description=type(e).__name__))
                 dcv_check_response.timestamp_ns = time.time_ns()
                 dcv_check_response.errors = [
                     MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, str(e))

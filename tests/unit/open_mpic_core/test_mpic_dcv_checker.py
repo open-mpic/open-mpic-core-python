@@ -2,6 +2,7 @@ import asyncio
 import base64
 import logging
 import time
+from contextlib import nullcontext
 
 import dns
 import random
@@ -304,6 +305,38 @@ class TestMpicDcvChecker:
         await tracing_dcv_checker.check_dcv(dcv_request)
         log_contents = self.log_output.getvalue()
         assert all(text in log_contents for text in ["seconds", "TRACE", tracing_dcv_checker.logger.name])
+
+    async def check_dcv__should_record_exception_and_set_error_status_on_dns_lookup_error(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.ACME_DNS_01)
+        dns_lookup_error = dns.exception.Timeout()
+        self._patch_resolver_with_answer_or_exception(mocker, dns_lookup_error)
+
+        check_span = MagicMock()
+        dns_span = MagicMock()
+        tracer_mock = MagicMock()
+        tracer_mock.start_as_current_span.side_effect = [nullcontext(check_span), nullcontext(dns_span)]
+        self.dcv_checker._tracer = tracer_mock
+
+        await self.dcv_checker.check_dcv(dcv_request)
+
+        dns_span.record_exception.assert_called_once_with(dns_lookup_error)
+        dns_span.set_status.assert_called_once()
+
+    async def check_dcv__should_record_exception_and_set_error_status_on_http_lookup_error(self, mocker):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE)
+        http_lookup_error = ClientConnectionError()
+        mocker.patch("aiohttp.ClientSession.get", side_effect=http_lookup_error)
+
+        check_span = MagicMock()
+        http_span = MagicMock()
+        tracer_mock = MagicMock()
+        tracer_mock.start_as_current_span.side_effect = [nullcontext(check_span), nullcontext(http_span)]
+        self.dcv_checker._tracer = tracer_mock
+
+        await self.dcv_checker.check_dcv(dcv_request)
+
+        http_span.record_exception.assert_called_once_with(http_lookup_error)
+        http_span.set_status.assert_called_once()
 
     async def check_dcv__should_include_trace_identifier_in_logs_if_included_in_request(self, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE)
