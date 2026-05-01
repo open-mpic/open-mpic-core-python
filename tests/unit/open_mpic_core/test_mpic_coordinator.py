@@ -620,7 +620,9 @@ class TestMpicCoordinator:
         )[0]
 
         with pytest.raises(RemoteCheckException):
-            await mpic_coordinator.call_remote_perspective(call_config, mpic_coordinator.call_remote_perspective_function)
+            await mpic_coordinator.call_remote_perspective(
+                mpic_coordinator.call_remote_perspective_function, call_config
+            )
 
         span_mock.record_exception.assert_called_once()
         span_mock.set_status.assert_called_once()
