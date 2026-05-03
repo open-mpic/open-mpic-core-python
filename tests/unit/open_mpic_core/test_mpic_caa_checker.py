@@ -1,10 +1,11 @@
 import logging
 from io import StringIO
+from contextlib import nullcontext
 
 import dns
 import pytest
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from dns.asyncresolver import reset_default_resolver
 
@@ -299,6 +300,26 @@ class TestMpicCaaChecker:
         assert caa_response.check_passed is False
         assert caa_response.check_completed is False
         assert caa_response.details == check_response_details
+
+    async def check_caa__should_record_exception_and_set_error_status_on_lookup_failure(self, mocker):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
+        resolver = caa_checker.resolver
+        dns_lookup_error = dns.resolver.NoNameservers(
+            request=dns.message.make_query("example.com", "CAA", "IN"),
+            errors=[("192.0.2.1", True, 53, "SERVFAIL")],
+        )
+        self.patch_resolver_with_answer_or_exception(mocker, resolver, dns_lookup_error)
+
+        span_mock = MagicMock()
+        tracer_mock = MagicMock()
+        tracer_mock.start_as_current_span.return_value = nullcontext(span_mock)
+        caa_checker._tracer = tracer_mock
+
+        caa_request = self.create_caa_check_request("example.com", ["ca111.com"])
+        await caa_checker.check_caa(caa_request)
+
+        span_mock.record_exception.assert_called_once_with(dns_lookup_error)
+        span_mock.set_status.assert_called_once()
 
     @pytest.mark.parametrize("allow_lookup_failure", [True, False])
     async def check_caa__should_return_errors_in_response_given_error_in_dns_lookup(self, allow_lookup_failure, mocker):

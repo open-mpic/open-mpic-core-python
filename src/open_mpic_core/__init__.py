@@ -40,6 +40,7 @@ from open_mpic_core.common_domain.check_response import CheckResponse, CaaCheckR
 from open_mpic_core.common_util.domain_encoder import DomainEncoder
 from open_mpic_core.common_util.trace_level_logger import get_logger
 from open_mpic_core.common_util.trace_level_logger import TRACE_LEVEL
+from open_mpic_core.common_util.telemetry import get_meter, get_tracer
 
 from open_mpic_core.mpic_coordinator.domain.remote_perspective import RemotePerspective
 from open_mpic_core.mpic_coordinator.domain.mpic_orchestration_parameters import (

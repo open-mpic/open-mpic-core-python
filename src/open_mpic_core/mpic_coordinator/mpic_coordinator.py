@@ -1,10 +1,11 @@
 import asyncio
 import json
-from itertools import cycle
-
-from pprint import pformat
 import time
+from itertools import cycle
+from pprint import pformat
+
 import hashlib
+from opentelemetry.trace import Status, StatusCode
 
 from open_mpic_core import CaaCheckResponse, DcvCheckResponse, CaaCheckResponseDetails
 from open_mpic_core import MpicRequest, MpicResponse, PerspectiveResponse
@@ -22,6 +23,7 @@ from open_mpic_core import MpicRequestValidationMessages
 from open_mpic_core import MpicRequestValidator
 from open_mpic_core import MpicResponseBuilder
 from open_mpic_core import get_logger
+from open_mpic_core import get_meter, get_tracer
 
 logger = get_logger(__name__)
 
@@ -59,104 +61,168 @@ class MpicCoordinator:
         if log_level is not None:
             self.logger.setLevel(log_level)
 
+        _meter = get_meter(__name__)
+        self._tracer = get_tracer(__name__)
+        self._request_counter = _meter.create_counter(
+            "mpic.requests",
+            description="Total MPIC requests processed",
+            unit="1",
+        )
+        self._coordinator_duration = _meter.create_histogram(
+            "mpic.coordinator.duration",
+            description="MPIC coordinator request processing duration",
+            unit="ms",
+        )
+        self._perspective_response_counter = _meter.create_counter(
+            "mpic.perspective_responses",
+            description="Perspective check responses by outcome",
+            unit="1",
+        )
+        self._remote_error_counter = _meter.create_counter(
+            "mpic.remote_check.errors",
+            description="Remote perspective check transport errors",
+            unit="1",
+        )
+
     # noinspection PyInconsistentReturns,PyTypeChecker
     async def coordinate_mpic(self, mpic_request: MpicRequest) -> MpicResponse:
         # noinspection PyUnresolvedReferences
         self.logger.trace(f"Coordinating MPIC request with trace ID {mpic_request.trace_identifier}")
 
-        self._raise_exception_on_invalid_request(mpic_request)
+        check_type_value = mpic_request.check_type.value
+        _start_ns = time.perf_counter_ns()
+        _is_valid = False
+        _request_status = "error"
 
-        orchestration_parameters = mpic_request.orchestration_parameters
+        with self._tracer.start_as_current_span(
+            "mpic.coordinate", attributes={"check.type": check_type_value}
+        ) as _span:
+            try:
+                self._raise_exception_on_invalid_request(mpic_request)
 
-        perspective_count = self.default_perspective_count
-        if orchestration_parameters is not None and orchestration_parameters.perspective_count is not None:
-            perspective_count = orchestration_parameters.perspective_count
+                orchestration_parameters = mpic_request.orchestration_parameters
 
-        perspective_cohorts = self.shuffle_and_group_perspectives(
-            self.target_perspectives, perspective_count, mpic_request.domain_or_ip_target
-        )
+                perspective_count = self.default_perspective_count
+                if orchestration_parameters is not None and orchestration_parameters.perspective_count is not None:
+                    perspective_count = orchestration_parameters.perspective_count
 
-        if len(perspective_cohorts) == 0:
-            raise CohortCreationException(ErrorMessages.COHORT_CREATION_ERROR.message.format(perspective_count))
-
-        #  check if a specific cohort is requested for single attempt
-        cohort_to_use = None
-        if orchestration_parameters is not None and orchestration_parameters.cohort_for_single_attempt is not None:
-            cohort_to_use = orchestration_parameters.cohort_for_single_attempt
-            if not MpicRequestValidator.is_requested_cohort_for_single_attempt_valid(
-                cohort_to_use, len(perspective_cohorts)
-            ):
-                raise CohortSelectionException(ErrorMessages.COHORT_SELECTION_ERROR.message.format(cohort_to_use))
-
-        quorum_count = self.determine_required_quorum_count(orchestration_parameters, perspective_count)
-
-        if (
-            orchestration_parameters is not None
-            and orchestration_parameters.max_attempts is not None
-            and orchestration_parameters.max_attempts > 0
-            and orchestration_parameters.cohort_for_single_attempt is None
-        ):
-            max_attempts = orchestration_parameters.max_attempts
-            if self.global_max_attempts is not None and max_attempts > self.global_max_attempts:
-                max_attempts = self.global_max_attempts
-        else:
-            max_attempts = 1
-        attempts = 1
-        previous_attempt_results = None
-        cohort_cycle = cycle(perspective_cohorts)
-
-        while attempts <= max_attempts:
-            if cohort_to_use is not None:
-                perspectives_to_use = perspective_cohorts[cohort_to_use - 1]  # cohorts are 1-indexed for the user
-            else:
-                perspectives_to_use = next(cohort_cycle)
-
-            # Collect async calls to invoke for each perspective.
-            async_calls_to_issue = MpicCoordinator.collect_checker_calls_to_issue(mpic_request, perspectives_to_use)
-
-            perspective_responses = await self.call_checkers_and_collect_responses(
-                mpic_request, perspectives_to_use, async_calls_to_issue
-            )
-
-            check_passed_per_perspective = {
-                response.perspective_code: response.check_response.check_passed for response in perspective_responses
-            }
-
-            valid_perspective_count = sum(check_passed_per_perspective.values())
-            is_valid_result = valid_perspective_count >= quorum_count
-
-            # noinspection PyUnresolvedReferences
-            self.logger.trace(f"Perspectives used in attempt: \n%s", pformat(perspectives_to_use))
-            # noinspection PyUnresolvedReferences
-            self.logger.trace(f"Check passed per perspective: \n%s", pformat(check_passed_per_perspective))
-
-            # if cohort size is larger than 2, then at least two RIRs must be represented in the SUCCESSFUL perspectives
-            if len(perspectives_to_use) > 2:
-                valid_perspectives = [
-                    perspective for perspective in perspectives_to_use if check_passed_per_perspective[perspective.code]
-                ]
-                rir_count = len(set(perspective.rir for perspective in valid_perspectives))
-                is_valid_result = rir_count >= 2 and is_valid_result
-
-            if is_valid_result or attempts == max_attempts:
-                response = MpicResponseBuilder.build_response(
-                    mpic_request,
-                    perspective_count,
-                    quorum_count,
-                    attempts,
-                    perspective_responses,
-                    is_valid_result,
-                    previous_attempt_results,
+                perspective_cohorts = self.shuffle_and_group_perspectives(
+                    self.target_perspectives, perspective_count, mpic_request.domain_or_ip_target
                 )
 
-                # noinspection PyUnresolvedReferences
-                self.logger.trace(f"Completed MPIC request with trace ID {mpic_request.trace_identifier}")
-                return response
-            else:
-                if previous_attempt_results is None:
-                    previous_attempt_results = []
-                previous_attempt_results.append(perspective_responses)
-                attempts += 1
+                if len(perspective_cohorts) == 0:
+                    raise CohortCreationException(ErrorMessages.COHORT_CREATION_ERROR.message.format(perspective_count))
+
+                #  check if a specific cohort is requested for single attempt
+                cohort_to_use = None
+                if (
+                    orchestration_parameters is not None
+                    and orchestration_parameters.cohort_for_single_attempt is not None
+                ):
+                    cohort_to_use = orchestration_parameters.cohort_for_single_attempt
+                    if not MpicRequestValidator.is_requested_cohort_for_single_attempt_valid(
+                        cohort_to_use, len(perspective_cohorts)
+                    ):
+                        raise CohortSelectionException(
+                            ErrorMessages.COHORT_SELECTION_ERROR.message.format(cohort_to_use)
+                        )
+
+                quorum_count = self.determine_required_quorum_count(orchestration_parameters, perspective_count)
+
+                if (
+                    orchestration_parameters is not None
+                    and orchestration_parameters.max_attempts is not None
+                    and orchestration_parameters.max_attempts > 0
+                    and orchestration_parameters.cohort_for_single_attempt is None
+                ):
+                    max_attempts = orchestration_parameters.max_attempts
+                    if self.global_max_attempts is not None and max_attempts > self.global_max_attempts:
+                        max_attempts = self.global_max_attempts
+                else:
+                    max_attempts = 1
+                attempts = 1
+                previous_attempt_results = None
+                cohort_cycle = cycle(perspective_cohorts)
+
+                while attempts <= max_attempts:
+                    if cohort_to_use is not None:
+                        perspectives_to_use = perspective_cohorts[
+                            cohort_to_use - 1
+                        ]  # cohorts are 1-indexed for the user
+                    else:
+                        perspectives_to_use = next(cohort_cycle)
+
+                    # Collect async calls to invoke for each perspective.
+                    async_calls_to_issue = MpicCoordinator.collect_checker_calls_to_issue(
+                        mpic_request, perspectives_to_use
+                    )
+
+                    perspective_responses = await self.call_checkers_and_collect_responses(
+                        mpic_request, perspectives_to_use, async_calls_to_issue
+                    )
+
+                    check_passed_per_perspective = {
+                        response.perspective_code: response.check_response.check_passed
+                        for response in perspective_responses
+                    }
+
+                    valid_perspective_count = sum(check_passed_per_perspective.values())
+                    is_valid_result = valid_perspective_count >= quorum_count
+
+                    # noinspection PyUnresolvedReferences
+                    self.logger.trace(f"Perspectives used in attempt: \n%s", pformat(perspectives_to_use))
+                    # noinspection PyUnresolvedReferences
+                    self.logger.trace(f"Check passed per perspective: \n%s", pformat(check_passed_per_perspective))
+
+                    # if cohort size is larger than 2, then at least two RIRs must be represented in the SUCCESSFUL perspectives
+                    if len(perspectives_to_use) > 2:
+                        valid_perspectives = [
+                            perspective
+                            for perspective in perspectives_to_use
+                            if check_passed_per_perspective[perspective.code]
+                        ]
+                        rir_count = len(set(perspective.rir for perspective in valid_perspectives))
+                        is_valid_result = rir_count >= 2 and is_valid_result
+
+                    if is_valid_result or attempts == max_attempts:
+                        response = MpicResponseBuilder.build_response(
+                            mpic_request,
+                            perspective_count,
+                            quorum_count,
+                            attempts,
+                            perspective_responses,
+                            is_valid_result,
+                            previous_attempt_results,
+                        )
+
+                        _is_valid = is_valid_result
+                        _request_status = "ok"
+                        _span.set_attribute("mpic.is_valid", is_valid_result)
+                        _span.set_attribute("mpic.attempts", attempts)
+
+                        # noinspection PyUnresolvedReferences
+                        self.logger.trace(f"Completed MPIC request with trace ID {mpic_request.trace_identifier}")
+                        return response
+                    else:
+                        if previous_attempt_results is None:
+                            previous_attempt_results = []
+                        previous_attempt_results.append(perspective_responses)
+                        attempts += 1
+            except Exception as exc:
+                _span.record_exception(exc)
+                _span.set_status(Status(StatusCode.ERROR, description=type(exc).__name__))
+                raise
+            finally:
+                elapsed_ms = (time.perf_counter_ns() - _start_ns) / 1_000_000
+                self._coordinator_duration.record(elapsed_ms, {"check.type": check_type_value})
+                self._request_counter.add(
+                    1,
+                    {
+                        "check.type": check_type_value,
+                        "mpic.is_valid": _is_valid,
+                        "request.status": _request_status,
+                    },
+                )
 
     def _raise_exception_on_invalid_request(self, mpic_request):
         is_request_valid, validation_issues = MpicRequestValidator.is_request_valid(
@@ -225,20 +291,29 @@ class MpicCoordinator:
         This assumes the wrapper will provide an async version of call_remote_perspective_function,
         or that we'll wrap the sync function using asyncio.to_thread() if needed.
         """
-        try:
-            # noinspection PyUnresolvedReferences
-            async with self.logger.trace_timing(
-                f"MPIC round-trip with perspective {call_config.perspective.code}; trace ID: {call_config.check_request.trace_identifier}"
-            ):
-                response = await call_remote_perspective_function(
-                    call_config.perspective, call_config.check_type, call_config.check_request
-                )
-        except Exception as exc:
-            error_message = str(exc) if str(exc) else exc.__class__.__name__
-            raise RemoteCheckException(
-                f"Check failed for perspective {call_config.perspective.code}, target {call_config.check_request.domain_or_ip_target}: {error_message}; trace ID: {call_config.check_request.trace_identifier}",
-                call_config=call_config,
-            ) from exc
+        with self._tracer.start_as_current_span(
+            "mpic.call_remote_perspective",
+            attributes={
+                "check.type": call_config.check_type.value,
+                "perspective.code": call_config.perspective.code,
+            },
+        ) as span:
+            try:
+                # noinspection PyUnresolvedReferences
+                async with self.logger.trace_timing(
+                    f"MPIC round-trip with perspective {call_config.perspective.code}; trace ID: {call_config.check_request.trace_identifier}"
+                ):
+                    response = await call_remote_perspective_function(
+                        call_config.perspective, call_config.check_type, call_config.check_request
+                    )
+            except Exception as exc:
+                span.record_exception(exc)
+                span.set_status(Status(StatusCode.ERROR, description=type(exc).__name__))
+                error_message = str(exc) if str(exc) else exc.__class__.__name__
+                raise RemoteCheckException(
+                    f"Check failed for perspective {call_config.perspective.code}, target {call_config.check_request.domain_or_ip_target}: {error_message}; trace ID: {call_config.check_request.trace_identifier}",
+                    call_config=call_config,
+                ) from exc
         return PerspectiveResponse(perspective_code=call_config.perspective.code, check_response=response)
 
     @staticmethod
@@ -290,18 +365,50 @@ class MpicCoordinator:
         ):
             responses = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for response in responses:
+        check_type_value = mpic_request.check_type.value
+        for call_config, response in zip(async_calls_to_issue, responses):
             # check for exception (return_exceptions=True above will return exceptions as responses)
             # every Exception should be rethrown as RemoteCheckException
             # (trying to handle other Exceptions should be unreachable code)
             if isinstance(response, RemoteCheckException):
                 response_as_string = str(response)
-                log_msg = f"{response_as_string} - trace ID: {mpic_request.trace_identifier}"
-                logger.warning(log_msg)
+                logger.warning(response_as_string)
                 error_response = MpicCoordinator.build_error_perspective_response_from_exception(response)
                 perspective_responses.append(error_response)
-            else:
-                # Now we know it's a valid PerspectiveResponse
+                self._remote_error_counter.add(
+                    1,
+                    {
+                        "check.type": check_type_value,
+                        "perspective.code": response.call_config.perspective.code,
+                    },
+                )
+            elif isinstance(response, PerspectiveResponse):
                 perspective_responses.append(response)
+                self._perspective_response_counter.add(
+                    1,
+                    {
+                        "check.type": check_type_value,
+                        "perspective.code": response.perspective_code,
+                        "check.passed": response.check_response.check_passed,
+                        "check.completed": response.check_response.check_completed,
+                    },
+                )
+            else:
+                # Defensive handling for unexpected exceptions returned by gather(..., return_exceptions=True).
+                response_error = response if isinstance(response, Exception) else Exception(str(response))
+                wrapped_error = RemoteCheckException(
+                    f"Unexpected error type {type(response_error).__name__} for perspective {call_config.perspective.code}, target {call_config.check_request.domain_or_ip_target}: {response_error}; trace ID: {mpic_request.trace_identifier}",
+                    call_config=call_config,
+                )
+                logger.warning(str(wrapped_error))
+                error_response = MpicCoordinator.build_error_perspective_response_from_exception(wrapped_error)
+                perspective_responses.append(error_response)
+                self._remote_error_counter.add(
+                    1,
+                    {
+                        "check.type": check_type_value,
+                        "perspective.code": call_config.perspective.code,
+                    },
+                )
 
         return perspective_responses

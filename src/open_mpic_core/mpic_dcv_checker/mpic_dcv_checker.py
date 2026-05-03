@@ -14,6 +14,8 @@ from yarl import URL
 from aiohttp import ClientError
 from aiohttp.web import HTTPException
 
+from opentelemetry.trace import Status, StatusCode
+
 from open_mpic_core import DcvCheckRequest, DcvCheckResponse
 from open_mpic_core import RedirectResponse, DcvUtils
 from open_mpic_core import DcvValidationMethod, DnsRecordType
@@ -21,6 +23,7 @@ from open_mpic_core import MpicValidationError, ErrorMessages
 from open_mpic_core import DomainEncoder
 from open_mpic_core import DcvTlsAlpnValidator
 from open_mpic_core import get_logger
+from open_mpic_core import get_meter, get_tracer
 
 logger = get_logger(__name__)
 
@@ -66,6 +69,29 @@ class MpicDcvChecker:
         self.acme_tls_alpn_validator = DcvTlsAlpnValidator(log_level=log_level)
         self._http_client_timeout = http_client_timeout
 
+        _meter = get_meter(__name__)
+        self._tracer = get_tracer(__name__)
+        self._request_counter = _meter.create_counter(
+            "mpic.dcv.requests",
+            description="Total DCV check requests processed",
+            unit="1",
+        )
+        self._duration_histogram = _meter.create_histogram(
+            "mpic.dcv.duration",
+            description="DCV check request duration",
+            unit="ms",
+        )
+        self._http_duration_histogram = _meter.create_histogram(
+            "mpic.dcv.http.duration",
+            description="DCV HTTP-based validation duration",
+            unit="ms",
+        )
+        self._dns_duration_histogram = _meter.create_histogram(
+            "mpic.dcv.dns.duration",
+            description="DCV DNS-based validation duration",
+            unit="ms",
+        )
+
     @asynccontextmanager
     async def get_async_http_client(self):
         connector = aiohttp.TCPConnector(ssl=self.verify_ssl, limit=0, force_close=True)
@@ -84,6 +110,7 @@ class MpicDcvChecker:
 
     async def check_dcv(self, dcv_request: DcvCheckRequest) -> DcvCheckResponse:
         validation_method = dcv_request.dcv_check_parameters.validation_method
+        validation_method_value = validation_method.value
         # noinspection PyUnresolvedReferences
         self.logger.trace(
             "Checking DCV for %s with method %s. Trace ID: %s",
@@ -95,14 +122,39 @@ class MpicDcvChecker:
         # encode domain if needed
         dcv_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(dcv_request.domain_or_ip_target)
 
-        result = None
-        match validation_method:
-            case DcvValidationMethod.WEBSITE_CHANGE | DcvValidationMethod.ACME_HTTP_01:
-                result = await self.perform_http_based_validation(dcv_request)
-            case DcvValidationMethod.ACME_TLS_ALPN_01:
-                result = await self.acme_tls_alpn_validator.perform_tls_alpn_validation(dcv_request)
-            case _:  # all DNS based methods
-                result = await self.perform_general_dns_validation(dcv_request)
+        _start_ns = time.perf_counter_ns()
+        with self._tracer.start_as_current_span(
+            "mpic.dcv.check", attributes={"validation.method": validation_method_value}
+        ) as _span:
+            try:
+                result = None
+                match validation_method:
+                    case DcvValidationMethod.WEBSITE_CHANGE | DcvValidationMethod.ACME_HTTP_01:
+                        result = await self.perform_http_based_validation(dcv_request)
+                    case DcvValidationMethod.ACME_TLS_ALPN_01:
+                        result = await self.acme_tls_alpn_validator.perform_tls_alpn_validation(dcv_request)
+                    case _:  # all DNS based methods
+                        result = await self.perform_general_dns_validation(dcv_request)
+            except Exception as exc:
+                _span.record_exception(exc)
+                _span.set_status(Status(StatusCode.ERROR, description=type(exc).__name__))
+                raise
+            finally:
+                elapsed_ms = (time.perf_counter_ns() - _start_ns) / 1_000_000
+                check_passed = result.check_passed if result is not None else False
+                check_completed = result.check_completed if result is not None else False
+                self._duration_histogram.record(
+                    elapsed_ms,
+                    {"validation.method": validation_method_value, "check.passed": check_passed},
+                )
+                self._request_counter.add(
+                    1,
+                    {
+                        "validation.method": validation_method_value,
+                        "check.passed": check_passed,
+                        "check.completed": check_completed,
+                    },
+                )
 
         # noinspection PyUnresolvedReferences
         self.logger.trace(
@@ -116,6 +168,7 @@ class MpicDcvChecker:
     async def perform_general_dns_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:
         check_parameters = request.dcv_check_parameters
         validation_method = check_parameters.validation_method
+        validation_method_value = validation_method.value
         dns_name_prefix = check_parameters.dns_name_prefix
         dns_record_type = check_parameters.dns_record_type
         exact_match = True
@@ -136,32 +189,43 @@ class MpicDcvChecker:
 
         dcv_check_response = DcvUtils.create_empty_check_response(validation_method)
 
-        try:
-            # noinspection PyUnresolvedReferences
-            async with self.logger.trace_timing(
-                f"DNS lookup for target {name_to_resolve}. Trace ID: {request.trace_identifier}"
-            ):
-                lookup = await self.perform_dns_resolution(name_to_resolve, validation_method, dns_record_type)
-            MpicDcvChecker.evaluate_dns_lookup_response(
-                dcv_check_response,
-                lookup,
-                validation_method,
-                dns_record_type,
-                expected_dns_record_content,
-                exact_match,
-                require_exact_case,
-            )
-        except dns.exception.DNSException as e:
-            log_msg = f"DNS lookup error for {name_to_resolve}: {str(e)}. Trace ID: {request.trace_identifier}"
-            if isinstance(e, dns.resolver.NoAnswer) or isinstance(e, dns.resolver.NXDOMAIN):
-                dcv_check_response.check_completed = True  # errors on the target domain, not the lookup
+        _dns_start_ns = time.perf_counter_ns()
+        with self._tracer.start_as_current_span(
+            "mpic.dcv.dns_validation", attributes={"validation.method": validation_method_value}
+        ) as _span:
+            try:
                 # noinspection PyUnresolvedReferences
-                self.logger.trace(log_msg)
-            else:
-                self.logger.warning(log_msg)
-            dcv_check_response.errors = [
-                MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, e.msg)
-            ]
+                async with self.logger.trace_timing(
+                    f"DNS lookup for target {name_to_resolve}. Trace ID: {request.trace_identifier}"
+                ):
+                    lookup = await self.perform_dns_resolution(name_to_resolve, validation_method, dns_record_type)
+                MpicDcvChecker.evaluate_dns_lookup_response(
+                    dcv_check_response,
+                    lookup,
+                    validation_method,
+                    dns_record_type,
+                    expected_dns_record_content,
+                    exact_match,
+                    require_exact_case,
+                )
+            except dns.exception.DNSException as e:
+                log_msg = f"DNS lookup error for {name_to_resolve}: {str(e)}. Trace ID: {request.trace_identifier}"
+                if isinstance(e, dns.resolver.NoAnswer) or isinstance(e, dns.resolver.NXDOMAIN):
+                    dcv_check_response.check_completed = True  # errors on the target domain, not the lookup
+                    # noinspection PyUnresolvedReferences
+                    self.logger.trace(log_msg)
+                else:
+                    self.logger.warning(log_msg)
+                _span.record_exception(e)
+                _span.set_status(Status(StatusCode.ERROR, description=type(e).__name__))
+                dcv_check_response.errors = [
+                    MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, e.msg)
+                ]
+            finally:
+                self._dns_duration_histogram.record(
+                    (time.perf_counter_ns() - _dns_start_ns) / 1_000_000,
+                    {"validation.method": validation_method_value},
+                )
 
         dcv_check_response.timestamp_ns = time.time_ns()
         return dcv_check_response
@@ -202,6 +266,7 @@ class MpicDcvChecker:
 
     async def perform_http_based_validation(self, request: DcvCheckRequest) -> DcvCheckResponse:
         validation_method = request.dcv_check_parameters.validation_method
+        validation_method_value = validation_method.value
         domain_or_ip_target = request.domain_or_ip_target
         formatted_host = MpicDcvChecker.format_host_for_url(domain_or_ip_target)
         http_headers = request.dcv_check_parameters.http_headers
@@ -218,31 +283,46 @@ class MpicDcvChecker:
             token = request.dcv_check_parameters.token
             token_url = f"http://{formatted_host}/{MpicDcvChecker.WELL_KNOWN_ACME_PATH}/{token}"  # noqa E501 (http)
             dcv_check_response = DcvUtils.create_empty_check_response(DcvValidationMethod.ACME_HTTP_01)
-        try:
-            async with self.get_async_http_client() as async_http_client:
-                # noinspection PyUnresolvedReferences
-                async with self.logger.trace_timing(
-                    f"HTTP lookup for target {token_url}, trace ID: {request.trace_identifier}"
-                ):
-                    async with async_http_client.get(url=token_url, headers=http_headers, max_redirects=20) as response:
-                        dcv_check_response = await MpicDcvChecker.evaluate_http_lookup_response(
-                            request, dcv_check_response, response, token_url, expected_response_content
-                        )
-        except asyncio.TimeoutError as e:
-            dcv_check_response.timestamp_ns = time.time_ns()
-            log_message = f"Timeout connecting to {token_url}: {str(e)}. Trace ID: {request.trace_identifier}"
-            self.logger.warning(log_message)
-            message = f"Connection timed out while attempting to connect to {token_url}"
-            dcv_check_response.errors = [
-                MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, message)
-            ]
-        except (ClientError, HTTPException, OSError) as e:
-            log_message = f"Error connecting to {token_url}: {str(e)}. Trace ID: {request.trace_identifier}"
-            self.logger.error(log_message)
-            dcv_check_response.timestamp_ns = time.time_ns()
-            dcv_check_response.errors = [
-                MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, str(e))
-            ]
+        _http_start_ns = time.perf_counter_ns()
+        with self._tracer.start_as_current_span(
+            "mpic.dcv.http_validation", attributes={"validation.method": validation_method_value}
+        ) as _span:
+            try:
+                async with self.get_async_http_client() as async_http_client:
+                    # noinspection PyUnresolvedReferences
+                    async with self.logger.trace_timing(
+                        f"HTTP lookup for target {token_url}, trace ID: {request.trace_identifier}"
+                    ):
+                        async with async_http_client.get(
+                            url=token_url, headers=http_headers, max_redirects=20
+                        ) as response:
+                            dcv_check_response = await MpicDcvChecker.evaluate_http_lookup_response(
+                                request, dcv_check_response, response, token_url, expected_response_content
+                            )
+            except asyncio.TimeoutError as e:
+                dcv_check_response.timestamp_ns = time.time_ns()
+                log_message = f"Timeout connecting to {token_url}: {str(e)}. Trace ID: {request.trace_identifier}"
+                self.logger.warning(log_message)
+                _span.record_exception(e)
+                _span.set_status(Status(StatusCode.ERROR, description=type(e).__name__))
+                message = f"Connection timed out while attempting to connect to {token_url}"
+                dcv_check_response.errors = [
+                    MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, message)
+                ]
+            except (ClientError, HTTPException, OSError) as e:
+                log_message = f"Error connecting to {token_url}: {str(e)}. Trace ID: {request.trace_identifier}"
+                self.logger.error(log_message)
+                _span.record_exception(e)
+                _span.set_status(Status(StatusCode.ERROR, description=type(e).__name__))
+                dcv_check_response.timestamp_ns = time.time_ns()
+                dcv_check_response.errors = [
+                    MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, str(e))
+                ]
+            finally:
+                self._http_duration_histogram.record(
+                    (time.perf_counter_ns() - _http_start_ns) / 1_000_000,
+                    {"validation.method": validation_method_value},
+                )
 
         return dcv_check_response
 

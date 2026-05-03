@@ -74,3 +74,4 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 - Henry Birge-Lee
 - Grace Cimaszewski
 - Dmitry Sharkov
+- Alan Hanafy
