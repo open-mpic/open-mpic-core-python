@@ -28,14 +28,14 @@ dependencies = [
   "dnspython==2.7.0",
   "pydantic==2.11.7",
   "aiohttp==3.13.4",
-  "cryptography==46.0.6",
+  "cryptography==46.0.7",
   "uritools==6.0.1",
   "opentelemetry-api==1.41.1",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "black==26.3.0",
+  "black==26.3.1",
 ]
 test = [
     "pytest==8.4.1",
