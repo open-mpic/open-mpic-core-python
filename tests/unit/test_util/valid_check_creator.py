@@ -7,6 +7,7 @@ from open_mpic_core import (
     CaaCheckParameters,
     DcvAcmeHttp01ValidationParameters,
     DcvAcmeDns01ValidationParameters,
+    DcvAcmeDnsAccount01ValidationParameters,
     DcvAcmeTlsAlpn01ValidationParameters,
     DcvIpAddressValidationParameters,
     DcvContactEmailCaaValidationParameters,
@@ -114,6 +115,17 @@ class ValidCheckCreator:
         )
 
     @staticmethod
+    def create_valid_acme_dns_account_01_check_request():
+        challenge = "challenge_111".encode().hex()
+        return DcvCheckRequest(
+            domain_or_ip_target="example.com",
+            dcv_check_parameters=DcvAcmeDnsAccount01ValidationParameters(
+                acme_account_url="https://example.com/acme/acct/ExampleAccount",
+                key_authorization_hash=challenge,
+            ),
+        )
+
+    @staticmethod
     def create_valid_acme_tls_alpn_01_check_request(target="example.com"):
         challenge = "example-token.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
         hash_bytes_hex = hashlib.sha256(challenge.encode("utf-8")).digest().hex()
@@ -148,6 +160,8 @@ class ValidCheckCreator:
                 return ValidCheckCreator.create_valid_acme_http_01_check_request()
             case DcvValidationMethod.ACME_DNS_01:
                 return ValidCheckCreator.create_valid_acme_dns_01_check_request()
+            case DcvValidationMethod.DNS_ACCOUNT_01:
+                return ValidCheckCreator.create_valid_acme_dns_account_01_check_request()
             case DcvValidationMethod.ACME_TLS_ALPN_01:
                 return ValidCheckCreator.create_valid_acme_tls_alpn_01_check_request()
             case DcvValidationMethod.IP_ADDRESS:

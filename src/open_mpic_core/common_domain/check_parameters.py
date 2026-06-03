@@ -4,7 +4,7 @@ from uritools import isuri
 
 from pydantic import BaseModel, field_validator, Field, model_validator
 
-from open_mpic_core import CertificateType, DnsRecordType, DcvValidationMethod, UrlScheme
+from open_mpic_core import CertificateType, DnsRecordType, DcvValidationMethod, UrlScheme, Acme
 
 DNS_CHANGE_ALLOWED_RECORD_TYPES: Set[DnsRecordType] = {DnsRecordType.CNAME, DnsRecordType.TXT, DnsRecordType.CAA}
 IP_ADDRESS_ALLOWED_RECORD_TYPES: Set[DnsRecordType] = {DnsRecordType.A, DnsRecordType.AAAA}
@@ -151,6 +151,27 @@ class DcvAcmeDns01ValidationParameters(DcvValidationParameters):
     require_exact_case: Literal[True] = True  # ACME DNS-01 validation is always case-sensitive
 
 
+class DcvAcmeDnsAccount01ValidationParameters(DcvValidationParameters):
+    validation_method: Literal[DcvValidationMethod.DNS_ACCOUNT_01] = DcvValidationMethod.DNS_ACCOUNT_01
+    acme_account_url: str
+    key_authorization_hash: str
+    dns_record_type: Literal[DnsRecordType.TXT] = DnsRecordType.TXT
+    dns_name_prefix: str = ""
+    require_exact_case: Literal[True] = True
+
+    @field_validator("acme_account_url")
+    @classmethod
+    def validate_acme_account_url(cls, v: str) -> str:
+        if not isuri(v):
+            raise ValueError(f"acme_account_url must be a valid URI, got {v}")
+        return v
+
+    @model_validator(mode="after")
+    def set_dns_name_prefix(self) -> "DcvAcmeDnsAccount01ValidationParameters":
+        self.dns_name_prefix = Acme.dns_account_name_prefix_for(self.acme_account_url)
+        return self
+
+
 class DcvAcmeTlsAlpn01ValidationParameters(DcvValidationParameters):
     validation_method: Literal[DcvValidationMethod.ACME_TLS_ALPN_01] = DcvValidationMethod.ACME_TLS_ALPN_01
     key_authorization_hash: str
@@ -164,6 +185,7 @@ DcvCheckParameters = Annotated[
         DcvDnsPersistentValidationParameters,
         DcvAcmeHttp01ValidationParameters,
         DcvAcmeDns01ValidationParameters,
+        DcvAcmeDnsAccount01ValidationParameters,
         DcvAcmeTlsAlpn01ValidationParameters,
         DcvContactEmailTxtValidationParameters,
         DcvContactEmailCaaValidationParameters,

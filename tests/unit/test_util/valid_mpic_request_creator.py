@@ -4,6 +4,7 @@ from open_mpic_core import (
     DcvDnsPersistentValidationParameters,
     DcvWebsiteChangeValidationParameters,
     DcvAcmeDns01ValidationParameters,
+    DcvAcmeDnsAccount01ValidationParameters,
     DcvAcmeHttp01ValidationParameters,
     DcvContactPhoneCaaValidationParameters,
     DcvContactPhoneTxtValidationParameters,
@@ -59,6 +60,11 @@ class ValidMpicRequestCreator:
                 check_parameters = DcvAcmeHttp01ValidationParameters(token="test", key_authorization="test")
             case DcvValidationMethod.ACME_DNS_01:
                 check_parameters = DcvAcmeDns01ValidationParameters(key_authorization_hash="test")
+            case DcvValidationMethod.DNS_ACCOUNT_01:
+                check_parameters = DcvAcmeDnsAccount01ValidationParameters(
+                    acme_account_url="https://example.com/acme/acct/ExampleAccount",
+                    key_authorization_hash="test",
+                )
             case DcvValidationMethod.CONTACT_PHONE_CAA:
                 check_parameters = DcvContactPhoneCaaValidationParameters(challenge_value="test")
             case DcvValidationMethod.CONTACT_PHONE_TXT:
