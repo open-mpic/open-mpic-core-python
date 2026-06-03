@@ -4,6 +4,8 @@ from open_mpic_core.common_domain.enum.dcv_validation_method import DcvValidatio
 from open_mpic_core.common_domain.enum.dns_record_type import DnsRecordType
 from open_mpic_core.common_domain.enum.url_scheme import UrlScheme
 
+from open_mpic_core.common_util.acme import Acme
+
 from open_mpic_core.common_domain.validation_error import MpicValidationError
 from open_mpic_core.common_domain.messages.ErrorMessages import ErrorMessages
 
@@ -15,6 +17,7 @@ from open_mpic_core.common_domain.check_parameters import (
     DcvDnsChangeValidationParameters,
     DcvDnsPersistentValidationParameters,
     DcvAcmeDns01ValidationParameters,
+    DcvAcmeDnsAccount01ValidationParameters,
     DcvContactPhoneTxtValidationParameters,
     DcvContactEmailCaaValidationParameters,
     DcvContactEmailTxtValidationParameters,

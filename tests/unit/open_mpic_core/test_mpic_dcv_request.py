@@ -87,7 +87,7 @@ class TestMpicDcvRequest:
             MpicDcvRequest.model_validate_json(json.dumps(request.model_dump(warnings=False)))
         assert "token" in str(validation_error.value)
 
-    @pytest.mark.parametrize("validation_method", [DcvValidationMethod.ACME_HTTP_01, DcvValidationMethod.ACME_DNS_01])
+    @pytest.mark.parametrize("validation_method", [DcvValidationMethod.ACME_HTTP_01, DcvValidationMethod.ACME_DNS_01, DcvValidationMethod.DNS_ACCOUNT_01])
     def mpic_dcv_request__should_require_key_authorization_for_acme_validations(self, validation_method):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request(validation_method)
         # noinspection PyTypeChecker
