@@ -1,6 +1,6 @@
 from abc import ABC
-from typing import Literal, Union
-from pydantic import BaseModel
+from typing import Annotated, Literal, Union
+from pydantic import BaseModel, Field
 
 from open_mpic_core import CheckType
 
@@ -24,4 +24,4 @@ class MpicDcvRequest(BaseMpicRequest):
     dcv_check_parameters: DcvCheckParameters
 
 
-MpicRequest = Union[MpicCaaRequest, MpicDcvRequest]
+MpicRequest = Annotated[Union[MpicCaaRequest, MpicDcvRequest], Field(discriminator="check_type")]
