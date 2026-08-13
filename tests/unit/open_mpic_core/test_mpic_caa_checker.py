@@ -496,6 +496,8 @@ class TestMpicCaaChecker:
         ("parameter values containing some special ASCII characters", "ca111.com; account=!@_[}#$z", "ca111.com", {"account": "!@_[}#$z"}),
         ("parameters without values", "ca111.com; policy=; account=12345", "ca111.com", {"policy": "", "account": "12345"}),  # why???
         ("parameters without domain", "; policy=ev", "", {"policy": "ev"}),
+        ("parameter tags preserve case per RFC 8659 grammar", "ca111.com; AccountURI=https://ca111.com/acct/123", "ca111.com", {"AccountURI": "https://ca111.com/acct/123"}),
+        ("duplicate parameter tags permitted by RFC 8659 grammar (last wins in dict form)", "ca111.com; policy=ev; policy=dv", "ca111.com", {"policy": "dv"}),
     ])
     # fmt: on
     def extract_domain_and_parameters_from_caa_value__should_parse_domain_and_parameters_given_well_formed_value(
@@ -586,6 +588,157 @@ class TestMpicCaaChecker:
     ):
         caa_domains = ["ca111.org"]
         assert MpicCaaChecker.do_caa_values_permit_issuance(rrset_values, caa_domains) is False
+
+    # fmt: off
+    # noinspection PyUnusedLocal
+    @pytest.mark.parametrize("test_description, caa_values, accounturi_values, validation_methods, expected_result", [
+        ("accounturi parameter ignored given no accounturi enforcement requested",
+         ["ca111.org; accounturi=https://ca111.org/acct/123"], None, None, True),
+        ("matching accounturi permits issuance",
+         ["ca111.org; accounturi=https://ca111.org/acct/123"], ["https://ca111.org/acct/123"], None, True),
+        ("non-matching accounturi blocks issuance",
+         ["ca111.org; accounturi=https://ca111.org/acct/123"], ["https://ca111.org/acct/999"], None, False),
+        ("property without accounturi parameter matches any account",
+         ["ca111.org"], ["https://ca111.org/acct/123"], None, True),
+        ("invalid accounturi is unsatisfiable",
+         ["ca111.org; accounturi=not-a-valid-uri"], ["not-a-valid-uri"], None, False),
+        ("duplicate accounturi parameters are unsatisfiable",
+         ["ca111.org; accounturi=https://ca111.org/acct/123; accounturi=https://ca111.org/acct/123"],
+         ["https://ca111.org/acct/123"], None, False),
+        ("accounturi parameter tag matched case-sensitively; other-case tags are unrecognized parameters",
+         ["ca111.org; AccountURI=https://ca111.org/acct/123"], ["https://ca111.org/acct/999"], None, True),
+        ("duplicate parameter tags for other parameters do not affect issuance",
+         ["ca111.org; policy=ev; policy=dv"], ["https://ca111.org/acct/123"], None, True),
+        ("validationmethods parameter ignored given no validationmethods enforcement requested",
+         ["ca111.org; validationmethods=dns-01"], None, None, True),
+        ("matching validationmethods label permits issuance",
+         ["ca111.org; validationmethods=dns-01,http-01"], None, ["http-01"], True),
+        ("non-matching validationmethods blocks issuance",
+         ["ca111.org; validationmethods=dns-01"], None, ["http-01"], False),
+        ("property without validationmethods parameter matches any validation method",
+         ["ca111.org"], None, ["http-01"], True),
+        ("empty validationmethods value blocks issuance",
+         ["ca111.org; validationmethods="], None, ["http-01"], False),
+        ("malformed validationmethods label blocks issuance",
+         ["ca111.org; validationmethods=dns_01"], None, ["dns_01"], False),
+        ("repeated label within a validationmethods parameter value is redundant but valid",
+         ["ca111.org; validationmethods=http-01,http-01,dns-01"], None, ["http-01"], True),
+        ("multiple validationmethods parameters satisfied given method listed in each occurrence",
+         ["ca111.org; validationmethods=dns-01,http-01; validationmethods=http-01"], None, ["http-01"], True),
+        ("multiple validationmethods parameters blocked given method not listed in each occurrence",
+         ["ca111.org; validationmethods=dns-01,http-01; validationmethods=http-01"], None, ["dns-01"], False),
+        ("both parameters satisfied permits issuance",
+         ["ca111.org; accounturi=https://ca111.org/acct/123; validationmethods=dns-01"],
+         ["https://ca111.org/acct/123"], ["dns-01"], True),
+        ("satisfied accounturi with blocked validationmethods blocks issuance",
+         ["ca111.org; accounturi=https://ca111.org/acct/123; validationmethods=dns-01"],
+         ["https://ca111.org/acct/123"], ["http-01"], False),
+        ("second property permits issuance given first property blocked by accounturi",
+         ["ca111.org; accounturi=https://ca111.org/acct/999", "ca111.org; accounturi=https://ca111.org/acct/123"],
+         ["https://ca111.org/acct/123"], None, True),
+    ])
+    # fmt: on
+    def do_caa_values_permit_issuance__should_enforce_rfc_8657_parameters(
+        self, test_description, caa_values, accounturi_values, validation_methods, expected_result
+    ):
+        caa_domains = ["ca111.org"]
+        result = MpicCaaChecker.do_caa_values_permit_issuance(
+            caa_values, caa_domains, accounturi_values, validation_methods
+        )
+        assert result is expected_result
+
+    def evaluate_caa_values_for_issuance__should_report_permissible_account_uris_given_blocking_accounturi(self):
+        evaluation = MpicCaaChecker.evaluate_caa_values_for_issuance(
+            ["ca111.org; accounturi=https://ca111.org/acct/123"],
+            ["ca111.org"],
+            accounturi_values=["https://ca111.org/acct/999"],
+        )
+        assert evaluation.issuance_permitted is False
+        assert evaluation.rfc_8657_parameters_blocked_issuance is True
+        assert evaluation.permissible_under_account_uri == ["https://ca111.org/acct/123"]
+        assert evaluation.permissible_under_validation_method == []
+
+    def evaluate_caa_values_for_issuance__should_report_permissible_validation_methods_given_blocking_methods(self):
+        evaluation = MpicCaaChecker.evaluate_caa_values_for_issuance(
+            ["ca111.org; validationmethods=dns-01,tls-alpn-01"],
+            ["ca111.org"],
+            validation_methods=["http-01"],
+        )
+        assert evaluation.issuance_permitted is False
+        assert evaluation.rfc_8657_parameters_blocked_issuance is True
+        assert evaluation.permissible_under_account_uri == []
+        assert evaluation.permissible_under_validation_method == ["dns-01", "tls-alpn-01"]
+
+    def evaluate_caa_values_for_issuance__should_report_intersection_of_multiple_validationmethods_parameters(self):
+        evaluation = MpicCaaChecker.evaluate_caa_values_for_issuance(
+            ["ca111.org; validationmethods=dns-01,http-01; validationmethods=http-01,tls-alpn-01"],
+            ["ca111.org"],
+            validation_methods=["ca-custom-method"],
+        )
+        assert evaluation.issuance_permitted is False
+        assert evaluation.rfc_8657_parameters_blocked_issuance is True
+        # only labels listed in every occurrence of the validationmethods parameter would have permitted issuance
+        assert evaluation.permissible_under_validation_method == ["http-01"]
+
+    def evaluate_caa_values_for_issuance__should_not_report_values_given_multiple_accounturi_parameters(self):
+        evaluation = MpicCaaChecker.evaluate_caa_values_for_issuance(
+            ["ca111.org; accounturi=https://ca111.org/acct/123; accounturi=https://ca111.org/acct/456"],
+            ["ca111.org"],
+            accounturi_values=["https://ca111.org/acct/123"],
+        )
+        assert evaluation.issuance_permitted is False
+        assert evaluation.rfc_8657_parameters_blocked_issuance is True
+        # a property with multiple accounturi parameters is unsatisfiable; no accounturi value would have permitted
+        assert evaluation.permissible_under_account_uri == []
+
+    def evaluate_caa_values_for_issuance__should_report_both_parameters_given_property_blocked_by_both(self):
+        evaluation = MpicCaaChecker.evaluate_caa_values_for_issuance(
+            ["ca111.org; accounturi=https://ca111.org/acct/123; validationmethods=dns-01"],
+            ["ca111.org"],
+            accounturi_values=["https://ca111.org/acct/999"],
+            validation_methods=["http-01"],
+        )
+        assert evaluation.issuance_permitted is False
+        assert evaluation.rfc_8657_parameters_blocked_issuance is True
+        assert evaluation.permissible_under_account_uri == ["https://ca111.org/acct/123"]
+        assert evaluation.permissible_under_validation_method == ["dns-01"]
+
+    def evaluate_caa_values_for_issuance__should_not_flag_rfc_8657_blocking_given_no_domain_match(self):
+        evaluation = MpicCaaChecker.evaluate_caa_values_for_issuance(
+            ["ca222.org; accounturi=https://ca222.org/acct/123"],
+            ["ca111.org"],
+            accounturi_values=["https://ca222.org/acct/123"],
+        )
+        assert evaluation.issuance_permitted is False
+        assert evaluation.rfc_8657_parameters_blocked_issuance is False
+        assert evaluation.permissible_under_account_uri == []
+        assert evaluation.permissible_under_validation_method == []
+
+    def evaluate_caa_values_for_issuance__should_deduplicate_reported_values(self):
+        evaluation = MpicCaaChecker.evaluate_caa_values_for_issuance(
+            [
+                "ca111.org; accounturi=https://ca111.org/acct/123; validationmethods=dns-01",
+                "ca111.org; accounturi=https://ca111.org/acct/123; validationmethods=dns-01,http-01",
+            ],
+            ["ca111.org"],
+            accounturi_values=["https://ca111.org/acct/999"],
+            validation_methods=["tls-alpn-01"],
+        )
+        assert evaluation.issuance_permitted is False
+        assert evaluation.permissible_under_account_uri == ["https://ca111.org/acct/123"]
+        assert evaluation.permissible_under_validation_method == ["dns-01", "http-01"]
+
+    def evaluate_caa_values_for_issuance__should_not_report_values_from_unsatisfiable_properties(self):
+        evaluation = MpicCaaChecker.evaluate_caa_values_for_issuance(
+            ["ca111.org; accounturi=not-a-valid-uri; validationmethods=dns_01"],
+            ["ca111.org"],
+            accounturi_values=["https://ca111.org/acct/123"],
+            validation_methods=["dns-01"],
+        )
+        assert evaluation.issuance_permitted is False
+        assert evaluation.rfc_8657_parameters_blocked_issuance is True
+        assert evaluation.permissible_under_account_uri == []  # invalid accounturi is not reportable
+        assert evaluation.permissible_under_validation_method == []  # malformed labels are not reportable
 
     def is_valid_for_issuance__should_be_true_given_matching_issue_tag_for_non_wildcard_domain(self):
         records = [MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org")]
@@ -754,6 +907,144 @@ class TestMpicCaaChecker:
             caa_domains=["ca1.org"], certificate_type="INVALID", is_wc_domain=False, rrset=test_rrset
         )
         assert result is False
+
+    @pytest.mark.parametrize(
+        "accounturi_values, expected_result",
+        [
+            (["https://ca1.org/acct/123"], True),
+            (["https://ca1.org/acct/999"], False),
+        ],
+    )
+    def is_valid_for_issuance__should_enforce_rfc_8657_parameters_on_issue_tags(
+        self, accounturi_values, expected_result
+    ):
+        records = [MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org; accounturi=https://ca1.org/acct/123")]
+        test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
+        result = MpicCaaChecker.is_valid_for_issuance(
+            caa_domains=["ca1.org"],
+            certificate_type=CertificateType.TLS_SERVER,
+            is_wc_domain=False,
+            rrset=test_rrset,
+            accounturi_values=accounturi_values,
+        )
+        assert result is expected_result
+
+    @pytest.mark.parametrize(
+        "validation_methods, expected_result",
+        [
+            (["dns-01"], True),
+            (["http-01"], False),
+        ],
+    )
+    def is_valid_for_issuance__should_enforce_rfc_8657_parameters_on_issuewild_tags_for_wildcard_domain(
+        self, validation_methods, expected_result
+    ):
+        records = [MockDnsObjectCreator.create_caa_record(0, "issuewild", "ca1.org; validationmethods=dns-01")]
+        test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
+        result = MpicCaaChecker.is_valid_for_issuance(
+            caa_domains=["ca1.org"],
+            certificate_type=CertificateType.TLS_SERVER,
+            is_wc_domain=True,
+            rrset=test_rrset,
+            validation_methods=validation_methods,
+        )
+        assert result is expected_result
+
+    def evaluate_issuance__should_not_flag_rfc_8657_blocking_given_unknown_critical_flags(self):
+        records = [
+            MockDnsObjectCreator.create_caa_record(128, "mystery", "critical-value"),
+            MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org; accounturi=https://ca1.org/acct/123"),
+        ]
+        test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
+        evaluation = MpicCaaChecker.evaluate_issuance(
+            caa_domains=["ca1.org"],
+            certificate_type=CertificateType.TLS_SERVER,
+            is_wc_domain=False,
+            rrset=test_rrset,
+            accounturi_values=["https://ca1.org/acct/999"],
+        )
+        assert evaluation.issuance_permitted is False
+        assert evaluation.rfc_8657_parameters_blocked_issuance is False
+
+    def evaluate_issuance__should_ignore_rfc_8657_parameters_for_smime_issuemail_records(self):
+        # RFC 8657 only defines its parameters for issue and issuewild properties
+        records = [
+            MockDnsObjectCreator.create_caa_record(0, "issuemail", "ca1.org; accounturi=https://ca1.org/acct/123")
+        ]
+        test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
+        evaluation = MpicCaaChecker.evaluate_issuance(
+            caa_domains=["ca1.org"],
+            certificate_type=CertificateType.S_MIME,
+            is_wc_domain=False,
+            rrset=test_rrset,
+            accounturi_values=["https://ca1.org/acct/999"],
+        )
+        assert evaluation.issuance_permitted is True
+
+    async def check_caa__should_report_permissible_values_given_issuance_blocked_solely_by_rfc_8657_parameters(
+        self, mocker
+    ):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
+        resolver = caa_checker.resolver
+        record_name, expected_domain = "example.com", "example.com."
+        test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(
+            record_name,
+            0,
+            "issue",
+            "ca111.com; accounturi=https://ca111.com/acct/123; validationmethods=dns-01",
+            mocker,
+        )
+        self.patch_resolver_to_expect_domain(
+            mocker, resolver, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer
+        )
+        caa_request = self.create_caa_check_request("example.com", ["ca111.com"])
+        caa_request.caa_check_parameters.accounturi_values = ["https://ca111.com/acct/999"]
+        caa_request.caa_check_parameters.validation_methods = ["http-01"]
+        caa_response = await caa_checker.check_caa(caa_request)
+        assert caa_response.check_passed is False
+        assert caa_response.details.permissible_under_account_uri == ["https://ca111.com/acct/123"]
+        assert caa_response.details.permissible_under_validation_method == ["dns-01"]
+
+    async def check_caa__should_allow_issuance_given_matching_rfc_8657_parameters(self, mocker):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
+        resolver = caa_checker.resolver
+        record_name, expected_domain = "example.com", "example.com."
+        test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(
+            record_name,
+            0,
+            "issue",
+            "ca111.com; accounturi=https://ca111.com/acct/123; validationmethods=dns-01",
+            mocker,
+        )
+        self.patch_resolver_to_expect_domain(
+            mocker, resolver, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer
+        )
+        caa_request = self.create_caa_check_request("example.com", ["ca111.com"])
+        caa_request.caa_check_parameters.accounturi_values = ["https://ca111.com/acct/123"]
+        caa_request.caa_check_parameters.validation_methods = ["dns-01"]
+        caa_response = await caa_checker.check_caa(caa_request)
+        assert caa_response.check_passed is True
+        assert caa_response.details.permissible_under_account_uri is None
+        assert caa_response.details.permissible_under_validation_method is None
+
+    async def check_caa__should_not_report_permissible_values_given_issuance_blocked_by_non_matching_domain(
+        self, mocker
+    ):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
+        resolver = caa_checker.resolver
+        record_name, expected_domain = "example.com", "example.com."
+        test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(
+            record_name, 0, "issue", "ca222.com; accounturi=https://ca222.com/acct/123", mocker
+        )
+        self.patch_resolver_to_expect_domain(
+            mocker, resolver, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer
+        )
+        caa_request = self.create_caa_check_request("example.com", ["ca111.com"])
+        caa_request.caa_check_parameters.accounturi_values = ["https://ca222.com/acct/123"]
+        caa_response = await caa_checker.check_caa(caa_request)
+        assert caa_response.check_passed is False
+        assert caa_response.details.permissible_under_account_uri is None
+        assert caa_response.details.permissible_under_validation_method is None
 
     def raise_(self, ex):
         # noinspection PyUnusedLocal

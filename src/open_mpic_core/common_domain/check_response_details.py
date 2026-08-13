@@ -8,6 +8,12 @@ class CaaCheckResponseDetails(BaseModel):
     caa_record_present: bool | None = None  # was a CAA record found (None indicates N/A, e.g. due to error)
     found_at: str | None = None  # domain where CAA record was found
     records_seen: list[str] | None = None  # list of records found in DNS query
+    # RFC 8657 accounturi values seen that would have permitted issuance had they been supplied in accounturi_values.
+    # Only set when RFC 8657 parameters were the sole reason no CAA record permitted issuance; None otherwise.
+    permissible_under_account_uri: list[str] | None = None
+    # RFC 8657 validation method labels seen that would have permitted issuance had they been supplied in
+    # validation_methods. Only set when RFC 8657 parameters were the sole reason no CAA record permitted issuance.
+    permissible_under_validation_method: list[str] | None = None
 
 
 class RedirectResponse(BaseModel):

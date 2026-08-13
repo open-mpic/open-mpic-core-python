@@ -1,3 +1,4 @@
+import re
 from abc import ABC
 from typing import Literal, Union, Any, Set, Annotated
 from uritools import isuri
@@ -13,7 +14,32 @@ IP_ADDRESS_ALLOWED_RECORD_TYPES: Set[DnsRecordType] = {DnsRecordType.A, DnsRecor
 class CaaCheckParameters(BaseModel):
     certificate_type: CertificateType = CertificateType.TLS_SERVER
     caa_domains: list[str] | None = None
+    # Permissible RFC 8657 "accounturi" values for this certificate request; None disables accounturi processing
+    accounturi_values: list[str] | None = None
+    # Permissible RFC 8657 validation method labels for this certificate request; None disables validationmethods processing
+    validation_methods: list[str] | None = None
     allow_lookup_failure: bool = False  # Baseline Requirements have a carve-out for CAA lookup failure; use carefully!
+
+    @field_validator("accounturi_values")
+    @classmethod
+    def validate_accounturi_values(cls, v: list[str] | None) -> list[str] | None:
+        if v is not None:
+            for account_uri in v:
+                if not isuri(account_uri):
+                    raise ValueError(f"accounturi_values must contain valid URIs, got {account_uri}")
+        return v
+
+    @field_validator("validation_methods")
+    @classmethod
+    def validate_validation_methods(cls, v: list[str] | None) -> list[str] | None:
+        if v is not None:
+            # RFC 8657 section 4: label = 1*(ALPHA / DIGIT / "-")
+            for validation_method in v:
+                if not re.match(r"^[a-zA-Z0-9-]+$", validation_method):
+                    raise ValueError(
+                        f"validation_methods must contain valid validation method labels, got {validation_method}"
+                    )
+        return v
 
 
 class DcvValidationParameters(BaseModel, ABC):
@@ -56,7 +82,7 @@ class DcvDnsChangeValidationParameters(DcvGeneralDnsValidationParameters):
         return v
 
     @model_validator(mode="after")
-    def validate_require_exact_case(self) -> 'DcvDnsChangeValidationParameters':
+    def validate_require_exact_case(self) -> "DcvDnsChangeValidationParameters":
         if self.dns_record_type is not DnsRecordType.TXT:
             self.require_exact_case = False  # case-sensitivity only applies to TXT records; force to False for others
         return self

@@ -40,6 +40,36 @@ class TestMpicCaaRequest:
         mpic_request = MpicCaaRequest.model_validate_json(json.dumps(request.model_dump()))
         assert mpic_request.check_type == CheckType.CAA
 
+    def mpic_caa_request__should_deserialize_rfc_8657_check_parameters(self):
+        request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        request.caa_check_parameters.accounturi_values = ["https://acme-v02.api.letsencrypt.org/acme/acct/12345"]
+        request.caa_check_parameters.validation_methods = ["dns-01"]
+        mpic_request = MpicCaaRequest.model_validate_json(json.dumps(request.model_dump()))
+        assert mpic_request.caa_check_parameters.accounturi_values == [
+            "https://acme-v02.api.letsencrypt.org/acme/acct/12345"
+        ]
+        assert mpic_request.caa_check_parameters.validation_methods == ["dns-01"]
+
+    def mpic_caa_request__should_default_rfc_8657_check_parameters_to_none(self):
+        request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        mpic_request = MpicCaaRequest.model_validate_json(json.dumps(request.model_dump()))
+        assert mpic_request.caa_check_parameters.accounturi_values is None
+        assert mpic_request.caa_check_parameters.validation_methods is None
+
+    def mpic_caa_request__should_require_valid_uris_in_accounturi_values(self):
+        request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        request.caa_check_parameters.accounturi_values = ["not a valid uri"]
+        with pytest.raises(pydantic.ValidationError) as validation_error:
+            MpicCaaRequest.model_validate_json(json.dumps(request.model_dump()))
+        assert "accounturi_values" in str(validation_error.value)
+
+    def mpic_caa_request__should_require_valid_labels_in_validation_methods(self):
+        request = ValidMpicRequestCreator.create_valid_caa_mpic_request()
+        request.caa_check_parameters.validation_methods = ["dns_01"]  # underscore is not a valid label character
+        with pytest.raises(pydantic.ValidationError) as validation_error:
+            MpicCaaRequest.model_validate_json(json.dumps(request.model_dump()))
+        assert "validation_methods" in str(validation_error.value)
+
 
 if __name__ == "__main__":
     pytest.main()
