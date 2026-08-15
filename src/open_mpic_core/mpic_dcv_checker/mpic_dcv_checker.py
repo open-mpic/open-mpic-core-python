@@ -71,6 +71,7 @@ class MpicDcvChecker:
 
         _meter = get_meter(__name__)
         self._tracer = get_tracer(__name__)
+        # TODO clean this up
         self._request_counter = _meter.create_counter(
             "mpic.dcv.requests",
             description="Total DCV check requests processed",
@@ -213,6 +214,7 @@ class MpicDcvChecker:
                 if isinstance(e, dns.resolver.NoAnswer) or isinstance(e, dns.resolver.NXDOMAIN):
                     dcv_check_response.check_completed = True  # errors on the target domain, not the lookup
                     # noinspection PyUnresolvedReferences
+                    # TODO reconcile logger vs otel logging of these things
                     self.logger.trace(log_msg)
                 else:
                     self.logger.warning(log_msg)

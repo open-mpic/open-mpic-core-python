@@ -40,7 +40,7 @@ class MpicCaaLookupException(Exception):  # This is a python exception type used
 class CaaIssuanceEvaluation(BaseModel):
     issuance_permitted: bool
     # The fields below are only meaningful when issuance_permitted is False.
-    # True if at least one CAA record would have permitted issuance but for its RFC 8657 accounturi and/or
+    # True if at least one CAA record would permit issuance but for its RFC 8657 accounturi and/or
     # validationmethods parameters (i.e., those parameters were the sole reason no CAA record permitted issuance).
     rfc_8657_parameters_blocked_issuance: bool = False
     # accounturi values seen that would have permitted issuance had they been supplied in accounturi_values
@@ -53,9 +53,9 @@ class MpicCaaChecker:
     def __init__(
         self,
         default_caa_domain_list: list[str],
-        log_level: int = None,
-        dns_timeout: float = None,
-        dns_resolution_lifetime: float = None,
+        log_level: int | None = None,
+        dns_timeout: float | None = None,
+        dns_resolution_lifetime: float | None = None,
     ):
         self.default_caa_domain_list = default_caa_domain_list
 
@@ -180,7 +180,7 @@ class MpicCaaChecker:
                 caa_check_response.details.records_seen = None
             else:
                 caa_check_response.check_completed = True
-                evaluation = MpicCaaChecker.evaluate_issuance(
+                evaluation = MpicCaaChecker.evaluate_rrset_for_issuance(
                     caa_domains, certificate_type, is_wc_domain, rrset, accounturi_values, validation_methods
                 )
                 caa_check_response.check_passed = evaluation.issuance_permitted
@@ -214,20 +214,7 @@ class MpicCaaChecker:
         return caa_check_response
 
     @staticmethod
-    def is_valid_for_issuance(
-        caa_domains,
-        certificate_type: CertificateType,
-        is_wc_domain,
-        rrset,
-        accounturi_values: Optional[list[str]] = None,
-        validation_methods: Optional[list[str]] = None,
-    ) -> bool:
-        return MpicCaaChecker.evaluate_issuance(
-            caa_domains, certificate_type, is_wc_domain, rrset, accounturi_values, validation_methods
-        ).issuance_permitted
-
-    @staticmethod
-    def evaluate_issuance(
+    def evaluate_rrset_for_issuance(
         caa_domains,
         certificate_type: CertificateType,
         is_wc_domain,
@@ -284,17 +271,6 @@ class MpicCaaChecker:
         return evaluation
 
     @staticmethod
-    def do_caa_values_permit_issuance(
-        value_list: list,
-        caa_domains,
-        accounturi_values: Optional[list[str]] = None,
-        validation_methods: Optional[list[str]] = None,
-    ):
-        return MpicCaaChecker.evaluate_caa_values_for_issuance(
-            value_list, caa_domains, accounturi_values, validation_methods
-        ).issuance_permitted  # if nothing matched, we cannot issue
-
-    @staticmethod
     def evaluate_caa_values_for_issuance(
         value_list: list,
         caa_domains,
@@ -306,7 +282,7 @@ class MpicCaaChecker:
         permissible_validation_method_labels = []
         for value in value_list:
             try:
-                domain, parameter_pairs = MpicCaaChecker.extract_domain_and_parameter_pairs_from_caa_value(value)
+                domain, parameter_pairs = MpicCaaChecker.extract_domain_and_parameters_from_caa_value(value)
             except ValueError as ve:
                 logger.warning(f"Error parsing CAA value: {ve}")
                 continue
@@ -393,16 +369,7 @@ class MpicCaaChecker:
         return False, permissible_labels
 
     @staticmethod
-    def extract_domain_and_parameters_from_caa_value(caa_value: str) -> tuple[str, Optional[dict[str, str]]]:
-        # The RFC 8659 grammar permits duplicate parameter tags; in this dict form the last occurrence of a tag wins.
-        # Use extract_domain_and_parameter_pairs_from_caa_value where duplicate occurrences matter (e.g., RFC 8657).
-        issuer_domain_name, parameter_pairs = MpicCaaChecker.extract_domain_and_parameter_pairs_from_caa_value(
-            caa_value
-        )
-        return issuer_domain_name, dict(parameter_pairs)
-
-    @staticmethod
-    def extract_domain_and_parameter_pairs_from_caa_value(caa_value: str) -> tuple[str, list[tuple[str, str]]]:
+    def extract_domain_and_parameters_from_caa_value(caa_value: str) -> tuple[str, list[tuple[str, str]]]:
         # Split on semicolons since they're prohibited in parameter tag/value
         parameters = []
         if ";" in caa_value:
