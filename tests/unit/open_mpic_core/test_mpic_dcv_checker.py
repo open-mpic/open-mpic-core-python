@@ -840,6 +840,7 @@ class TestMpicDcvChecker:
         ("https://ca.example.com/acct/AbC123", "https://ca.example.com/acct/abc123", False),
         ("HTTPS://ca.example.com/acct/123", "https://ca.example.com/acct/123", False),
         ("https://CA.EXAMPLE.COM/acct/123", "https://ca.example.com/acct/123", False),
+        ("https://ca.example.com/acct/%31%32%33", "https://ca.example.com/acct/123", False),
     ])
     # fmt: on
     def evaluate_persistent_dns_response__should_compare_accounturi_values_with_simple_string_comparison(
