@@ -10,6 +10,10 @@ class BaseCheckResponse(BaseModel, ABC):
     check_passed: bool = False
     errors: list[MpicValidationError] | None = None
     timestamp_ns: int | None = None
+    # The API specification version implemented by the component that produced this response. Producers stamp this
+    # with __api_version__; it defaults to None (rather than this library's version) so that a response parsed from
+    # an older component that predates the field is not misattributed to the parsing component's version.
+    api_version: str | None = None
 
 
 class CaaCheckResponse(BaseCheckResponse):

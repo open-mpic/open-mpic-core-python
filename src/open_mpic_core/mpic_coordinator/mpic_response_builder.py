@@ -1,4 +1,5 @@
 from typing import List
+from open_mpic_core.__about__ import __api_version__
 from open_mpic_core import MpicEffectiveOrchestrationParameters
 from open_mpic_core import MpicRequest, MpicDcvRequest
 from open_mpic_core import MpicCaaResponse, MpicDcvResponse, MpicResponse
@@ -29,6 +30,7 @@ class MpicResponseBuilder:
                 caa_check_parameters=request.caa_check_parameters,
             )
 
+        response.api_version = __api_version__
         response.domain_or_ip_target = request.domain_or_ip_target
         response.request_orchestration_parameters = request.orchestration_parameters
         response.actual_orchestration_parameters = actual_orchestration_parameters

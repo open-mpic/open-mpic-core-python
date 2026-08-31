@@ -1,5 +1,6 @@
 import pytest
 
+from open_mpic_core.__about__ import __api_version__
 from open_mpic_core import (
     CaaCheckResponse,
     DcvCheckResponse,
@@ -73,6 +74,7 @@ class TestMpicResponseBuilder:
         assert mpic_response.actual_orchestration_parameters.attempt_count == 2
         assert mpic_response.is_valid == is_valid_result
         assert mpic_response.perspectives == perspective_responses
+        assert mpic_response.api_version == __api_version__
 
     def build_response__should_include_validation_parameters_and_method_when_present_in_request_body(self):
         request = ValidMpicRequestCreator.create_valid_dcv_mpic_request()

@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from dns.asyncresolver import reset_default_resolver
 
+from open_mpic_core.__about__ import __api_version__
 from open_mpic_core import CaaCheckParameters
 from open_mpic_core import CaaCheckRequest, CaaCheckResponse, CaaCheckResponseDetails
 from open_mpic_core import CertificateType
@@ -103,6 +104,7 @@ class TestMpicCaaChecker:
             check_passed=True,
             check_completed=True,
             details=check_response_details,
+            api_version=__api_version__,
         )
         assert caa_response == expected_response
 
@@ -129,6 +131,7 @@ class TestMpicCaaChecker:
             check_passed=True,
             check_completed=True,
             details=check_response_details,
+            api_version=__api_version__,
         )
         assert caa_response == expected_response
 
@@ -154,6 +157,7 @@ class TestMpicCaaChecker:
             check_passed=True,
             check_completed=True,
             details=check_response_details,
+            api_version=__api_version__,
         )
         assert caa_response == expected_response
 
@@ -481,21 +485,22 @@ class TestMpicCaaChecker:
     # fmt: off
     # noinspection PyUnusedLocal
     @pytest.mark.parametrize("test_description, caa_value, expected_domain, expected_parameters", [
-        ("empty value (just whitespace)", "", "", {}),
-        ("bare domain", "ca111.com", "ca111.com", {}),
-        ("domain with leading/trailing whitespace", "  ca111.com  ", "ca111.com", {}),
-        ("domain with mixed case", "Ca111.com", "Ca111.com", {}),
-        ("domain with numeric labels", "1ca111.com", "1ca111.com", {}),
-        ("domain with hyphenated labels", "c-a-111.com", "c-a-111.com", {}),
-        ("domain with multiple labels", "sub.ca111.com", "sub.ca111.com", {}),
-        ("domain followed by semicolon with no parameters", "ca111.com;", "ca111.com", {}),
-        ("domain with single simple parameter", "ca111.com; policy=ev", "ca111.com", {"policy": "ev"}),
-        ("domain with multiple parameters", "ca111.com; policy=ev;account=12345", "ca111.com", {"policy": "ev", "account": "12345"}),
-        ("parameters with extra whitespace around separators", "ca111.com; policy = ev; account = 12345", "ca111.com", {"policy": "ev", "account": "12345"}),
-        ("parameter tags with multiple consecutive dashes", "ca111.com; validation---method=http-01", "ca111.com", {"validation---method": "http-01"}),
-        ("parameter values containing some special ASCII characters", "ca111.com; account=!@_[}#$z", "ca111.com", {"account": "!@_[}#$z"}),
-        ("parameters without values", "ca111.com; policy=; account=12345", "ca111.com", {"policy": "", "account": "12345"}),  # why???
-        ("parameters without domain", "; policy=ev", "", {"policy": "ev"}),
+        ("empty value (just whitespace)", "", "", []),
+        ("bare domain", "ca111.com", "ca111.com", []),
+        ("domain with leading/trailing whitespace", "  ca111.com  ", "ca111.com", []),
+        ("domain with mixed case", "Ca111.com", "Ca111.com", []),
+        ("domain with numeric labels", "1ca111.com", "1ca111.com", []),
+        ("domain with hyphenated labels", "c-a-111.com", "c-a-111.com", []),
+        ("domain with multiple labels", "sub.ca111.com", "sub.ca111.com", []),
+        ("domain followed by semicolon with no parameters", "ca111.com;", "ca111.com", []),
+        ("domain with single simple parameter", "ca111.com; policy=ev", "ca111.com", [("policy", "ev")]),
+        ("domain with multiple parameters", "ca111.com; policy=ev;account=12345", "ca111.com", [("policy", "ev"), ("account", "12345")]),
+        ("parameters with extra whitespace around separators", "ca111.com; policy = ev; account = 12345", "ca111.com", [("policy", "ev"), ("account", "12345")]),
+        ("parameter tags with multiple consecutive dashes", "ca111.com; validation---method=http-01", "ca111.com", [("validation---method", "http-01")]),
+        ("parameter values containing some special ASCII characters", "ca111.com; account=!@_[}#$z", "ca111.com", [("account", "!@_[}#$z")]),
+        ("parameters without values", "ca111.com; policy=; account=12345", "ca111.com", [("policy", ""), ("account", "12345")]),  # why???
+        ("parameters without domain", "; policy=ev", "", [("policy", "ev")]),
+        ("parameter tags preserve case per RFC 8659 grammar", "ca111.com; AccountURI=https://ca111.com/acct/123", "ca111.com", [("AccountURI", "https://ca111.com/acct/123")]),
     ])
     # fmt: on
     def extract_domain_and_parameters_from_caa_value__should_parse_domain_and_parameters_given_well_formed_value(
@@ -551,7 +556,7 @@ class TestMpicCaaChecker:
         ("matching record with parameters that should be ignored", ["ca111.org; policy=ev; account=12345"]),
     ])
     # fmt: on
-    def do_caa_values_permit_issuance__should_return_true_given_matching_well_formed_records(
+    def do_caa_values_permit_issuance__should_permit_issuance_given_matching_well_formed_records(
         self, test_description, caa_values
     ):
         caa_domains = ["ca111.org", "ca333.net"]
@@ -568,7 +573,7 @@ class TestMpicCaaChecker:
         ("non-matching record with parameters that should be ignored", ["ca222.org; favorite-ca=ca111.org"]),
     ])
     # fmt: on
-    def do_caa_values_permit_issuance__should_return_false_given_non_matching_well_formed_records(
+    def do_caa_values_permit_issuance__should_not_permit_issuance_given_non_matching_well_formed_records(
         self, test_description, rrset_values
     ):
         caa_domains = ["ca111.org"]
@@ -581,153 +586,230 @@ class TestMpicCaaChecker:
         ("matching record with illegal character in parameter", ["ca111.org; account=123föur5"]),
     ])
     # fmt: on
-    def do_caa_values_permit_issuance__should_return_false_given_matching_but_malformed_records(
+    def do_caa_values_permit_issuance__should_not_permit_issuance_given_matching_but_malformed_records(
         self, test_description, rrset_values
     ):
         caa_domains = ["ca111.org"]
         assert MpicCaaChecker.do_caa_values_permit_issuance(rrset_values, caa_domains) is False
 
-    def is_valid_for_issuance__should_be_true_given_matching_issue_tag_for_non_wildcard_domain(self):
+    # fmt: off
+    # noinspection PyUnusedLocal
+    @pytest.mark.parametrize("test_description, caa_values, expected_account_uris, expected_validation_methods, expected_result", [
+        ("accounturi parameter fails closed given no expected account uris provided",
+         ["ca111.org; accounturi=https://ca111.org/acct/123"], None, None, False),
+        ("matching accounturi permits issuance",
+         ["ca111.org; accounturi=https://ca111.org/acct/123"], ["https://ca111.org/acct/123"], None, True),
+        ("non-matching accounturi blocks issuance",
+         ["ca111.org; accounturi=https://ca111.org/acct/123"], ["https://ca111.org/acct/999"], None, False),
+        ("property without accounturi parameter matches any account",
+         ["ca111.org"], ["https://ca111.org/acct/123"], None, True),
+        ("invalid accounturi is unsatisfiable",
+         ["ca111.org; accounturi=not-a-valid-uri"], ["not-a-valid-uri"], None, False),
+        ("duplicate accounturi parameters are unsatisfiable",
+         ["ca111.org; accounturi=https://ca111.org/acct/123; accounturi=https://ca111.org/acct/123"],
+         ["https://ca111.org/acct/123"], None, False),
+        ("accounturi parameter tag matched case-insensitively (conservative); non-matching value blocks issuance",
+         ["ca111.org; AccountURI=https://ca111.org/acct/123"], ["https://ca111.org/acct/999"], None, False),
+        ("accounturi parameter tag matched case-insensitively (conservative); matching value permits issuance",
+         ["ca111.org; AccountURI=https://ca111.org/acct/123"], ["https://ca111.org/acct/123"], None, True),
+        ("duplicate parameter tags for other parameters do not affect issuance",
+         ["ca111.org; policy=ev; policy=dv"], ["https://ca111.org/acct/123"], None, True),
+        ("validationmethods parameter fails closed given no expected validation methods provided",
+         ["ca111.org; validationmethods=dns-01"], None, None, False),
+        ("validationmethods parameter tag matched case-insensitively (conservative); non-matching method blocks issuance",
+         ["ca111.org; ValidationMethods=dns-01"], None, ["http-01"], False),
+        ("validationmethods parameter tag matched case-insensitively (conservative); matching method permits issuance",
+         ["ca111.org; VALIDATIONMETHODS=dns-01"], None, ["dns-01"], True),
+        ("matching validationmethods label permits issuance",
+         ["ca111.org; validationmethods=dns-01,http-01"], None, ["http-01"], True),
+        ("non-matching validationmethods blocks issuance",
+         ["ca111.org; validationmethods=dns-01"], None, ["http-01"], False),
+        ("property without validationmethods parameter matches any validation method",
+         ["ca111.org"], None, ["http-01"], True),
+        ("empty validationmethods value blocks issuance",
+         ["ca111.org; validationmethods="], None, ["http-01"], False),
+        ("malformed validationmethods label blocks issuance",
+         ["ca111.org; validationmethods=dns_01"], None, ["dns_01"], False),
+        ("repeated label within a validationmethods parameter value is redundant but valid",
+         ["ca111.org; validationmethods=http-01,http-01,dns-01"], None, ["http-01"], True),
+        ("multiple validationmethods parameters satisfied given method listed in each occurrence",
+         ["ca111.org; validationmethods=dns-01,http-01; validationmethods=http-01"], None, ["http-01"], True),
+        ("multiple validationmethods parameters blocked given method not listed in each occurrence",
+         ["ca111.org; validationmethods=dns-01,http-01; validationmethods=http-01"], None, ["dns-01"], False),
+        ("both parameters satisfied permits issuance",
+         ["ca111.org; accounturi=https://ca111.org/acct/123; validationmethods=dns-01"],
+         ["https://ca111.org/acct/123"], ["dns-01"], True),
+        ("satisfied accounturi with blocked validationmethods blocks issuance",
+         ["ca111.org; accounturi=https://ca111.org/acct/123; validationmethods=dns-01"],
+         ["https://ca111.org/acct/123"], ["http-01"], False),
+        ("second property permits issuance given first property blocked by accounturi",
+         ["ca111.org; accounturi=https://ca111.org/acct/999", "ca111.org; accounturi=https://ca111.org/acct/123"],
+         ["https://ca111.org/acct/123"], None, True),
+        ("no matching domain blocks issuance regardless of rfc 8657 parameters",
+         ["ca222.org; accounturi=https://ca222.org/acct/123"], ["https://ca222.org/acct/123"], None, False),
+        ("property with invalid accounturi and malformed validationmethods is unsatisfiable",
+         ["ca111.org; accounturi=not-a-valid-uri; validationmethods=dns_01"],
+         ["https://ca111.org/acct/123"], ["dns-01"], False),
+    ])
+    # fmt: on
+    def do_caa_values_permit_issuance__should_enforce_rfc_8657_parameters(
+        self, test_description, caa_values, expected_account_uris, expected_validation_methods, expected_result
+    ):
+        caa_domains = ["ca111.org"]
+        result = MpicCaaChecker.do_caa_values_permit_issuance(
+            caa_values, caa_domains, expected_account_uris, expected_validation_methods
+        )
+        assert result is expected_result
+
+    def is_valid_for_issuance__should_permit_issuance_given_matching_issue_tag_for_non_wildcard_domain(self):
         records = [MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org")]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
-        result = MpicCaaChecker.is_valid_for_issuance(
+        issuance_permitted = MpicCaaChecker.is_valid_for_issuance(
             caa_domains=["ca1.org"], certificate_type=CertificateType.TLS_SERVER, is_wc_domain=False, rrset=test_rrset
         )
-        assert result is True
+        assert issuance_permitted is True
 
-    def is_valid_for_issuance__should_be_true_given_matching_issue_tag_for_wildcard_domain(self):
+    def is_valid_for_issuance__should_permit_issuance_given_matching_issue_tag_for_wildcard_domain(self):
         records = [MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org")]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
-        result = MpicCaaChecker.is_valid_for_issuance(
+        issuance_permitted = MpicCaaChecker.is_valid_for_issuance(
             caa_domains=["ca1.org"], certificate_type=CertificateType.TLS_SERVER, is_wc_domain=True, rrset=test_rrset
         )
-        assert result is True
+        assert issuance_permitted is True
 
-    def is_valid_for_issuance__should_be_true_given_matching_issuewild_tag_for_wildcard_domain(self):
+    def is_valid_for_issuance__should_permit_issuance_given_matching_issuewild_tag_for_wildcard_domain(self):
         records = [
             MockDnsObjectCreator.create_caa_record(0, "issuewild", "ca1.org"),
             MockDnsObjectCreator.create_caa_record(0, "issue", "ca2.org"),
         ]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
-        result = MpicCaaChecker.is_valid_for_issuance(
+        issuance_permitted = MpicCaaChecker.is_valid_for_issuance(
             caa_domains=["ca1.org"], certificate_type=CertificateType.TLS_SERVER, is_wc_domain=True, rrset=test_rrset
         )
-        assert result is True
+        assert issuance_permitted is True
 
-    def is_valid_for_issuance__should_be_true_given_no_issue_tags_and_matching_issuewild_tag_for_wildcard_domain(self):
+    def is_valid_for_issuance__should_permit_issuance_given_no_issue_tags_and_matching_issuewild_tag_for_wildcard_domain(
+        self,
+    ):
         records = [MockDnsObjectCreator.create_caa_record(0, "issuewild", "ca1.org")]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
-        result = MpicCaaChecker.is_valid_for_issuance(
+        issuance_permitted = MpicCaaChecker.is_valid_for_issuance(
             caa_domains=["ca1.org"], certificate_type=CertificateType.TLS_SERVER, is_wc_domain=True, rrset=test_rrset
         )
-        assert result is True
+        assert issuance_permitted is True
 
-    def is_valid_for_issuance__should_be_true_given_issuewild_disallowed_for_all_and_matching_issue_tag_found(self):
+    def is_valid_for_issuance__should_permit_issuance_given_issuewild_disallowed_for_all_and_matching_issue_tag_found(
+        self,
+    ):
         records = [
             MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org"),
             MockDnsObjectCreator.create_caa_record(0, "issuewild", ";"),
         ]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
-        result = MpicCaaChecker.is_valid_for_issuance(
+        issuance_permitted = MpicCaaChecker.is_valid_for_issuance(
             caa_domains=["ca1.org"], certificate_type=CertificateType.TLS_SERVER, is_wc_domain=False, rrset=test_rrset
         )
-        assert result is True
+        assert issuance_permitted is True
 
-    def is_valid_for_issuance__should_be_true_given_no_issue_tags_found(self):
+    def is_valid_for_issuance__should_permit_issuance_given_no_issue_tags_found(self):
         records = [MockDnsObjectCreator.create_caa_record(0, "unknown", "ca1.org")]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
-        result = MpicCaaChecker.is_valid_for_issuance(
+        issuance_permitted = MpicCaaChecker.is_valid_for_issuance(
             caa_domains=["ca1.org"], certificate_type=CertificateType.TLS_SERVER, is_wc_domain=False, rrset=test_rrset
         )
-        assert result is True
+        assert issuance_permitted is True
 
     @pytest.mark.parametrize("issue_tag", ["ISSUE", "IsSuE"])
-    def is_valid_for_issuance__should_be_true_given_nonstandard_casing_in_issue_tag(self, issue_tag):
+    def is_valid_for_issuance__should_permit_issuance_given_nonstandard_casing_in_issue_tag(self, issue_tag):
         records = [MockDnsObjectCreator.create_caa_record(0, issue_tag, "ca1.org")]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
-        result = MpicCaaChecker.is_valid_for_issuance(
+        issuance_permitted = MpicCaaChecker.is_valid_for_issuance(
             caa_domains=["ca1.org"], certificate_type=CertificateType.TLS_SERVER, is_wc_domain=False, rrset=test_rrset
         )
-        assert result is True
+        assert issuance_permitted is True
 
     @pytest.mark.parametrize("known_tag", ["issue", "issuewild", "iodef", "issuemail", "contactemail", "contactphone"])
-    def is_valid_for_issuance__should_be_true_given_critical_flag_and_known_tag(self, known_tag):
+    def is_valid_for_issuance__should_permit_issuance_given_critical_flag_and_known_tag(self, known_tag):
         records = [MockDnsObjectCreator.create_caa_record(128, known_tag, "ca1.org")]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
-        result = MpicCaaChecker.is_valid_for_issuance(
+        issuance_permitted = MpicCaaChecker.is_valid_for_issuance(
             caa_domains=["ca1.org"], certificate_type=CertificateType.TLS_SERVER, is_wc_domain=False, rrset=test_rrset
         )
-        assert result is True
+        assert issuance_permitted is True
 
-    def is_valid_for_issuance__should_be_true_given_restrictive_tag_alongside_matching_tag(self):
+    def is_valid_for_issuance__should_permit_issuance_given_restrictive_tag_alongside_matching_tag(self):
         records = [
             MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org"),
             MockDnsObjectCreator.create_caa_record(0, "issue", ";"),
         ]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
-        result = MpicCaaChecker.is_valid_for_issuance(
+        issuance_permitted = MpicCaaChecker.is_valid_for_issuance(
             caa_domains=["ca1.org"], certificate_type=CertificateType.TLS_SERVER, is_wc_domain=False, rrset=test_rrset
         )
-        assert result is True
+        assert issuance_permitted is True
 
     @pytest.mark.parametrize("tag_value", [";", "ca5.org", ";policy=ev"])
-    def is_valid_for_issuance__should_be_false_given_non_matching_or_restrictive_issue_tags(self, tag_value):
+    def is_valid_for_issuance__should_not_permit_issuance_given_non_matching_or_restrictive_issue_tags(self, tag_value):
         records = [MockDnsObjectCreator.create_caa_record(0, "issue", tag_value)]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
-        result = MpicCaaChecker.is_valid_for_issuance(
+        issuance_permitted = MpicCaaChecker.is_valid_for_issuance(
             caa_domains=["ca1.org"], certificate_type=CertificateType.TLS_SERVER, is_wc_domain=False, rrset=test_rrset
         )
-        assert result is False
+        assert issuance_permitted is False
 
-    def is_valid_for_issuance__should_be_false_given_only_non_matching_issuewild_tags_for_wildcard_domain(self):
+    def is_valid_for_issuance__should_not_permit_issuance_given_only_non_matching_issuewild_tags_for_wildcard_domain(
+        self,
+    ):
         records = [
             MockDnsObjectCreator.create_caa_record(0, "issuewild", "ca5.org"),
             MockDnsObjectCreator.create_caa_record(0, "issuewild", "ca6.org"),
         ]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
-        result = MpicCaaChecker.is_valid_for_issuance(
+        issuance_permitted = MpicCaaChecker.is_valid_for_issuance(
             caa_domains=["ca1.org"], certificate_type=CertificateType.TLS_SERVER, is_wc_domain=True, rrset=test_rrset
         )
-        assert result is False
+        assert issuance_permitted is False
 
-    def is_valid_for_issuance__should_be_false_given_critical_flag_for_an_unknown_tag(self):
+    def is_valid_for_issuance__should_not_permit_issuance_given_critical_flag_for_an_unknown_tag(self):
         records = [
             MockDnsObjectCreator.create_caa_record(128, "mystery", "ca1.org"),
             MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org"),
         ]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
-        result = MpicCaaChecker.is_valid_for_issuance(
+        issuance_permitted = MpicCaaChecker.is_valid_for_issuance(
             caa_domains=["ca1.org"], certificate_type=CertificateType.TLS_SERVER, is_wc_domain=False, rrset=test_rrset
         )
-        assert result is False
+        assert issuance_permitted is False
 
-    def is_valid_for_issuance__should_be_false_given_issuewild_disallowed_for_all_and_wildcard_domain(self):
+    def is_valid_for_issuance__should_not_permit_issuance_given_issuewild_disallowed_for_all_and_wildcard_domain(
+        self,
+    ):
         records = [
             MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org"),
             MockDnsObjectCreator.create_caa_record(0, "issuewild", ";"),
         ]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
-        result = MpicCaaChecker.is_valid_for_issuance(
+        issuance_permitted = MpicCaaChecker.is_valid_for_issuance(
             caa_domains=["ca1.org"], certificate_type=CertificateType.TLS_SERVER, is_wc_domain=True, rrset=test_rrset
         )
-        assert result is False
+        assert issuance_permitted is False
 
-    def is_valid_for_issuance__should_be_false_given_attempted_xss_via_caa_record(self):
+    def is_valid_for_issuance__should_not_permit_issuance_given_attempted_xss_via_caa_record(self):
         records = [MockDnsObjectCreator.create_caa_record(0, "issue", 'ca1.org <script>alert("XSS")</script>')]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
-        result = MpicCaaChecker.is_valid_for_issuance(
+        issuance_permitted = MpicCaaChecker.is_valid_for_issuance(
             caa_domains=["ca1.org"], certificate_type=CertificateType.TLS_SERVER, is_wc_domain=False, rrset=test_rrset
         )
-        assert result is False
+        assert issuance_permitted is False
 
     @pytest.mark.skip(reason="Checks for DNSSEC validity are not yet implemented")
-    def is_valid_for_issuance__should_be_false_given_expired_dnssec_signature(self):
+    def is_valid_for_issuance__should_not_permit_issuance_given_expired_dnssec_signature(self):
         records = [MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org")]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
-        result = MpicCaaChecker.is_valid_for_issuance(
+        issuance_permitted = MpicCaaChecker.is_valid_for_issuance(
             caa_domains=["ca1.org"], certificate_type=CertificateType.TLS_SERVER, is_wc_domain=False, rrset=test_rrset
         )
-        assert result is False
+        assert issuance_permitted is False
 
     @pytest.mark.parametrize(
         "domain_1_tag, domain_1_value, expected_result",
@@ -741,19 +823,132 @@ class TestMpicCaaChecker:
             MockDnsObjectCreator.create_caa_record(0, "issuewild", "ca1.org"),
         ]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
-        result = MpicCaaChecker.is_valid_for_issuance(
+        issuance_permitted = MpicCaaChecker.is_valid_for_issuance(
             caa_domains=["ca1.org"], certificate_type=CertificateType.TLS_SERVER, is_wc_domain=False, rrset=test_rrset
         )
-        assert result is expected_result
+        assert issuance_permitted is expected_result
 
-    def is_valid_for_issuance__should_be_false_given_invalid_certificate_type(self):
+    def is_valid_for_issuance__should_not_permit_issuance_given_invalid_certificate_type(self):
         records = [MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org")]
         test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
         # noinspection PyTypeChecker
-        result = MpicCaaChecker.is_valid_for_issuance(
+        issuance_permitted = MpicCaaChecker.is_valid_for_issuance(
             caa_domains=["ca1.org"], certificate_type="INVALID", is_wc_domain=False, rrset=test_rrset
         )
+        assert issuance_permitted is False
+
+    @pytest.mark.parametrize(
+        "expected_account_uris, expected_result",
+        [
+            (["https://ca1.org/acct/123"], True),
+            (["https://ca1.org/acct/999"], False),
+        ],
+    )
+    def is_valid_for_issuance__should_enforce_rfc_8657_parameters_on_issue_tags(
+        self, expected_account_uris, expected_result
+    ):
+        records = [MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org; accounturi=https://ca1.org/acct/123")]
+        test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
+        result = MpicCaaChecker.is_valid_for_issuance(
+            caa_domains=["ca1.org"],
+            certificate_type=CertificateType.TLS_SERVER,
+            is_wc_domain=False,
+            rrset=test_rrset,
+            expected_account_uris=expected_account_uris,
+        )
+        assert result is expected_result
+
+    @pytest.mark.parametrize(
+        "expected_validation_methods, expected_result",
+        [
+            (["dns-01"], True),
+            (["http-01"], False),
+        ],
+    )
+    def is_valid_for_issuance__should_enforce_rfc_8657_parameters_on_issuewild_tags_for_wildcard_domain(
+        self, expected_validation_methods, expected_result
+    ):
+        records = [MockDnsObjectCreator.create_caa_record(0, "issuewild", "ca1.org; validationmethods=dns-01")]
+        test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
+        result = MpicCaaChecker.is_valid_for_issuance(
+            caa_domains=["ca1.org"],
+            certificate_type=CertificateType.TLS_SERVER,
+            is_wc_domain=True,
+            rrset=test_rrset,
+            expected_validation_methods=expected_validation_methods,
+        )
+        assert result is expected_result
+
+    def is_valid_for_issuance__should_be_false_given_unknown_critical_flags_alongside_rfc_8657_parameters(self):
+        records = [
+            MockDnsObjectCreator.create_caa_record(128, "mystery", "critical-value"),
+            MockDnsObjectCreator.create_caa_record(0, "issue", "ca1.org; accounturi=https://ca1.org/acct/123"),
+        ]
+        test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
+        result = MpicCaaChecker.is_valid_for_issuance(
+            caa_domains=["ca1.org"],
+            certificate_type=CertificateType.TLS_SERVER,
+            is_wc_domain=False,
+            rrset=test_rrset,
+            expected_account_uris=["https://ca1.org/acct/999"],
+        )
         assert result is False
+
+    def is_valid_for_issuance__should_ignore_rfc_8657_parameters_for_smime_issuemail_records(self):
+        # RFC 8657 only defines its parameters for issue and issuewild properties
+        records = [
+            MockDnsObjectCreator.create_caa_record(0, "issuemail", "ca1.org; accounturi=https://ca1.org/acct/123")
+        ]
+        test_rrset = MockDnsObjectCreator.create_rrset(dns.rdatatype.CAA, *records)
+        result = MpicCaaChecker.is_valid_for_issuance(
+            caa_domains=["ca1.org"],
+            certificate_type=CertificateType.S_MIME,
+            is_wc_domain=False,
+            rrset=test_rrset,
+            expected_account_uris=["https://ca1.org/acct/999"],
+        )
+        assert result is True
+
+    async def check_caa__should_block_issuance_given_rfc_8657_parameters_not_satisfied(self, mocker):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
+        resolver = caa_checker.resolver
+        record_name, expected_domain = "example.com", "example.com."
+        test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(
+            record_name,
+            0,
+            "issue",
+            "ca111.com; accounturi=https://ca111.com/acct/123; validationmethods=dns-01",
+            mocker,
+        )
+        self.patch_resolver_to_expect_domain(
+            mocker, resolver, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer
+        )
+        caa_request = self.create_caa_check_request("example.com", ["ca111.com"])
+        caa_request.caa_check_parameters.expected_account_uris = ["https://ca111.com/acct/999"]
+        caa_request.caa_check_parameters.expected_validation_methods = ["http-01"]
+        caa_response = await caa_checker.check_caa(caa_request)
+        assert caa_response.check_passed is False
+
+    async def check_caa__should_allow_issuance_given_matching_rfc_8657_parameters(self, mocker):
+        caa_checker = TestMpicCaaChecker.create_configured_caa_checker()
+        resolver = caa_checker.resolver
+        record_name, expected_domain = "example.com", "example.com."
+        test_dns_query_answer = MockDnsObjectCreator.create_caa_query_answer(
+            record_name,
+            0,
+            "issue",
+            "ca111.com; accounturi=https://ca111.com/acct/123; validationmethods=dns-01",
+            mocker,
+        )
+        self.patch_resolver_to_expect_domain(
+            mocker, resolver, expected_domain, test_dns_query_answer, dns.resolver.NoAnswer
+        )
+        caa_request = self.create_caa_check_request("example.com", ["ca111.com"])
+        caa_request.caa_check_parameters.expected_account_uris = ["https://ca111.com/acct/123"]
+        caa_request.caa_check_parameters.expected_validation_methods = ["dns-01"]
+        caa_response = await caa_checker.check_caa(caa_request)
+        assert caa_response.check_passed is True
+        assert caa_response.api_version == __api_version__
 
     def raise_(self, ex):
         # noinspection PyUnusedLocal
