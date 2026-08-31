@@ -5,11 +5,11 @@ import dns.resolver
 import dns.asyncresolver
 from dns.name import Name
 from dns.rrset import RRset
-from pydantic import BaseModel
 from uritools import isuri
 
 from opentelemetry.trace import Status, StatusCode
 
+from open_mpic_core.__about__ import __api_version__
 from open_mpic_core import CaaCheckRequest, CaaCheckResponse, CaaCheckResponseDetails
 from open_mpic_core import MpicValidationError, ErrorMessages
 from open_mpic_core import DomainEncoder
@@ -35,18 +35,6 @@ logger = get_logger(__name__)
 
 class MpicCaaLookupException(Exception):  # This is a python exception type used for raise statements.
     pass
-
-
-class CaaIssuanceEvaluation(BaseModel):
-    issuance_permitted: bool
-    # The fields below are only meaningful when issuance_permitted is False.
-    # True if at least one CAA record would permit issuance but for its RFC 8657 accounturi and/or
-    # validationmethods parameters (i.e., those parameters were the sole reason no CAA record permitted issuance).
-    rfc_8657_parameters_blocked_issuance: bool = False
-    # accounturi values seen that would have permitted issuance had they been supplied in accounturi_values
-    permissible_under_account_uri: list[str] = []
-    # validation method labels seen that would have permitted issuance had they been supplied in validation_methods
-    permissible_under_validation_method: list[str] = []
 
 
 class MpicCaaChecker:
@@ -114,12 +102,12 @@ class MpicCaaChecker:
         caa_domains = self.default_caa_domain_list
         is_wc_domain = False
         certificate_type = CertificateType.TLS_SERVER
-        accounturi_values = None
-        validation_methods = None
+        expected_account_uris = None
+        expected_validation_methods = None
         if caa_request.caa_check_parameters:
             certificate_type = caa_request.caa_check_parameters.certificate_type  # defaults to TLS_SERVER
-            accounturi_values = caa_request.caa_check_parameters.accounturi_values
-            validation_methods = caa_request.caa_check_parameters.validation_methods
+            expected_account_uris = caa_request.caa_check_parameters.expected_account_uris
+            expected_validation_methods = caa_request.caa_check_parameters.expected_validation_methods
             if caa_request.caa_check_parameters.caa_domains:
                 caa_domains = caa_request.caa_check_parameters.caa_domains
 
@@ -140,6 +128,7 @@ class MpicCaaChecker:
             errors=None,
             details=CaaCheckResponseDetails(caa_record_present=None),
             timestamp_ns=None,
+            api_version=__api_version__,
         )
 
         _start_ns = time.perf_counter_ns()
@@ -180,16 +169,15 @@ class MpicCaaChecker:
                 caa_check_response.details.records_seen = None
             else:
                 caa_check_response.check_completed = True
-                evaluation = MpicCaaChecker.evaluate_rrset_for_issuance(
-                    caa_domains, certificate_type, is_wc_domain, rrset, accounturi_values, validation_methods
+                valid_for_issuance = MpicCaaChecker.is_valid_for_issuance(
+                    caa_domains,
+                    certificate_type,
+                    is_wc_domain,
+                    rrset,
+                    expected_account_uris,
+                    expected_validation_methods,
                 )
-                caa_check_response.check_passed = evaluation.issuance_permitted
-                if not evaluation.issuance_permitted and evaluation.rfc_8657_parameters_blocked_issuance:
-                    # RFC 8657 parameters were the sole reason no CAA record permitted issuance
-                    caa_check_response.details.permissible_under_account_uri = evaluation.permissible_under_account_uri
-                    caa_check_response.details.permissible_under_validation_method = (
-                        evaluation.permissible_under_validation_method
-                    )
+                caa_check_response.check_passed = valid_for_issuance
                 caa_check_response.details.caa_record_present = True
                 caa_check_response.details.found_at = domain.to_text(omit_final_dot=True)
                 caa_check_response.details.records_seen = [record_data.to_text() for record_data in rrset]
@@ -214,14 +202,14 @@ class MpicCaaChecker:
         return caa_check_response
 
     @staticmethod
-    def evaluate_rrset_for_issuance(
+    def is_valid_for_issuance(
         caa_domains,
         certificate_type: CertificateType,
         is_wc_domain,
         rrset,
-        accounturi_values: Optional[list[str]] = None,
-        validation_methods: Optional[list[str]] = None,
-    ) -> CaaIssuanceEvaluation:
+        expected_account_uris: Optional[list[str]] = None,
+        expected_validation_methods: Optional[list[str]] = None,
+    ) -> bool:
         issue_tag_values = []
         issuewild_tag_values = []
         issuemail_tag_values = []
@@ -245,41 +233,41 @@ class MpicCaaChecker:
                 has_unknown_critical_flags = True
 
         if has_unknown_critical_flags:
-            evaluation = CaaIssuanceEvaluation(issuance_permitted=False)
+            valid_for_issuance = False
         elif certificate_type == CertificateType.S_MIME:
             if len(issuemail_tag_values) > 0:
                 # RFC 8657 only defines its parameters for issue and issuewild properties; they are ignored for issuemail
-                evaluation = MpicCaaChecker.evaluate_caa_values_for_issuance(issuemail_tag_values, caa_domains)
+                valid_for_issuance = MpicCaaChecker.do_caa_values_permit_issuance(
+                    issuemail_tag_values, caa_domains, enforce_rfc_8657_parameters=False
+                )
             else:
                 # No issue mail tags
-                evaluation = CaaIssuanceEvaluation(issuance_permitted=True)
+                valid_for_issuance = True
         elif certificate_type == CertificateType.TLS_SERVER:
             if is_wc_domain and len(issuewild_tag_values) > 0:
-                evaluation = MpicCaaChecker.evaluate_caa_values_for_issuance(
-                    issuewild_tag_values, caa_domains, accounturi_values, validation_methods
+                valid_for_issuance = MpicCaaChecker.do_caa_values_permit_issuance(
+                    issuewild_tag_values, caa_domains, expected_account_uris, expected_validation_methods
                 )
             elif len(issue_tag_values) > 0:
-                evaluation = MpicCaaChecker.evaluate_caa_values_for_issuance(
-                    issue_tag_values, caa_domains, accounturi_values, validation_methods
+                valid_for_issuance = MpicCaaChecker.do_caa_values_permit_issuance(
+                    issue_tag_values, caa_domains, expected_account_uris, expected_validation_methods
                 )
             else:
                 # We had no unknown critical tags, and we found no issue tags. Issuance can proceed.
-                evaluation = CaaIssuanceEvaluation(issuance_permitted=True)
+                valid_for_issuance = True
         else:
             # This is the case of an unimplemented certificate type. We cannot determine if issuance is valid or not. This case should never be hit as all values of the certificate type enum should be tested for in the above logic.
-            evaluation = CaaIssuanceEvaluation(issuance_permitted=False)
-        return evaluation
+            valid_for_issuance = False
+        return valid_for_issuance
 
     @staticmethod
-    def evaluate_caa_values_for_issuance(
+    def do_caa_values_permit_issuance(
         value_list: list,
         caa_domains,
-        accounturi_values: Optional[list[str]] = None,
-        validation_methods: Optional[list[str]] = None,
-    ) -> CaaIssuanceEvaluation:
-        evaluation = CaaIssuanceEvaluation(issuance_permitted=False)
-        permissible_account_uris = []
-        permissible_validation_method_labels = []
+        expected_account_uris: Optional[list[str]] = None,
+        expected_validation_methods: Optional[list[str]] = None,
+        enforce_rfc_8657_parameters: bool = True,
+    ) -> bool:
         for value in value_list:
             try:
                 domain, parameter_pairs = MpicCaaChecker.extract_domain_and_parameters_from_caa_value(value)
@@ -288,85 +276,84 @@ class MpicCaaChecker:
                 continue
             if domain.lower() not in caa_domains:  # if the value is not in the list of valid CAA domains
                 continue
-            # The domain matches; evaluate the property's RFC 8657 parameters (if enforcement was requested).
-            accounturi_satisfied, accounturis_seen = MpicCaaChecker.evaluate_accounturi_parameter(
-                parameter_pairs, accounturi_values
-            )
-            validationmethods_satisfied, method_labels_seen = MpicCaaChecker.evaluate_validationmethods_parameter(
-                parameter_pairs, validation_methods
-            )
-            if accounturi_satisfied and validationmethods_satisfied:
-                evaluation.issuance_permitted = True
-                break
-            # This property would have permitted issuance but for its RFC 8657 parameters.
-            evaluation.rfc_8657_parameters_blocked_issuance = True
-            permissible_account_uris.extend(accounturis_seen)
-            permissible_validation_method_labels.extend(method_labels_seen)
-
-        if not evaluation.issuance_permitted:
-            # dedupe values seen across properties while preserving order
-            evaluation.permissible_under_account_uri = list(dict.fromkeys(permissible_account_uris))
-            evaluation.permissible_under_validation_method = list(dict.fromkeys(permissible_validation_method_labels))
-        return evaluation
+            if not enforce_rfc_8657_parameters:  # RFC 8657 does not define its parameters for issuemail properties
+                return True
+            # The domain matches; evaluate the property's RFC 8657 parameters.
+            if MpicCaaChecker.accounturi_parameter_permits_issuance(
+                parameter_pairs, expected_account_uris
+            ) and MpicCaaChecker.validationmethods_parameter_permits_issuance(
+                parameter_pairs, expected_validation_methods
+            ):
+                return True
+        return False  # if nothing matched, we cannot issue
 
     @staticmethod
-    def evaluate_accounturi_parameter(
-        parameter_pairs: list[tuple[str, str]], accounturi_values: Optional[list[str]]
-    ) -> tuple[bool, list[str]]:
+    def accounturi_parameter_permits_issuance(
+        parameter_pairs: list[tuple[str, str]], expected_account_uris: Optional[list[str]]
+    ) -> bool:
         """
         Evaluates a property's RFC 8657 accounturi parameter against the permissible account URIs for the request.
-        Returns (satisfied, accounturis_seen) where accounturis_seen contains the accounturi value that would have
-        permitted issuance had it been supplied in accounturi_values (empty if the parameter was satisfied).
         """
-        if accounturi_values is None:
-            return True, []
-        # per the RFC 8659 grammar, parameter tags are matched case-sensitively (unlike property tags)
-        accounturis = [value for tag, value in parameter_pairs if tag == ACCOUNTURI_PARAMETER_TAG]
+        # Since we are checking CAA parameters (not dns-persist), use the most conservative capitalization
+        # interpretation possible and assume the tag is provided even if the case is different.
+        # This is because an accounturi CAA parameter can only ever restrict issuance, so assuming the tag
+        # is there when the case differs provides a more conservative interpretation.
+        # This is intentionally the opposite behavior of dns-persist where an accounturi param must be
+        # capitalized correctly to allow issuance under the TLS BRs.
+        accounturis = [value for tag, value in parameter_pairs if tag.lower() == ACCOUNTURI_PARAMETER_TAG]
         if len(accounturis) == 0:
             # a property without an accounturi parameter matches any account (RFC 8657 section 3)
-            return True, []
+            return True
         if len(accounturis) > 1:
             # a property with multiple accounturi parameters is unsatisfiable (RFC 8657 section 3)
-            return False, []
+            return False
         accounturi = accounturis[0]
         if not isuri(accounturi):
             # a property with an invalid accounturi parameter is unsatisfiable (RFC 8657 section 3)
-            return False, []
-        if accounturi in accounturi_values:
-            return True, []
-        return False, [accounturi]
+            return False
+
+        # If an accounturi parameter was found but no expected account URIs were provided in the open MPIC call,
+        # fail closed.
+        if expected_account_uris is None:
+            return False
+
+        return accounturi in expected_account_uris
 
     @staticmethod
-    def evaluate_validationmethods_parameter(
-        parameter_pairs: list[tuple[str, str]], validation_methods: Optional[list[str]]
-    ) -> tuple[bool, list[str]]:
+    def validationmethods_parameter_permits_issuance(
+        parameter_pairs: list[tuple[str, str]], expected_validation_methods: Optional[list[str]]
+    ) -> bool:
         """
         Evaluates a property's RFC 8657 validationmethods parameters against the permissible validation method labels
-        for the request. Returns (satisfied, method_labels_seen) where method_labels_seen contains the labels that
-        would have permitted issuance had they been supplied in validation_methods (empty if the parameter was
-        satisfied).
+        for the request.
         """
-        if validation_methods is None:
-            return True, []
-        parameter_values = [value for tag, value in parameter_pairs if tag == VALIDATIONMETHODS_PARAMETER_TAG]
+        # As with accounturi above, match the parameter tag case-insensitively: a validationmethods CAA parameter
+        # can only ever restrict issuance, so assuming the tag is present even when its case differs provides the
+        # most conservative interpretation.
+        parameter_values = [value for tag, value in parameter_pairs if tag.lower() == VALIDATIONMETHODS_PARAMETER_TAG]
         if len(parameter_values) == 0:
             # a property without a validationmethods parameter is satisfied by any validation method
-            return True, []
+            return True
         label_lists = []
         for parameter_value in parameter_values:
             # an empty value is well-formed per the RFC 8657 ABNF (zero labels) but is satisfied by no method
             labels = parameter_value.split(",") if parameter_value != "" else []
             if not all(VALIDATION_METHOD_LABEL_REGEX.match(label) for label in labels):
                 # treat a property with a malformed validationmethods parameter as unsatisfiable
-                return False, []
+                return False
             label_lists.append(labels)
         # RFC 8657 section 4 constrains the property per parameter; if the parameter appears multiple times, the
         # validation method in use must therefore be listed in each occurrence's comma-separated label list
         permissible_labels = [label for label in label_lists[0] if all(label in labels for labels in label_lists[1:])]
-        permissible_labels = list(dict.fromkeys(permissible_labels))  # dedupe while preserving order
-        if any(method in permissible_labels for method in validation_methods):
-            return True, []
-        return False, permissible_labels
+        # We know here that there are provided validationmethods parameters.
+        # Thus, the only way to satisfy them is to have a matching validation method provided to the open MPIC call.
+        # If expected_validation_methods is None here (i.e., not provided in the original call), fail closed.
+        if expected_validation_methods is None:
+            return False
+
+        # Ensure that at least one validation method label permitted by all the parameters
+        # was supplied as an expected validation method in the open MPIC call.
+        return any(method in permissible_labels for method in expected_validation_methods)
 
     @staticmethod
     def extract_domain_and_parameters_from_caa_value(caa_value: str) -> tuple[str, list[tuple[str, str]]]:

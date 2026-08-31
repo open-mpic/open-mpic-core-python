@@ -7,6 +7,7 @@ from pprint import pformat
 import hashlib
 from opentelemetry.trace import Status, StatusCode
 
+from open_mpic_core.__about__ import __api_version__
 from open_mpic_core import CaaCheckResponse, DcvCheckResponse, CaaCheckResponseDetails
 from open_mpic_core import MpicRequest, MpicResponse, PerspectiveResponse
 from open_mpic_core import CaaCheckRequest, DcvCheckRequest
@@ -334,6 +335,7 @@ class MpicCoordinator:
                     errors=errors,
                     details=CaaCheckResponseDetails(caa_record_present=None),
                     timestamp_ns=time.time_ns(),
+                    api_version=__api_version__,
                 )
             case CheckType.DCV:
                 dcv_check_request: DcvCheckRequest = remote_check_exception.call_config.check_request
@@ -344,6 +346,7 @@ class MpicCoordinator:
                     errors=errors,
                     details=DcvCheckResponseDetailsBuilder.build_response_details(validation_method),
                     timestamp_ns=time.time_ns(),
+                    api_version=__api_version__,
                 )
 
         return PerspectiveResponse(perspective_code=perspective.code, check_response=check_error_response)
