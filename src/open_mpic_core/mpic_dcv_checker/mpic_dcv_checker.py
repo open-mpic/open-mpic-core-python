@@ -519,7 +519,12 @@ class MpicDcvChecker:
         """
         found_valid_record = False
         accepted_domain_names = [domain.lower() for domain in expected_dns_record_content.possible_values]
-        expected_account_uri = expected_dns_record_content.expected_parameters["accounturi"].lower()
+        # accounturi values are compared with Simple String Comparison (RFC 3986 section 6.2.1), the
+        # safest choice for authorization: URIs differing only in case can identify different accounts.
+        # A more lax comparison rule should only be a CA's knowing choice, e.g. through a future
+        # configuration option; see also draft-ietf-acme-dns-persist section 4.1, which mandates
+        # Simple String Comparison
+        expected_account_uri = expected_dns_record_content.expected_parameters["accounturi"]
 
         for txt_record in records_as_strings:
             # Split on semicolon (parameter delimiter) and strip whitespace from each part
@@ -556,7 +561,7 @@ class MpicDcvChecker:
                             break
                         else:
                             found_accounturi_param = True
-                        if param_value.lower() == expected_account_uri:
+                        if param_value == expected_account_uri:
                             valid_account_uri = True
                         else:
                             break  # accounturi does not match; skip to next record

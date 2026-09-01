@@ -821,18 +821,41 @@ class TestMpicDcvChecker:
         result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
         assert result is True
 
-    def evaluate_persistent_dns_response__should_be_case_insensitive(self):
+    def evaluate_persistent_dns_response__should_match_issuer_domain_and_parameter_tag_case_insensitively(self):
         issuer_domain_name = "cA.EXaMPle.com"
-        expected_account_uri = "https://cA.EXaMPle.com/acct/123"
+        expected_account_uri = "https://ca.example.com/acct/123"
         records = [f"{issuer_domain_name}; acCoUntUrI={expected_account_uri}"]
 
         expected_dns_record_content = ExpectedDnsRecordContent(
             possible_values=[issuer_domain_name.lower()],
-            expected_parameters={"accounturi": expected_account_uri.lower()},
+            expected_parameters={"accounturi": expected_account_uri},
         )
 
         result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
         assert result is True
+
+    # fmt: off
+    @pytest.mark.parametrize("record_account_uri, expected_account_uri, expected_result", [
+        ("https://ca.example.com/acct/AbC123", "https://ca.example.com/acct/AbC123", True),
+        ("https://ca.example.com/acct/AbC123", "https://ca.example.com/acct/abc123", False),
+        ("HTTPS://ca.example.com/acct/123", "https://ca.example.com/acct/123", False),
+        ("https://CA.EXAMPLE.COM/acct/123", "https://ca.example.com/acct/123", False),
+        ("https://ca.example.com/acct/%31%32%33", "https://ca.example.com/acct/123", False),
+    ])
+    # fmt: on
+    def evaluate_persistent_dns_response__should_compare_accounturi_values_with_simple_string_comparison(
+        self, record_account_uri, expected_account_uri, expected_result
+    ):
+        issuer_domain_name = "ca.example.com"
+        records = [f"{issuer_domain_name}; accounturi={record_account_uri}"]
+
+        expected_dns_record_content = ExpectedDnsRecordContent(
+            possible_values=[issuer_domain_name],
+            expected_parameters={"accounturi": expected_account_uri},
+        )
+
+        result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
+        assert result is expected_result
 
     def evaluate_persistent_dns_response__should_ignore_additional_unknown_parameters(self):
         issuer_domain_name = "ca.example.com"
