@@ -25,9 +25,7 @@ from dns.rcode import Rcode
 from dns.rdtypes.ANY.CNAME import CNAME
 from dns.message import ChainingResult
 
-from open_mpic_core.__about__ import __api_version__
 from open_mpic_core import MpicDcvChecker, DcvCheckRequest, DcvCheckResponse
-from open_mpic_core import DcvUtils
 from open_mpic_core import DcvTlsAlpnValidator, DcvCheckResponseDetailsBuilder
 from open_mpic_core import DcvValidationMethod, DnsRecordType
 from open_mpic_core import MpicValidationError, ErrorMessages, TRACE_LEVEL
@@ -850,10 +848,6 @@ class TestMpicDcvChecker:
 
         result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
         assert result is False
-
-    def create_empty_check_response__should_stamp_api_version(self):
-        dcv_response = DcvUtils.create_empty_check_response(DcvValidationMethod.DNS_CHANGE)
-        assert dcv_response.api_version == __api_version__
 
     def evaluate_persistent_dns_response__should_ignore_additional_unknown_parameters(self):
         issuer_domain_name = "ca.example.com"

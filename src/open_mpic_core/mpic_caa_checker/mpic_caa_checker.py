@@ -9,7 +9,6 @@ from uritools import isuri
 
 from opentelemetry.trace import Status, StatusCode
 
-from open_mpic_core.__about__ import __api_version__
 from open_mpic_core import CaaCheckRequest, CaaCheckResponse, CaaCheckResponseDetails
 from open_mpic_core import MpicValidationError, ErrorMessages
 from open_mpic_core import DomainEncoder
@@ -128,7 +127,6 @@ class MpicCaaChecker:
             errors=None,
             details=CaaCheckResponseDetails(caa_record_present=None),
             timestamp_ns=None,
-            api_version=__api_version__,
         )
 
         _start_ns = time.perf_counter_ns()

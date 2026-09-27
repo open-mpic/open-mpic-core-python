@@ -1,4 +1,3 @@
-from open_mpic_core.__about__ import __api_version__
 from open_mpic_core import DcvValidationMethod, DcvCheckResponse, DcvCheckResponseDetailsBuilder
 
 
@@ -11,5 +10,4 @@ class DcvUtils:
             timestamp_ns=None,
             errors=None,
             details=DcvCheckResponseDetailsBuilder.build_response_details(validation_method),
-            api_version=__api_version__,
         )

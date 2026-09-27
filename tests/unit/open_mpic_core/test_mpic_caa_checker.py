@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 from dns.asyncresolver import reset_default_resolver
 
-from open_mpic_core.__about__ import __api_version__
 from open_mpic_core import CaaCheckParameters
 from open_mpic_core import CaaCheckRequest, CaaCheckResponse, CaaCheckResponseDetails
 from open_mpic_core import CertificateType
@@ -104,7 +103,6 @@ class TestMpicCaaChecker:
             check_passed=True,
             check_completed=True,
             details=check_response_details,
-            api_version=__api_version__,
         )
         assert caa_response == expected_response
 
@@ -131,7 +129,6 @@ class TestMpicCaaChecker:
             check_passed=True,
             check_completed=True,
             details=check_response_details,
-            api_version=__api_version__,
         )
         assert caa_response == expected_response
 
@@ -157,7 +154,6 @@ class TestMpicCaaChecker:
             check_passed=True,
             check_completed=True,
             details=check_response_details,
-            api_version=__api_version__,
         )
         assert caa_response == expected_response
 
@@ -948,7 +944,6 @@ class TestMpicCaaChecker:
         caa_request.caa_check_parameters.expected_validation_methods = ["dns-01"]
         caa_response = await caa_checker.check_caa(caa_request)
         assert caa_response.check_passed is True
-        assert caa_response.api_version == __api_version__
 
     def raise_(self, ex):
         # noinspection PyUnusedLocal
