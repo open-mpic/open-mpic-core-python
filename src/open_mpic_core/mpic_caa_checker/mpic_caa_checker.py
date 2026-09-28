@@ -292,12 +292,6 @@ class MpicCaaChecker:
         """
         Evaluates a property's RFC 8657 accounturi parameter against the permissible account URIs for the request.
         """
-        # Since we are checking CAA parameters (not dns-persist), use the most conservative capitalization
-        # interpretation possible and assume the tag is provided even if the case is different.
-        # This is because an accounturi CAA parameter can only ever restrict issuance, so assuming the tag
-        # is there when the case differs provides a more conservative interpretation.
-        # This is intentionally the opposite behavior of dns-persist where an accounturi param must be
-        # capitalized correctly to allow issuance under the TLS BRs.
         accounturis = [value for tag, value in parameter_pairs if tag.lower() == ACCOUNTURI_PARAMETER_TAG]
         if len(accounturis) == 0:
             # a property without an accounturi parameter matches any account (RFC 8657 section 3)

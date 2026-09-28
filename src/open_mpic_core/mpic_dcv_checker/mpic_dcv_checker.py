@@ -550,12 +550,7 @@ class MpicDcvChecker:
                         well_formed_record = False
                         break  # malformed parameter; skip to next record
 
-                    # This method is based on method 22 (section 3.2.2.4.22) of the
-                    # CA/Browser Forum TLS BRs. Section 3.2.2.4.22 only explicitly mentions the
-                    # parameter name "accounturi" in lower case. To achieve a strict interpretation,
-                    # this is matched exactly.
-                    # persistUntil however only implies an issuance restriction, so it will be matched
-                    # with more lenient case insensitive behavior.
+                    # Match accounturi lower case in accordence with Section 3.2.2.4.22 of the CA/Browser Forum TLS BRs.
 
                     param_name = name_and_value[0].strip()
                     param_value = name_and_value[1].strip()

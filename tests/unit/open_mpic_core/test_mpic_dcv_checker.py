@@ -834,7 +834,20 @@ class TestMpicDcvChecker:
         result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
         assert result is True
 
-    def evaluate_persistent_dns_response__should_match_accounturi_parameter_name_case_sensitively(self):
+    @pytest.mark.parametrize(
+        "test_description",
+        [
+            (
+                "This method is based on method 22 (section 3.2.2.4.22) of the "
+                "CA/Browser Forum TLS BRs. Section 3.2.2.4.22 only explicitly mentions the "
+                'parameter name "accounturi" in lower case. To achieve a strict interpretation, '
+                "this is matched exactly."
+            )
+        ],
+    )
+    def evaluate_persistent_dns_response__should_match_accounturi_parameter_name_case_sensitively(
+        self, test_description
+    ):
         # TLS BRs section 3.2.2.4.22 names the parameter "accounturi" in lower case; it is matched strictly,
         # so a record whose accounturi parameter name differs in case cannot demonstrate control
         issuer_domain_name = "ca.example.com"
