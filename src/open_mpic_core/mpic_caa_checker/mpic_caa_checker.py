@@ -294,21 +294,13 @@ class MpicCaaChecker:
         """
         accounturis = [value for tag, value in parameter_pairs if tag.lower() == ACCOUNTURI_PARAMETER_TAG]
         if len(accounturis) == 0:
-            # a property without an accounturi parameter matches any account (RFC 8657 section 3)
             return True
-        if len(accounturis) > 1:
-            # a property with multiple accounturi parameters is unsatisfiable (RFC 8657 section 3)
-            return False
+
+        # There is at least one accounturi param, check all other aspects needed for proper issuance.
         accounturi = accounturis[0]
-        if not isuri(accounturi):
-            # a property with an invalid accounturi parameter is unsatisfiable (RFC 8657 section 3)
+        if len(accounturis) > 1 or (not isuri(accounturi)) or expected_account_uris is None:
             return False
-
-        # If an accounturi parameter was found but no expected account URIs were provided in the open MPIC call,
-        # fail closed.
-        if expected_account_uris is None:
-            return False
-
+        
         return accounturi in expected_account_uris
 
     @staticmethod
