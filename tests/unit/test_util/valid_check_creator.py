@@ -38,8 +38,10 @@ class ValidCheckCreator:
         return DcvCheckRequest(
             domain_or_ip_target="example.com",
             dcv_check_parameters=DcvWebsiteChangeValidationParameters(
-                http_token_path="token111_ca1.txt", challenge_value="challenge_111", url_scheme=UrlScheme.HTTP,
-                require_exact_case=require_exact_case
+                http_token_path="token111_ca1.txt",
+                challenge_value="challenge_111",
+                url_scheme=UrlScheme.HTTP,
+                require_exact_case=require_exact_case,
             ),
         )
 
@@ -131,7 +133,9 @@ class ValidCheckCreator:
         )
 
     @staticmethod
-    def create_valid_dcv_check_request(validation_method: DcvValidationMethod, record_type=None, require_exact_case=True) -> DcvCheckRequest:
+    def create_valid_dcv_check_request(
+        validation_method: DcvValidationMethod, record_type=None, require_exact_case=True
+    ) -> DcvCheckRequest:
         match validation_method:
             case DcvValidationMethod.WEBSITE_CHANGE:
                 return ValidCheckCreator.create_valid_http_check_request(require_exact_case=require_exact_case)
@@ -139,7 +143,9 @@ class ValidCheckCreator:
                 if record_type is None:
                     record_type = DnsRecordType.TXT
                 if record_type is DnsRecordType.TXT:  # accept a flag for TXT; for the rest, don't...
-                    return ValidCheckCreator.create_valid_dns_check_request(record_type, require_exact_case=require_exact_case)
+                    return ValidCheckCreator.create_valid_dns_check_request(
+                        record_type, require_exact_case=require_exact_case
+                    )
                 else:
                     return ValidCheckCreator.create_valid_dns_check_request(record_type)
             case DcvValidationMethod.DNS_PERSISTENT:
