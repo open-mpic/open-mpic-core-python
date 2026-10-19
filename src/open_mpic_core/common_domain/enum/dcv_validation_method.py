@@ -8,7 +8,7 @@ class DcvValidationMethod(StrEnum):
     ACME_HTTP_01 = "acme-http-01"  # CABF BRs 3.2.2.4.19 Agreed-Upon Change to Website - ACME
     ACME_DNS_01 = "acme-dns-01"  # TXT record
     ACME_TLS_ALPN_01 = "acme-tls-alpn-01"  # CABF BRs 3.2.2.4.20 TLS Using ALPN
-    DNS_ACCOUNT_01 = "dns-account-01"  # CABF BRs 3.2.2.4.21 DNS Labeled with Account ID - ACME TODO not yet implemented
+    DNS_ACCOUNT_01 = "dns-account-01"  # CABF BRs 3.2.2.4.21 DNS Labeled with Account ID - ACME
     CONTACT_EMAIL_CAA = "contact-email-caa"
     CONTACT_EMAIL_TXT = "contact-email-txt"
     CONTACT_PHONE_CAA = "contact-phone-caa"

@@ -15,6 +15,7 @@ from open_mpic_core.common_domain.check_parameters import (
     DcvDnsChangeValidationParameters,
     DcvDnsPersistentValidationParameters,
     DcvAcmeDns01ValidationParameters,
+    DcvAcmeDnsAccount01ValidationParameters,
     DcvContactPhoneTxtValidationParameters,
     DcvContactEmailCaaValidationParameters,
     DcvContactEmailTxtValidationParameters,

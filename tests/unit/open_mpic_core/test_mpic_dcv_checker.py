@@ -102,6 +102,7 @@ class TestMpicDcvChecker:
             (DcvValidationMethod.IP_ADDRESS, DnsRecordType.AAAA),
             (DcvValidationMethod.ACME_HTTP_01, None),
             (DcvValidationMethod.ACME_DNS_01, None),
+            (DcvValidationMethod.DNS_ACCOUNT_01, None),
             (DcvValidationMethod.REVERSE_ADDRESS_LOOKUP, None),
             (DcvValidationMethod.ACME_TLS_ALPN_01, None),
         ],
@@ -160,6 +161,7 @@ class TestMpicDcvChecker:
         [
             (DcvValidationMethod.ACME_HTTP_01, None),
             (DcvValidationMethod.ACME_DNS_01, None),
+            (DcvValidationMethod.DNS_ACCOUNT_01, None),
         ],
     )
     async def check_dcv__should_be_case_sensitive_for_challenge_values_for_certain_validation_methods(
@@ -244,6 +246,7 @@ class TestMpicDcvChecker:
     @pytest.mark.parametrize("dcv_method, domain, encoded_domain", [
         (DcvValidationMethod.WEBSITE_CHANGE, "bücher.example.de", "xn--bcher-kva.example.de"),
         (DcvValidationMethod.ACME_DNS_01, "café.com", "xn--caf-dma.com"),
+        (DcvValidationMethod.DNS_ACCOUNT_01, "café.com", "xn--caf-dma.com"),
     ])
     # fmt: on
     async def check_dcv__should_handle_domains_with_non_ascii_characters(
@@ -790,7 +793,7 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.perform_general_dns_validation(dcv_request)
         assert dcv_response.check_passed is False
 
-    @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.DNS_CHANGE, DcvValidationMethod.ACME_DNS_01])
+    @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.DNS_CHANGE, DcvValidationMethod.ACME_DNS_01, DcvValidationMethod.DNS_ACCOUNT_01])
     async def dns_based_dcv_checks__should_not_pass_given_non_matching_dns_record(self, dcv_method, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
         test_dns_query_answer = self._create_basic_dns_response_for_mock(dcv_request, mocker)
@@ -981,7 +984,7 @@ class TestMpicDcvChecker:
         result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, [record])
         assert result is False, f"Should fail with malformed record: {record}"
 
-    @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.DNS_CHANGE, DcvValidationMethod.ACME_DNS_01])
+    @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.DNS_CHANGE, DcvValidationMethod.ACME_DNS_01, DcvValidationMethod.DNS_ACCOUNT_01])
     async def dns_based_dcv_checks__should_return_timestamp_and_list_of_records_seen(self, dcv_method, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
         self._mock_dns_resolve_call_getting_multiple_txt_records(dcv_request, mocker)
@@ -999,6 +1002,7 @@ class TestMpicDcvChecker:
         [
             (DcvValidationMethod.DNS_CHANGE, Rcode.NOERROR),
             (DcvValidationMethod.ACME_DNS_01, Rcode.NXDOMAIN),
+            (DcvValidationMethod.DNS_ACCOUNT_01, Rcode.NXDOMAIN),
             (DcvValidationMethod.DNS_CHANGE, Rcode.REFUSED),
         ],
     )
@@ -1015,6 +1019,8 @@ class TestMpicDcvChecker:
             (DcvValidationMethod.DNS_CHANGE, dns.flags.CD, False),
             (DcvValidationMethod.ACME_DNS_01, dns.flags.AD, True),
             (DcvValidationMethod.ACME_DNS_01, dns.flags.CD, False),
+            (DcvValidationMethod.DNS_ACCOUNT_01, dns.flags.AD, True),
+            (DcvValidationMethod.DNS_ACCOUNT_01, dns.flags.CD, False),
         ],
     )
     async def dns_based_dcv_checks__should_return_whether_response_has_ad_flag(
@@ -1037,7 +1043,7 @@ class TestMpicDcvChecker:
         dcv_response = await self.dcv_checker.check_dcv(dcv_request)
         assert "sub.example.com." in dcv_response.details.cname_chain
 
-    @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.DNS_CHANGE, DcvValidationMethod.ACME_DNS_01])
+    @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.DNS_CHANGE, DcvValidationMethod.ACME_DNS_01, DcvValidationMethod.DNS_ACCOUNT_01])
     async def dns_based_dcv_checks__should_not_pass_with_errors_given_exception_raised(self, dcv_method, mocker):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(dcv_method)
         no_answer_error = dns.resolver.NoAnswer()
@@ -1290,7 +1296,7 @@ class TestMpicDcvChecker:
                 record_data = {"flags": "", "tag": "contactemail", "value": check_parameters.challenge_value}
             case DcvValidationMethod.CONTACT_PHONE_CAA:
                 record_data = {"flags": "", "tag": "contactphone", "value": check_parameters.challenge_value}
-            case _:  # ACME_DNS_01
+            case DcvValidationMethod.ACME_DNS_01 | DcvValidationMethod.DNS_ACCOUNT_01:
                 record_data = {"value": check_parameters.key_authorization_hash}
         record_type = check_parameters.dns_record_type
         record_prefix = check_parameters.dns_name_prefix
