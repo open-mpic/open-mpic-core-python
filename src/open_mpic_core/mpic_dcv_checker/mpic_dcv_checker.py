@@ -590,6 +590,8 @@ class MpicDcvChecker:
     ) -> ExpectedDnsRecordContent:
         if validation_method == DcvValidationMethod.ACME_DNS_01:
             expected_content = ExpectedDnsRecordContent(expected_value=check_parameters.key_authorization_hash)
+        elif validation_method == DcvValidationMethod.DNS_ACCOUNT_01:
+            expected_content = ExpectedDnsRecordContent(expected_value=check_parameters.key_authorization_hash)
         elif validation_method == DcvValidationMethod.DNS_PERSISTENT:
             expected_content = ExpectedDnsRecordContent(
                 expected_value=None,  # validated via issuer_domains and account_uri

@@ -7,6 +7,7 @@ from open_mpic_core import (
     DcvDnsChangeValidationParameters,
     DcvDnsPersistentValidationParameters,
     DcvAcmeDns01ValidationParameters,
+    DcvAcmeDnsAccount01ValidationParameters,
     DcvContactPhoneTxtValidationParameters,
     DcvContactEmailCaaValidationParameters,
     DcvContactEmailTxtValidationParameters,
@@ -32,6 +33,8 @@ class TestCheckRequestDetails:
          DcvAcmeHttp01ValidationParameters),
         ('{"validation_method": "acme-dns-01", "key_authorization_hash": "test-ka"}',
          DcvAcmeDns01ValidationParameters),
+        ('{"validation_method": "dns-account-01", "acme_account_url": "https://example.com/acme/acct/ExampleAccount", "key_authorization_hash": "test-ka"}',
+         DcvAcmeDnsAccount01ValidationParameters),
         ('{"validation_method": "contact-email-txt", "challenge_value": "test-cv"}',
          DcvContactEmailTxtValidationParameters),
         ('{"validation_method": "contact-email-caa", "challenge_value": "test-cv"}',
@@ -114,6 +117,14 @@ class TestCheckRequestDetails:
             assert details_as_object.require_exact_case is True
 
     @staticmethod
+    def check_request_parameters__should_disallow_setting_case_sensitivity_to_false_for_acme_dns_account_01():
+        parameters_as_json = '{"validation_method": "dns-account-01", "acme_account_url": "https://example.com/acme/acct/ExampleAccount", "key_authorization_hash": "test-kah", "require_exact_case": false}'
+        type_adapter = TypeAdapter(DcvCheckParameters)
+        with pytest.raises(Exception) as validation_error:
+            type_adapter.validate_json(parameters_as_json)
+        assert isinstance(validation_error.value, ValueError)
+
+    @staticmethod
     def check_request_parameters__should_disallow_setting_case_sensitivity_to_false_for_acme_dns_01():
         parameters_as_json = '{"validation_method": "acme-dns-01", "key_authorization_hash": "test-kah", "require_exact_case": false}'
         type_adapter = TypeAdapter(DcvCheckParameters)
@@ -128,6 +139,34 @@ class TestCheckRequestDetails:
         with pytest.raises(Exception) as validation_error:
             type_adapter.validate_json(parameters_as_json)
         assert isinstance(validation_error.value, ValueError)
+
+    @staticmethod
+    def acme_dns_account_01_parameters__should_derive_dns_name_prefix_from_account_url():
+        parameters = DcvAcmeDnsAccount01ValidationParameters(
+            acme_account_url="https://example.com/acme/acct/ExampleAccount",
+            key_authorization_hash="abc123",
+        )
+        assert parameters.dns_account_label == "ujmmovf2vn55tgye"
+        assert parameters.dns_name_prefix == "_ujmmovf2vn55tgye._acme-challenge"
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        "account_url",
+        ["https://ca.example/acme/acct/123", "http://authority.example/acme/acct/foo"],
+    )
+    def acme_dns_account_01_parameters__should_produce_lowercase_unpadded_base32_label(account_url):
+        label = DcvAcmeDnsAccount01ValidationParameters(
+            acme_account_url=account_url, key_authorization_hash="abc123"
+        ).dns_account_label
+        assert "=" not in label
+        assert all(char in "abcdefghijklmnopqrstuvwxyz234567" for char in label)
+
+    @staticmethod
+    def acme_dns_account_01_parameters__should_reject_invalid_account_url():
+        with pytest.raises(ValueError, match="acme_account_url must be a valid URI"):
+            DcvAcmeDnsAccount01ValidationParameters(
+                acme_account_url="not-a-valid-uri", key_authorization_hash="abc123"
+            )
 
 
 if __name__ == "__main__":
