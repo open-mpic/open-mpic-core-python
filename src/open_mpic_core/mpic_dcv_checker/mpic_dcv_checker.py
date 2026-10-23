@@ -119,15 +119,16 @@ class MpicDcvChecker:
             dcv_request.trace_identifier,
         )
 
-        # encode domain if needed
-        dcv_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(dcv_request.domain_or_ip_target)
-
         _start_ns = time.perf_counter_ns()
         with self._tracer.start_as_current_span(
             "mpic.dcv.check", attributes={"validation.method": validation_method_value}
         ) as _span:
             try:
                 result = None
+
+                # encode domain if needed
+                dcv_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(dcv_request.domain_or_ip_target)
+
                 match validation_method:
                     case DcvValidationMethod.WEBSITE_CHANGE | DcvValidationMethod.ACME_HTTP_01:
                         result = await self.perform_http_based_validation(dcv_request)
