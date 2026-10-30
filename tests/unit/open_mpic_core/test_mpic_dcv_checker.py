@@ -292,20 +292,18 @@ class TestMpicDcvChecker:
         assert dcv_response.check_completed is should_complete_check
 
     @pytest.mark.parametrize("domain", ["exa\x80mple.com", "xn--example-da.com"])
-    async def check_dcv__should_record_exception_and_set_error_status_for_invalid_domain(self, domain):
+    async def check_dcv__should_gracefully_handle_error_for_invalid_domain(self, domain):
         dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE)
         dcv_request.domain_or_ip_target = domain
 
-        check_span = MagicMock()
-        tracer_mock = MagicMock()
-        tracer_mock.start_as_current_span.return_value = nullcontext(check_span)
-        self.dcv_checker._tracer = tracer_mock
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
 
-        with pytest.raises(ValueError) as exc_info:
-            await self.dcv_checker.check_dcv(dcv_request)
-
-        check_span.record_exception.assert_called_once_with(exc_info.value)
-        check_span.set_status.assert_called_once()
+        assert dcv_response.check_passed is False
+        assert dcv_response.check_completed is False
+        assert dcv_response.errors is not None and len(dcv_response.errors) == 1
+        error = dcv_response.errors[0]
+        assert error.error_type == ErrorMessages.DCV_LOOKUP_ERROR.key
+        assert dcv_request.domain_or_ip_target in error.error_message
 
     @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.ACME_HTTP_01, DcvValidationMethod.ACME_DNS_01])
     async def check_dcv__should_be_able_to_trace_timing_of_http_and_dns_lookups(self, dcv_method, mocker):
@@ -1099,6 +1097,7 @@ class TestMpicDcvChecker:
             traces=[],
             loop=event_loop,
             session=AsyncMock(),
+            stream_writer=MagicMock(),
         )
 
     @staticmethod
