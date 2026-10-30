@@ -235,3 +235,10 @@ terraform.rc
 
 # MacOS specific files
 .DS_Store
+
+# AI stuff
+.agents
+.claude
+.github/agents
+_bmad
+_bmad-output

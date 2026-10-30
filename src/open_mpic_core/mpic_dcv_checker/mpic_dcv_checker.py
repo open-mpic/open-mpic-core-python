@@ -119,15 +119,18 @@ class MpicDcvChecker:
             dcv_request.trace_identifier,
         )
 
-        # encode domain if needed
-        dcv_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(dcv_request.domain_or_ip_target)
-
         _start_ns = time.perf_counter_ns()
         with self._tracer.start_as_current_span(
             "mpic.dcv.check", attributes={"validation.method": validation_method_value}
         ) as _span:
             try:
                 result = None
+
+                # encode domain if needed
+                dcv_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(
+                    dcv_request.domain_or_ip_target
+                )
+
                 match validation_method:
                     case DcvValidationMethod.WEBSITE_CHANGE | DcvValidationMethod.ACME_HTTP_01:
                         result = await self.perform_http_based_validation(dcv_request)
@@ -135,10 +138,15 @@ class MpicDcvChecker:
                         result = await self.acme_tls_alpn_validator.perform_tls_alpn_validation(dcv_request)
                     case _:  # all DNS based methods
                         result = await self.perform_general_dns_validation(dcv_request)
-            except Exception as exc:
-                _span.record_exception(exc)
-                _span.set_status(Status(StatusCode.ERROR, description=type(exc).__name__))
-                raise
+            except Exception as e:
+                dcv_lookup_error = e
+                error_message = f"Error during DCV lookup for {dcv_request.domain_or_ip_target}: {e}. Trace ID: {dcv_request.trace_identifier}"
+                self.logger.error(error_message)
+                result = DcvUtils.create_empty_check_response(validation_method)
+                result.timestamp_ns = time.time_ns()
+                result.errors = [MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, error_message)]
+                _span.record_exception(e)
+                _span.set_status(Status(StatusCode.ERROR, description=type(e).__name__))
             finally:
                 elapsed_ms = (time.perf_counter_ns() - _start_ns) / 1_000_000
                 check_passed = result.check_passed if result is not None else False

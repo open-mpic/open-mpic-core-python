@@ -291,6 +291,20 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is should_complete_check
         assert dcv_response.check_completed is should_complete_check
 
+    @pytest.mark.parametrize("domain", ["exa\x80mple.com", "xn--example-da.com"])
+    async def check_dcv__should_gracefully_handle_error_for_invalid_domain(self, domain):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE)
+        dcv_request.domain_or_ip_target = domain
+
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+
+        assert dcv_response.check_passed is False
+        assert dcv_response.check_completed is False
+        assert dcv_response.errors is not None and len(dcv_response.errors) == 1
+        error = dcv_response.errors[0]
+        assert error.error_type == ErrorMessages.DCV_LOOKUP_ERROR.key
+        assert dcv_request.domain_or_ip_target in error.error_message
+
     @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.ACME_HTTP_01, DcvValidationMethod.ACME_DNS_01])
     async def check_dcv__should_be_able_to_trace_timing_of_http_and_dns_lookups(self, dcv_method, mocker):
         tracing_dcv_checker = MpicDcvChecker(log_level=TRACE_LEVEL)
@@ -1083,6 +1097,7 @@ class TestMpicDcvChecker:
             traces=[],
             loop=event_loop,
             session=AsyncMock(),
+            stream_writer=MagicMock(),
         )
 
     @staticmethod
