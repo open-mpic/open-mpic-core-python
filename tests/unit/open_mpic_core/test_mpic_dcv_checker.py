@@ -291,6 +291,20 @@ class TestMpicDcvChecker:
         assert dcv_response.check_passed is should_complete_check
         assert dcv_response.check_completed is should_complete_check
 
+    @pytest.mark.parametrize("domain", ["exa\x80mple.com", "xn--example-da.com"])
+    async def check_dcv__should_gracefully_handle_error_for_invalid_domain(self, domain):
+        dcv_request = ValidCheckCreator.create_valid_dcv_check_request(DcvValidationMethod.WEBSITE_CHANGE)
+        dcv_request.domain_or_ip_target = domain
+
+        dcv_response = await self.dcv_checker.check_dcv(dcv_request)
+
+        assert dcv_response.check_passed is False
+        assert dcv_response.check_completed is False
+        assert dcv_response.errors is not None and len(dcv_response.errors) == 1
+        error = dcv_response.errors[0]
+        assert error.error_type == ErrorMessages.DCV_LOOKUP_ERROR.key
+        assert dcv_request.domain_or_ip_target in error.error_message
+
     @pytest.mark.parametrize("dcv_method", [DcvValidationMethod.ACME_HTTP_01, DcvValidationMethod.ACME_DNS_01])
     async def check_dcv__should_be_able_to_trace_timing_of_http_and_dns_lookups(self, dcv_method, mocker):
         tracing_dcv_checker = MpicDcvChecker(log_level=TRACE_LEVEL)
@@ -821,10 +835,10 @@ class TestMpicDcvChecker:
         result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
         assert result is True
 
-    def evaluate_persistent_dns_response__should_be_case_insensitive(self):
+    def evaluate_persistent_dns_response__should_match_issuer_domain_and_account_uri_case_insensitively(self):
         issuer_domain_name = "cA.EXaMPle.com"
         expected_account_uri = "https://cA.EXaMPle.com/acct/123"
-        records = [f"{issuer_domain_name}; acCoUntUrI={expected_account_uri}"]
+        records = [f"{issuer_domain_name}; accounturi={expected_account_uri}"]
 
         expected_dns_record_content = ExpectedDnsRecordContent(
             possible_values=[issuer_domain_name.lower()],
@@ -833,6 +847,34 @@ class TestMpicDcvChecker:
 
         result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
         assert result is True
+
+    @pytest.mark.parametrize(
+        "test_description",
+        [
+            (
+                "This method is based on method 22 (section 3.2.2.4.22) of the "
+                "CA/Browser Forum TLS BRs. Section 3.2.2.4.22 only explicitly mentions the "
+                'parameter name "accounturi" in lower case. To achieve a strict interpretation, '
+                "this is matched exactly."
+            )
+        ],
+    )
+    def evaluate_persistent_dns_response__should_match_accounturi_parameter_name_case_sensitively(
+        self, test_description
+    ):
+        # TLS BRs section 3.2.2.4.22 names the parameter "accounturi" in lower case; it is matched strictly,
+        # so a record whose accounturi parameter name differs in case cannot demonstrate control
+        issuer_domain_name = "ca.example.com"
+        expected_account_uri = "https://ca.example.com/acct/123"
+        records = [f"{issuer_domain_name}; acCoUntUrI={expected_account_uri}"]
+
+        expected_dns_record_content = ExpectedDnsRecordContent(
+            possible_values=[issuer_domain_name],
+            expected_parameters={"accounturi": expected_account_uri},
+        )
+
+        result = MpicDcvChecker.evaluate_persistent_dns_response(expected_dns_record_content, records)
+        assert result is False
 
     def evaluate_persistent_dns_response__should_ignore_additional_unknown_parameters(self):
         issuer_domain_name = "ca.example.com"
@@ -1083,6 +1125,7 @@ class TestMpicDcvChecker:
             traces=[],
             loop=event_loop,
             session=AsyncMock(),
+            stream_writer=MagicMock(),
         )
 
     @staticmethod

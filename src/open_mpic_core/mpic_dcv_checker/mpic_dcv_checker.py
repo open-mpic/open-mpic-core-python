@@ -71,6 +71,7 @@ class MpicDcvChecker:
 
         _meter = get_meter(__name__)
         self._tracer = get_tracer(__name__)
+        # TODO clean this up
         self._request_counter = _meter.create_counter(
             "mpic.dcv.requests",
             description="Total DCV check requests processed",
@@ -119,15 +120,18 @@ class MpicDcvChecker:
             dcv_request.trace_identifier,
         )
 
-        # encode domain if needed
-        dcv_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(dcv_request.domain_or_ip_target)
-
         _start_ns = time.perf_counter_ns()
         with self._tracer.start_as_current_span(
             "mpic.dcv.check", attributes={"validation.method": validation_method_value}
         ) as _span:
             try:
                 result = None
+
+                # encode domain if needed
+                dcv_request.domain_or_ip_target = DomainEncoder.prepare_target_for_lookup(
+                    dcv_request.domain_or_ip_target
+                )
+
                 match validation_method:
                     case DcvValidationMethod.WEBSITE_CHANGE | DcvValidationMethod.ACME_HTTP_01:
                         result = await self.perform_http_based_validation(dcv_request)
@@ -135,10 +139,15 @@ class MpicDcvChecker:
                         result = await self.acme_tls_alpn_validator.perform_tls_alpn_validation(dcv_request)
                     case _:  # all DNS based methods
                         result = await self.perform_general_dns_validation(dcv_request)
-            except Exception as exc:
-                _span.record_exception(exc)
-                _span.set_status(Status(StatusCode.ERROR, description=type(exc).__name__))
-                raise
+            except Exception as e:
+                dcv_lookup_error = e
+                error_message = f"Error during DCV lookup for {dcv_request.domain_or_ip_target}: {e}. Trace ID: {dcv_request.trace_identifier}"
+                self.logger.error(error_message)
+                result = DcvUtils.create_empty_check_response(validation_method)
+                result.timestamp_ns = time.time_ns()
+                result.errors = [MpicValidationError.create(ErrorMessages.DCV_LOOKUP_ERROR, e.__class__.__name__, error_message)]
+                _span.record_exception(e)
+                _span.set_status(Status(StatusCode.ERROR, description=type(e).__name__))
             finally:
                 elapsed_ms = (time.perf_counter_ns() - _start_ns) / 1_000_000
                 check_passed = result.check_passed if result is not None else False
@@ -213,6 +222,7 @@ class MpicDcvChecker:
                 if isinstance(e, dns.resolver.NoAnswer) or isinstance(e, dns.resolver.NXDOMAIN):
                     dcv_check_response.check_completed = True  # errors on the target domain, not the lookup
                     # noinspection PyUnresolvedReferences
+                    # TODO reconcile logger vs otel logging of these things
                     self.logger.trace(log_msg)
                 else:
                     self.logger.warning(log_msg)
@@ -547,9 +557,12 @@ class MpicDcvChecker:
                     if len(name_and_value) != 2:
                         well_formed_record = False
                         break  # malformed parameter; skip to next record
-                    param_name = name_and_value[0].strip().lower()
+
+                    param_name = name_and_value[0].strip()
                     param_value = name_and_value[1].strip()
 
+                    # Match 'accounturi' parameter strictly in lower case in accordance
+                    # with Section 3.2.2.4.22 of the CA/Browser Forum TLS BRs.
                     if param_name == "accounturi":
                         if found_accounturi_param:  # check if duplicate param; if so, mark as malformed and skip
                             well_formed_record = False
@@ -560,7 +573,10 @@ class MpicDcvChecker:
                             valid_account_uri = True
                         else:
                             break  # accounturi does not match; skip to next record
-                    elif param_name == "persistuntil":
+                    # Match 'persistuntil' parameter case-insensitively
+                    # Note that draft-ietf-acme-dns-persist is converging on persistuntil being all lower case,
+                    # This current approach is synergistic with that draft.
+                    elif param_name.lower() == "persistuntil":
                         if found_persistuntil_param:  # check if duplicate param; if so, mark as malformed and skip
                             well_formed_record = False
                             break
