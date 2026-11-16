@@ -25,12 +25,12 @@ classifiers = [
 dependencies = [
   "pyyaml==6.0.2",
   "requests==2.33.0",
-  "dnspython==2.7.0",
+  "dnspython==2.9.1",
   "pydantic==2.11.7",
-  "aiohttp==3.13.4",
-  "cryptography==46.0.7",
+  "aiohttp==3.14.5",
+  "cryptography==50.0.0",
   "uritools==6.0.1",
-  "opentelemetry-api==1.41.1",
+  "opentelemetry-api==1.45.1",
 ]
 
 [project.optional-dependencies]
@@ -68,6 +68,7 @@ spec_repository = "https://github.com/open-mpic/open-mpic-specification"
 skip-install = false
 type = "virtual"
 path = "venv"
+python = "3.13"
 features = [
     "dev",   # includes black for IDE formatting (option+command+L)
     "test",  # includes pytest and related libraries
