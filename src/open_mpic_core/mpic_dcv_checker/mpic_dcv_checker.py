@@ -550,11 +550,11 @@ class MpicDcvChecker:
                         well_formed_record = False
                         break  # malformed parameter; skip to next record
 
-                    # Match accounturi lower case in accordence with Section 3.2.2.4.22 of the CA/Browser Forum TLS BRs.
-
                     param_name = name_and_value[0].strip()
                     param_value = name_and_value[1].strip()
-                    # Match accounturi case sensitive.
+
+                    # Match 'accounturi' parameter strictly in lower case in accordance
+                    # with Section 3.2.2.4.22 of the CA/Browser Forum TLS BRs.
                     if param_name == "accounturi":
                         if found_accounturi_param:  # check if duplicate param; if so, mark as malformed and skip
                             well_formed_record = False
@@ -565,7 +565,7 @@ class MpicDcvChecker:
                             valid_account_uri = True
                         else:
                             break  # accounturi does not match; skip to next record
-                    # Match persistuntil case insensitive.
+                    # Match 'persistuntil' parameter case-insensitively
                     # Note that draft-ietf-acme-dns-persist is converging on persistuntil being all lower case,
                     # This current approach is synergistic with that draft.
                     elif param_name.lower() == "persistuntil":
